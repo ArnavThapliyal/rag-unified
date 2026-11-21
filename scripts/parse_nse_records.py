@@ -57,9 +57,11 @@ TYPE_KEYWORDS = [
 ]
 
 
-# Tables about listings, people or shareholdings are never delisting lists.
-REJECT_HEADER_RE = re.compile(r"(?<!de)listing date|date of (?<!de)listing|listed on|director|designation|\bdin\b|"
-                              r"shareholder|promoter|particulars|no\.? of shares|holding|\bpan\b|address", re.I)
+# Listing tables are never delisting lists. Tables about people/shareholdings are rejected unless
+# they are keyed by a company symbol/ISIN (e.g. NSE's proposed-delisting list has a promoter column).
+LISTING_HEADER_RE = re.compile(r"(?<!de)listing date|date of (?<!de)listing|listed on", re.I)
+PEOPLE_HEADER_RE = re.compile(r"director|designation|\bdin\b|shareholder|promoter|particulars|no\.? of shares|"
+                              r"holding|\bpan\b|address", re.I)
 COMPANY_RE = re.compile(r"\b(ltd|limited|corporation|corpn?|industries|company|co\.|inc|plc|bank|enterprises|"
                         r"holdings|mills|private|pvt|infra\w*|finance|financial|textiles|chemicals|steels?|"
                         r"pharma\w*|power|projects|exports|technologies|systems|services)\b", re.I)
@@ -125,9 +127,11 @@ def find_header_row(df: pd.DataFrame, scan: int = 15) -> int | None:
     listing/people/shareholding columns."""
     candidates = [(-1, list(df.columns))] + [(i, list(df.iloc[i].values)) for i in range(min(scan, len(df)))]
     for idx, cells in candidates:
-        if any(REJECT_HEADER_RE.search(str(c)) for c in cells):
+        if any(LISTING_HEADER_RE.search(str(c)) for c in cells):
             continue
         m = set(map_headers(cells).values())
+        if not m & {"nse_symbol", "isin"} and any(PEOPLE_HEADER_RE.search(str(c)) for c in cells):
+            continue
         if "company_name" in m and m & {"nse_symbol", "isin", "effective_delisting_date", "order_date"}:
             return idx
     return None

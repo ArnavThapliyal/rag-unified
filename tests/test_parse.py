@@ -116,3 +116,9 @@ def test_plain_date_only_trusted_with_symbol():
 def test_wrapped_names_are_joined():
     df = pd.DataFrame([["Symbol", "Company Name", "Delisted Date"], ["GTNIND", "GTN Industries\nLimited", "2018-01-01"]])
     assert p.rows_from_table(df, "COMPULSORY")[0]["company_name"] == "GTN Industries Limited"
+
+
+def test_symbol_keyed_table_with_promoter_column_is_kept():
+    df = pd.DataFrame([["Sr.no", "Symbol", "Name of Company", "Name of the Promoter"],
+                       [1, "ARCOTECH", "Arcotech Limited", "Arvind Kumar Saraf"]])
+    assert [r["nse_symbol"] for r in p.rows_from_table(df, "OTHER")] == ["ARCOTECH"]
