@@ -110,7 +110,7 @@ Cline is installed per project as a dev dependency (`package.json`, version pinn
 ```bash
 cd /Users/arnav/Projects/Software/nse-delisted-comp
 npm install                  # one-time: installs the pinned cline into node_modules/
-npx cline auth lmstudio -b http://localhost:1234/v1 -m qwen/qwen3.8-27b   # one-time
+npx cline auth lmstudio -k lm-studio -m qwen/qwen3.8-27b   # one-time; key is a placeholder (LM Studio ignores it), URL defaults to localhost:1234/v1
 npx cline -i                 # interactive terminal UI; paste the starting prompt below
 ```
 
@@ -118,6 +118,8 @@ Other useful forms:
 - `npx cline "<prompt>"` runs a single task in act mode with auto-approve.
 - `npx cline -p "<prompt>"` starts in plan mode, so it proposes steps before acting.
 - `npx cline history` lists past sessions. Resume one with `npx cline --id <session-id>`.
+
+**Security overrides.** `package.json` pins Cline (`3.0.75`) and uses npm `overrides` to force patched versions of some of its dependencies: `simple-git` 4.x and `@simple-git/argv-parser` 2.x (critical), `@fastify/busboy`, `@opentelemetry/core`, and `undici` under `dify-ai-provider`. This brings `npm audit` from 26 findings (2 critical) down to 12 (0 critical). The ones left can only be fixed upstream: `zod` 3 inside `dify-ai-provider` (an unused provider) and a beta `@ai-sdk/provider-utils` in Langfuse telemetry. **Never run `npm audit fix --force`.** It downgrades Cline to 3.0.3. After upgrading Cline, delete `node_modules/` and `package-lock.json`, run `npm install`, and check that `npx cline` still works.
 
 Use `npx cline`, not `cline`: plain `cline` runs the global copy in `/opt/homebrew` (if installed), which can be a different version.
 
