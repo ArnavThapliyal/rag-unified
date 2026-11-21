@@ -58,3 +58,22 @@ def test_two_unverified_domains_upgrade_to_corroborated():
     a = _row(confidence_status="NEEDS_REVIEW", source_url="https://one.example/a")
     b = _row(confidence_status="NEEDS_REVIEW", source_url="https://two.example/b")
     assert m.merge_group([a, b])["confidence_status"] == "CORROBORATED_SECONDARY"
+
+
+def test_undated_row_joins_the_companys_only_event(tmp_path, monkeypatch):
+    import json
+    parsed = tmp_path / "parsed"
+    parsed.mkdir()
+    base = {"company_name": "Mandu Industries Limited", "nse_symbol": "MANDUIND", "isin": None,
+            "order_date": None, "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx",
+            "local_artifact_path": "x.xlsx", "confidence_status": "VERIFIED_PRIMARY", "record_status": "DELISTED"}
+    rows = [dict(base, effective_delisting_date=None, delisting_type="IBC_NCLT"),
+            dict(base, effective_delisting_date="2016-11-22", delisting_type="COMPULSORY")]
+    (parsed / "a.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    monkeypatch.setattr(m, "PARSED", parsed)
+    monkeypatch.setattr(m, "PROCESSED", tmp_path)
+    monkeypatch.setattr(m, "log", lambda *a, **k: None)
+    monkeypatch.setattr(m, "emit", lambda *a, **k: None)
+    m.main()
+    out = (tmp_path / "nse_delisted_master.jsonl").read_text().splitlines()
+    assert len(out) == 1 and json.loads(out[0])["effective_delisting_date"] == "2016-11-22"

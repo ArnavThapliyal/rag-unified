@@ -128,27 +128,29 @@ def map_headers(cols) -> dict[int, str]:
     return mapping
 
 
-def find_header_row(df: pd.DataFrame, scan: int = 15) -> int | None:
+def find_header_row(df: pd.DataFrame, scan: int = 15, allow_people: bool = False) -> int | None:
     """Index of the header row of a delisting table (-1 = the DataFrame's own columns), else None.
     Needs a company-name column plus a symbol, ISIN or explicit delisting/order date column, and no
-    listing/people/shareholding columns."""
+    listing/people/shareholding columns. People columns (promoter etc.) are allowed only in
+    proposed-delisting lists (allow_people), which name the promoters of each listed company; in
+    NSE's delisted.xlsx the promoter sheet is one row per person, not per delisting."""
     candidates = [(-1, list(df.columns))] + [(i, list(df.iloc[i].values)) for i in range(min(scan, len(df)))]
     for idx, cells in candidates:
         if any(LISTING_HEADER_RE.search(str(c)) for c in cells):
             continue
         m = set(map_headers(cells).values())
-        if not m & {"nse_symbol", "isin"} and any(PEOPLE_HEADER_RE.search(str(c)) for c in cells):
+        if not (allow_people and m & {"nse_symbol", "isin"}) and any(PEOPLE_HEADER_RE.search(str(c)) for c in cells):
             continue
         if "company_name" in m and m & {"nse_symbol", "isin", "effective_delisting_date", "order_date"}:
             return idx
     return None
 
 
-def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
+def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False) -> list[dict]:
     df = df.dropna(how="all").dropna(axis=1, how="all")
     if df.empty:
         return []
-    hdr = find_header_row(df)
+    hdr = find_header_row(df, allow_people=allow_people)
     if hdr is None:
         return []
     if hdr >= 0:
@@ -300,7 +302,7 @@ def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: 
     return False, f"no_delisting_signal ({where[-60:]})"
 
 
-def parse_file(path: Path) -> tuple[list[dict], dict]:
+def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
     ext = path.suffix.lower()
     stats = {"tables_seen": 0, "no_text": False, "title": "", "text_head": ""}
     rows: list[dict] = []
@@ -312,12 +314,12 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
             text += df.to_string()[:20000]
         doc_type = classify(text)
         for df in sheets.values():
-            rows += rows_from_table(df, doc_type)
+            rows += rows_from_table(df, doc_type, proposed)
     elif ext == ".csv":
         df = pd.read_csv(path, header=None, dtype=str, on_bad_lines="skip", encoding_errors="ignore")
         stats["tables_seen"] = 1
         text = df.head(50).to_string()
-        rows = rows_from_table(df, classify(df.to_string()[:20000]))
+        rows = rows_from_table(df, classify(df.to_string()[:20000]), proposed)
     elif ext in (".html", ".htm"):
         from bs4 import BeautifulSoup
         html = path.read_text(encoding="utf-8", errors="ignore")
@@ -331,7 +333,7 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
             tables = []
         stats["tables_seen"] = len(tables)
         for df in tables:
-            rows += rows_from_table(df, doc_type)
+            rows += rows_from_table(df, doc_type, proposed)
         if not rows:
             rows = rows_from_text(text, doc_type)
         if not rows:
@@ -353,7 +355,7 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
             rows = order_rows
         else:
             for df in tables:
-                rows += rows_from_table(df, doc_type)
+                rows += rows_from_table(df, doc_type, proposed)
             if not rows:
                 rows = rows_from_text(text, doc_type)
     elif ext == ".txt":
@@ -391,7 +393,7 @@ def main() -> int:
             summary["skipped_up_to_date"] += 1
             continue
         try:
-            rows, stats = parse_file(p)
+            rows, stats = parse_file(p, proposed=bool(PROPOSED_RE.search(idx.get(rel, {}).get("url") or rel)))
         except Exception as e:  # keep going; one bad artifact shouldn't stop the batch
             summary["errors"].append({"file": rel, "error": f"{type(e).__name__}: {e}"[:200]})
             log(f"parse error {rel}: {e}", level="ERROR", kind="parse_error", file=rel)

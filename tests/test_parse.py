@@ -121,7 +121,8 @@ def test_wrapped_names_are_joined():
 def test_symbol_keyed_table_with_promoter_column_is_kept():
     df = pd.DataFrame([["Sr.no", "Symbol", "Name of Company", "Name of the Promoter"],
                        [1, "ARCOTECH", "Arcotech Limited", "Arvind Kumar Saraf"]])
-    assert [r["nse_symbol"] for r in p.rows_from_table(df, "OTHER")] == ["ARCOTECH"]
+    assert [r["nse_symbol"] for r in p.rows_from_table(df, "OTHER", allow_people=True)] == ["ARCOTECH"]
+    assert p.rows_from_table(df, "OTHER") == []  # promoter sheet of delisted.xlsx: one row per person
 
 
 def test_order_without_symbol_in_matter_line_and_withdrawn_wording():

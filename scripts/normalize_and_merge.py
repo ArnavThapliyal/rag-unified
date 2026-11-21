@@ -135,8 +135,15 @@ def main() -> int:
 
     groups: list[list[dict]] = []
     by_key: dict[str, list[list[dict]]] = {}
+    # Dated rows first, so an undated row can attach to its company's one known event.
+    rows.sort(key=lambda r: r["effective_delisting_date"] is None and r["order_date"] is None)
     for r in rows:
-        for g in by_key.get(r["_key"], []):
+        existing = by_key.get(r["_key"], [])
+        undated = r["effective_delisting_date"] is None and r["order_date"] is None
+        if undated and len(existing) == 1:  # no date = no event identity: it is the same event
+            existing[0].append(r)
+            continue
+        for g in existing:
             if same_event(g[0], r):
                 g.append(r)
                 break
