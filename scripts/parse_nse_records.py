@@ -45,7 +45,7 @@ HEADER_MAP = [
     ("company", "company_name"), ("name of", "company_name"),
     ("security name", "company_name"), ("scrip name", "company_name"), ("name", "company_name"),
     ("date", "_plain_date"),  # only trusted as the delisting date in tables that also carry a symbol/ISIN
-    ("reason", "_reason"), ("remark", "_reason"), ("category", "_reason"), ("type", "_reason"),
+    ("reason", "_reason"), ("remark", "_reason"), ("category", "_reason"), ("type", "_reason"), ("details", "_reason"),
 ]
 
 TYPE_KEYWORDS = [
@@ -59,12 +59,17 @@ TYPE_KEYWORDS = [
 
 # Listing tables are never delisting lists. Tables about people/shareholdings are rejected unless
 # they are keyed by a company symbol/ISIN (e.g. NSE's proposed-delisting list has a promoter column).
-LISTING_HEADER_RE = re.compile(r"(?<!de)listing date|date of (?<!de)listing|listed on", re.I)
+# Listing and market-activity tables (Factbook "most active days", turnover, market cap) are never delisting lists.
+LISTING_HEADER_RE = re.compile(r"(?<!de)listing date|date of (?<!de)listing|listed on|traded value|turnover|"
+                               r"traded quantity|market capitali|\brank\b|no\.? of trades", re.I)
 PEOPLE_HEADER_RE = re.compile(r"director|designation|\bdin\b|shareholder|promoter|particulars|no\.? of shares|"
                               r"holding|\bpan\b|address", re.I)
 COMPANY_RE = re.compile(r"\b(ltd|limited|corporation|corpn?|industries|company|co\.|inc|plc|bank|enterprises|"
                         r"holdings|mills|private|pvt|infra\w*|finance|financial|textiles|chemicals|steels?|"
                         r"pharma\w*|power|projects|exports|technologies|systems|services)\b", re.I)
+
+
+LEGAL_TEXT_RE = re.compile(r"\bu/s\b|\bAct,?\s+\d{4}|\bSection\s+\d|\bRegulation\s+\d", re.I)
 
 
 def name_ok(name: str, has_id: bool) -> bool:
@@ -73,6 +78,8 @@ def name_ok(name: str, has_id: bool) -> bool:
     if not 3 <= len(name) <= 120 or "\n" in name or "•" in name or name[0] in "(-*•" or len(name.split()) > 12:
         return False
     if not re.search(r"[A-Za-z]{3}", name):
+        return False
+    if LEGAL_TEXT_RE.search(name):  # "Financial Institutions u/s. 4A of Companies Act, 1956"
         return False
     return has_id or bool(COMPANY_RE.search(name))
 
@@ -169,6 +176,8 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
         if name.lower() in ("company name", "name of the company", "total", "nan", "nat", "none"):
             continue
         symbol = str(rec.get("nse_symbol", "")).strip().upper()
+        if not re.fullmatch(r"[A-Z][A-Z0-9&\-]{0,19}", symbol):  # cells of bullet text are not symbols
+            symbol = ""
         if name and not name_ok(name, bool(isin_m or symbol)):
             continue
         row_text = " ".join(str(v) for v in vals)
@@ -184,8 +193,8 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
             "order_date": to_iso(rec.get("order_date")),
             "effective_delisting_date": to_iso(rec.get("effective_delisting_date")),
             "exit_or_fair_value_inr": price,
-            "delisting_type": classify(str(rec.get("_reason", "")) + " " + row_text)
-            if rec.get("_reason") else doc_type,
+            "delisting_type": row_type if (row_type := classify(str(rec.get("_reason", "")) + " " + row_text)) != "OTHER"
+            else doc_type,  # the row's own words first; the document-wide guess only if the row says nothing
             "extraction": "table",
         })
     return out

@@ -58,3 +58,10 @@ def test_report_issue_dedupes_open_issues(tmp_path, monkeypatch):
     assert ri.report("fetch", "domain blocked", [])["id"] == 2
     [first, _] = ri.load()
     assert first["evidence"] == ["a.pdf", "b.pdf"]
+
+
+def test_master_count_counts_records_not_lines(tmp_path, monkeypatch):
+    import collect
+    (tmp_path / "nse_delisted_master.csv").write_text('company_name,nse_symbol\n"A Ltd","X\nY"\nB Ltd,B\n')
+    monkeypatch.setattr(collect, "PROCESSED", tmp_path)
+    assert collect.master_count() == 2

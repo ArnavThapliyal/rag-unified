@@ -19,6 +19,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -32,7 +33,7 @@ import build_metadata
 import polite_fetcher
 import searxng_client
 from common import (
-    CONFIG, MANIFEST, METADATA, PRIMARY_DOMAINS, PROCESSED, ROOT, RUNS, SEARXNG_URL, check_disk,
+    CONFIG, MANIFEST, METADATA, PRIMARY_DOMAINS, PROCESSED, ROOT, RUNS, SEARXNG_URL, agent_session, check_disk,
     domain_matches, emit, log, now_iso, polite_sleep, read_jsonl, run_id,
 )
 
@@ -77,8 +78,8 @@ def master_count() -> int:
     p = PROCESSED / "nse_delisted_master.csv"
     if not p.exists():
         return 0
-    with p.open(encoding="utf-8") as f:
-        return max(0, sum(1 for _ in f) - 1)
+    with p.open(encoding="utf-8", newline="") as f:
+        return sum(1 for _ in csv.reader(f)) - 1  # records, not lines: quoted fields may hold newlines
 
 
 def run_script(name: str) -> dict:
@@ -223,7 +224,7 @@ def main() -> int:
     block_after = plan.get("block_domain_after_failures", 3)
     harvest_limit = a.max_harvest or plan.get("harvest_limit_per_page", 20)
     step = {
-        "run_id": rid, "agent_session": os.environ.get("NSE_AGENT_SESSION"), "started_at": now_iso(), "finished_at": None, "duration_s": None,
+        "run_id": rid, "agent_session": agent_session(), "started_at": now_iso(), "finished_at": None, "duration_s": None,
         "status": "running", "stop_reason": None, "args": vars(a),
         "queries_planned": len(todo), "queries_done": 0, "queries_failed": 0, "queries_no_results": 0,
         "phases": {}, "urls_found": 0, "fetched_ok": 0, "quarantined": 0, "skipped_cached": 0,

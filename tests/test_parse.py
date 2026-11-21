@@ -159,3 +159,21 @@ def test_isin_check_digit_rejects_sebi_registration_numbers():
 def test_text_rows_skip_letterhead_labels():
     text = "SEBI Reg. No. INE002A01018 CIN U67120\nE-mail: cs@x.com | SEBI Reg. No. INE002A01018"
     assert p.rows_from_text(text, "OTHER") == []
+
+
+def test_bullet_text_is_not_a_symbol_and_legal_text_not_a_name():
+    df = pd.DataFrame([["Company Name", "Symbol", "Date of Delisting"],
+                       ["Financial Institutions u/s. 4A of Companies Act, 1956", "• NETWORTH OF 100 CRORES", "2017-01-01"],
+                       ["Banks", "SCHEDULED BANKS\n• CREDIT RATING", "2017-01-01"],
+                       ["ABC Industries Ltd", "ABCIND", "2017-01-01"]])
+    assert [r["company_name"] for r in p.rows_from_table(df, "OTHER")] == ["ABC Industries Ltd"]
+
+
+def test_details_column_types_each_row_and_trading_tables_are_rejected():
+    df = pd.DataFrame([["Sr.No", "Name of the Company", "Symbol", "Date of Delisting", "Details"],
+                       [25, "Roofit Industries Limited", "ROOFITIND", "24-Mar-17", "Compulsory"],
+                       [39, "Sanghi Polyesters Limited", "SANGHIPOLY", "24-Mar-17", "Delisting - Liquidation"]])
+    assert [r["delisting_type"] for r in p.rows_from_table(df, "IBC_NCLT")] == ["COMPULSORY", "IBC_NCLT"]
+    trading = pd.DataFrame([["Rank", "Symbol", "Name of Company", "Date", "Traded Value"],
+                            [6, "IRB", "IRB INFRA DEV LTD.", "30-Mar-2017", "4,670"]])
+    assert p.rows_from_table(trading, "OTHER") == []
