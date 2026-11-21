@@ -206,6 +206,35 @@ def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False)
 LABEL_RE = re.compile(r"SEBI Reg|E-?mail|@|\bCIN\b|Target Company|Registration No|Website|Tel\b|Fax\b", re.I)
 
 
+# NSE's monthly "Processing Status of Voluntary Delisting Applications": one row per application; only
+# rows whose status says the company is (or shall stand) delisted w.e.f. a date are delistings.
+STATUS_DELISTED_RE = re.compile(r"delisted\s+(?:w\.?e\.?f\.?|with effect from)\s*([A-Z][a-z]+\.?\s+\d{1,2},?\s*\d{4}|"
+                                r"\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})", re.I)
+
+
+def rows_from_status_table(df: pd.DataFrame) -> list[dict]:
+    df = df.dropna(how="all").dropna(axis=1, how="all")
+    for i in range(min(10, len(df))):
+        cells = [str(c) for c in df.iloc[i].values]
+        name_col = next((j for j, c in enumerate(cells) if re.search(r"name of (?:the )?company", c, re.I)), None)
+        status_col = next((j for j, c in enumerate(cells) if re.search(r"\bstatus\b", c, re.I)), None)
+        if name_col is None or status_col is None:
+            continue
+        nature_col = next((j for j, c in enumerate(cells) if re.search(r"nature", c, re.I)), None)
+        out = []
+        for vals in df.iloc[i + 1:].itertuples(index=False):
+            status, name = str(vals[status_col]), re.sub(r"\s+", " ", str(vals[name_col])).strip()
+            m = STATUS_DELISTED_RE.search(status)
+            if not m or not name_ok(name, False):
+                continue
+            nature = str(vals[nature_col]) if nature_col is not None else ""
+            out.append({"company_name": name, "nse_symbol": None, "isin": None, "order_date": None,
+                        "effective_delisting_date": to_iso(m.group(1)), "exit_or_fair_value_inr": None,
+                        "delisting_type": classify(nature + " " + status), "extraction": "status_table"})
+        return out
+    return []
+
+
 def rows_from_text(text: str, doc_type: str) -> list[dict]:
     out = []
     for line in text.splitlines():
@@ -314,7 +343,7 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
             text += df.to_string()[:20000]
         doc_type = classify(text)
         for df in sheets.values():
-            rows += rows_from_table(df, doc_type, proposed)
+            rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
     elif ext == ".csv":
         df = pd.read_csv(path, header=None, dtype=str, on_bad_lines="skip", encoding_errors="ignore")
         stats["tables_seen"] = 1
@@ -333,7 +362,7 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
             tables = []
         stats["tables_seen"] = len(tables)
         for df in tables:
-            rows += rows_from_table(df, doc_type, proposed)
+            rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
         if not rows:
             rows = rows_from_text(text, doc_type)
         if not rows:
@@ -355,7 +384,7 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
             rows = order_rows
         else:
             for df in tables:
-                rows += rows_from_table(df, doc_type, proposed)
+                rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
             if not rows:
                 rows = rows_from_text(text, doc_type)
     elif ext == ".txt":

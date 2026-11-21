@@ -178,3 +178,16 @@ def test_details_column_types_each_row_and_trading_tables_are_rejected():
     trading = pd.DataFrame([["Rank", "Symbol", "Name of Company", "Date", "Traded Value"],
                             [6, "IRB", "IRB INFRA DEV LTD.", "30-Mar-2017", "4,670"]])
     assert p.rows_from_table(trading, "OTHER") == []
+
+
+def test_voluntary_delisting_status_table_keeps_only_completed_delistings():
+    df = pd.DataFrame([
+        ["Processing Status of Voluntary Delisting Applications in the month of April 2022", None, None, None],
+        ["Sr.no.", "Name of the Company", "Nature of Delisting", "Status of Voluntary Delisting Applications"],
+        [1, "PAE Limited", "Voluntary delisting in terms of Regulation 6 (a)", "The company shall stand delisted w.e.f. April 18, 2022"],
+        [2, "Adani Power Limited", "Voluntary delisting in terms of Regulation 8(1)", "On hold for regulatory concerns."],
+        [3, "Jindal Photo Limited", "Voluntary delisting in terms of Regulation 8(1)", "Failed"]])
+    assert p.rows_from_table(df, "OTHER") == []
+    [row] = p.rows_from_status_table(df)
+    assert (row["company_name"], row["effective_delisting_date"]) == ("PAE Limited", "2022-04-18")
+    assert row["delisting_type"].startswith("VOLUNTARY")
