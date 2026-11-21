@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _row(**kw):
-    base = {"record_id": "a1", "company_name": "ABC Ltd", "nse_symbol": "ABC", "isin": "INE123A01016",
+    base = {"record_id": "a1", "company_name": "ABC Ltd", "nse_symbol": "ABC", "isin": "INE002A01018",
             "delisting_type": "COMPULSORY", "order_date": "2017-01-01", "effective_delisting_date": "",
             "calendar_year": "2017", "source_url": "https://www.nseindia.com/x", "local_artifact_path": "README.md",
             "confidence_status": "VERIFIED_PRIMARY"}
@@ -46,3 +46,15 @@ def test_query_plan_is_valid():
             assert tag == "master" or (tag.isdigit() and 2006 <= int(tag) <= 2026), (ph["name"], tag)
             assert text not in seen, f"duplicate query: {text}"
             seen.add(text)
+
+
+def test_report_issue_dedupes_open_issues(tmp_path, monkeypatch):
+    import report_issue as ri
+    monkeypatch.setattr(ri, "ISSUES", tmp_path / "issues.jsonl")
+    monkeypatch.setattr(ri, "log", lambda *a, **k: None)
+    assert ri.report("zero_rows", "3 orders gave 0 rows", ["a.pdf"]) == {"reported": True, "id": 1}
+    again = ri.report("zero_rows", "3 orders gave 0 rows", ["b.pdf"])
+    assert again["duplicate_of"] == 1 and again["times_seen"] == 2
+    assert ri.report("fetch", "domain blocked", [])["id"] == 2
+    [first, _] = ri.load()
+    assert first["evidence"] == ["a.pdf", "b.pdf"]

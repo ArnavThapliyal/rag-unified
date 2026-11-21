@@ -69,7 +69,8 @@ def normalize(r: dict) -> dict:
     isin = (r.get("isin") or "").strip().upper() or None
     sym = (r.get("nse_symbol") or "").strip().upper() or "UNKNOWN"
     dtype = r.get("delisting_type") if r.get("delisting_type") in TYPES else "OTHER"
-    name = re.sub(r"\s+", " ", (r.get("company_name") or "")).strip() or None
+    name = re.sub(r"\s+", " ", (r.get("company_name") or "")).strip()
+    name = re.sub(r"\s*\(Paid Up Value[^)]*\)?\s*$", "", name, flags=re.I) or None  # BSE list suffix
     return {
         "company_name": name,
         "nse_symbol": sym,
@@ -129,7 +130,7 @@ def main() -> int:
     proposed_raw = [r for r in raw if r.get("record_status") == "PROPOSED"]
     raw = [r for r in raw if r.get("record_status") != "PROPOSED"]
     rows = [normalize(r) for r in raw]
-    rows = [r for r in rows if r["_key"]]
+    rows = [r for r in rows if r["_key"] and r["company_name"]]  # a record needs a company name
     dropped = len(raw) - len(rows)
 
     groups: list[list[dict]] = []

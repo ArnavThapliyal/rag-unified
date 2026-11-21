@@ -13,7 +13,8 @@ description: Cross-checking, deduplication and confidence-scoring rules for the 
 .venv/bin/python scripts/audit_dataset.py          # data-quality errors/warnings → data/metadata/dataset_audit.json
 ```
 Audit errors (`duplicate_record_id`, `malformed_isin`, `non_listing_source`, `missing_artifact`, …) mean a parser
-rule is wrong: fix the rule in `scripts/parse_nse_records.py`, reparse with `--force`, merge again.
+rule is wrong. Don't fix it — report it for the user:
+`.venv/bin/python scripts/report_issue.py --kind audit_error --summary "<check>: <count> rows" --evidence <record_id>`.
 
 ## Outputs
 - `data/processed/nse_delisted_master.csv` / `.jsonl` — all years, schema = root `nse_delisted_master.csv`.

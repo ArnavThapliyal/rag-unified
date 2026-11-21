@@ -1,6 +1,11 @@
 You are running UNATTENDED. Nobody will answer questions — never ask, decide and log the decision.
 Read `soul.md` and `.cline/rules/01-nse-research.md` first, then work through this loop.
 
+YOUR JOB IS COLLECTING, NOT DEBUGGING. You run the pipeline, watch its numbers, and REPORT anomalies with
+`scripts/report_issue.py`; the user fixes them. Never edit, rewrite or test files in `scripts/`, `tests/`,
+`skills/`, `prompts/`, `.cline/` or `soul.md`; never write ad-hoc Python (`python -c`) to probe parsers or data.
+The only file you may edit is `config/query_plan.json` (to append queries to `agent_added`).
+
 IMPORTANT: shell commands are killed after 30 seconds. Collection runs take minutes, so ALWAYS run them
 through the job runner: `.venv/bin/python scripts/job.py start <collect.py args>` (returns immediately), then
 `.venv/bin/python scripts/job.py wait 1` (blocks ≤25 s, prints progress). While `"running": true`, run the exact
@@ -13,21 +18,22 @@ directly, and never use `&`, `nohup` or /tmp logs.
 2. If `harvest_backlog` > 0: `.venv/bin/python scripts/job.py start --harvest-only --max-harvest 40`, then
    `job.py wait 1`, `wait 2`, … until done (repeat this step until the backlog is 0 or nothing new is fetched).
 3. Else if queries are pending: `.venv/bin/python scripts/job.py start --max-queries 8`, then `job.py wait 1`, `wait 2`, … until done.
-4. `.venv/bin/python scripts/status_report.py --json` and decide the next action:
-   - `artifacts_zero_rows` grew → `.venv/bin/python scripts/inspect_artifact.py --zero-rows`, inspect up to 3
-     with `scripts/inspect_artifact.py <path> --lines 40`. If a new document layout is clearly a list of
-     delisted companies or a delisting order, improve `HEADER_MAP` / `TYPE_KEYWORDS` / `rows_from_order`
-     in `scripts/parse_nse_records.py`, run `scripts/check.sh --offline` (must pass), then
-     `parse_nse_records.py --force` and `normalize_and_merge.py` (if a step exceeds 30 s, it is killed: re-run it —
-     parsing skips files already done unless --force).
-     Log what you changed.
+4. `.venv/bin/python scripts/status_report.py --json` and decide the next action. First run
+   `.venv/bin/python scripts/report_issue.py --list` so you don't report the same thing twice.
+   - `artifacts_zero_rows` grew → `.venv/bin/python scripts/inspect_artifact.py --zero-rows`; look at AT MOST 3
+     with `scripts/inspect_artifact.py <path> --lines 40`. If one is clearly a delisting order or a list of
+     delisted companies, report it and move on:
+     `.venv/bin/python scripts/report_issue.py --kind zero_rows --summary "<N> <document kind> gave 0 rows" --evidence <path> …`
+     Do not open the parser, do not retry, do not try to explain why.
    - Priority-grid gaps (year × type with 0 records) after the plan for that year is done → add 2–4
      targeted queries to a phase named `agent_added` at the END of `config/query_plan.json`
      (use the discovery skill templates; set `year_tag`). Never delete existing queries.
    - `data/processed/proposed_delisting_leads.csv` has companies with `already_in_master = False` →
      add queries like `site:nseindia.com "<company name>" delisting order` to `agent_added` (max 10 per cycle).
-   - `indicators.audit_errors` > 0 → `.venv/bin/python scripts/audit_dataset.py`, find which parser rule
-     produced the bad rows, fix the rule (never the CSV), reparse and merge.
+   - `indicators.audit_errors` > 0 → `.venv/bin/python scripts/audit_dataset.py`, then report once with
+     `--kind audit_error --summary "<check>: <count> rows" --evidence <record_id or artifact path>`.
+   - Anything else that looks wrong (records drop without explanation, junk company names in the master,
+     a domain blocked, a script printing a traceback) → one `report_issue.py` call with the right `--kind`.
    - A `disk_warning` appears in the output → mention it in your milestone log line; keep going.
 5. Log a one-line milestone: `.venv/bin/python scripts/common.py log "cycle N: <what you did>, records X"`.
 
@@ -35,6 +41,8 @@ directly, and never use `&`, `nohup` or /tmp logs.
 - All plan phases complete, harvest backlog 0, and the last two cycles added 0 new records; or
 - SearXNG unavailable (collect.py returns `searxng_unavailable` / `searxng_errors`) twice in a row; or
 - collect.py returns `stop_reason: low_disk_space` (the user must free disk space — stop immediately); or
+- A script crashes (traceback / non-JSON output) or a job ends `status: failed` twice in a row → report it
+  (`--kind script_error`, include the job output path) and STOP: collection can't continue until the user fixes it; or
 - 25 cycles completed.
 
 ## Hard rules
@@ -42,3 +50,4 @@ directly, and never use `&`, `nohup` or /tmp logs.
 - Never bypass blocks (no headless browsers, no WAF tricks, no removing delays). Blocked domains stay blocked.
 - Don't open raw files directly; use `inspect_artifact.py` (bounded output).
 - Keep your messages short: counts and file paths only.
+- Report, don't repair: one `report_issue.py` call per anomaly, then continue the loop.

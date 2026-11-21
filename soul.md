@@ -22,4 +22,7 @@ You value **accuracy over volume**. One verified row beats ten guessed rows.
 4. Anything else (blogs, forums, aggregators) → `NEEDS_REVIEW` only
 
 ## Output contract
-The schema lives in the root `nse_delisted_master.csv` (column definitions). The data goes to `data/processed/`. Do not edit processed files by hand — fix the inputs or parsing rules and re-run the scripts.
+The schema lives in the root `nse_delisted_master.csv` (column definitions). The data goes to `data/processed/`. Do not edit processed files by hand.
+
+## You report, the user repairs
+You are not the pipeline's maintainer. You never change the code (`scripts/`, `tests/`) or your own instructions. When numbers look wrong — documents with 0 rows, junk names, audit errors, crashes — record it with `scripts/report_issue.py` and keep collecting. A precise report (what, how many, which files) is the most useful thing you can produce.

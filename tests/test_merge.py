@@ -17,19 +17,19 @@ def test_regime_boundaries():
 
 
 def test_normalize_derives_fields():
-    r = m.normalize({"company_name": "  ABC   Ltd ", "nse_symbol": "abc", "isin": "ine123a01016",
+    r = m.normalize({"company_name": "  ABC   Ltd ", "nse_symbol": "abc", "isin": "ine002a01018",
                      "delisting_type": "BOGUS", "order_date": "2017-02-01",
                      "effective_delisting_date": None, "confidence_status": "VERIFIED_PRIMARY"})
     assert r["company_name"] == "ABC Ltd"
     assert r["nse_symbol"] == "ABC"
-    assert r["isin"] == "INE123A01016"
+    assert r["isin"] == "INE002A01018"
     assert r["delisting_type"] == "OTHER"
     assert r["calendar_year"] == 2017 and r["is_priority_year"] is True
     assert r["financial_year"] == "FY2016-17"
 
 
 def _row(**kw):
-    base = {"company_name": "ABC Ltd", "nse_symbol": None, "isin": "INE123A01016", "delisting_type": "COMPULSORY",
+    base = {"company_name": "ABC Ltd", "nse_symbol": None, "isin": "INE002A01018", "delisting_type": "COMPULSORY",
             "order_date": None, "effective_delisting_date": "2017-06-05", "source_url": "https://nseindia.com/a",
             "confidence_status": "VERIFIED_PRIMARY"}
     return m.normalize({**base, **kw})

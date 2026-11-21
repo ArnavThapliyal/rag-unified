@@ -22,15 +22,15 @@ from urllib.parse import unquote
 import pandas as pd
 
 from common import (
-    MANIFEST, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, log, read_jsonl,
+    MANIFEST, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, isin_valid, log, read_jsonl,
 )
 
 warnings.filterwarnings("ignore")
 
-ISIN_RE = re.compile(r"\bIN[A-Z0-9]{9}[0-9]\b")
+ISIN_RE = re.compile(r"\bIN[E9][A-Z0-9]{8}[0-9]\b")  # candidates; confirmed with common.isin_valid
 DATE_RE = re.compile(
     r"\b(\d{1,2}[-/.](?:\d{1,2}|[A-Za-z]{3,9})[-/.]\d{2,4}|\d{4}-\d{2}-\d{2}|"
-    r"(?:\d{1,2}\s+)?[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{4})\b"
+    r"(?:\d{1,2}\s+)?[A-Za-z]{3,9}\.?\s+\d{1,2}(?:,\s*|\s+)\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{4})\b"
 )
 SYMBOL_RE = re.compile(r"\b[A-Z][A-Z0-9&\-]{1,19}\b")
 
@@ -96,7 +96,7 @@ def to_iso(val) -> str | None:
     m = DATE_RE.search(s)
     if not m:
         return None
-    ts = pd.to_datetime(m.group(0).replace("th ", " ").replace("st ", " ").replace("nd ", " ").replace("rd ", " "),
+    ts = pd.to_datetime(re.sub(r",(?=\d)", ", ", m.group(0)).replace("th ", " ").replace("st ", " ").replace("nd ", " ").replace("rd ", " "),
                         dayfirst=True, errors="coerce")
     if pd.isna(ts) or not (1990 <= ts.year <= 2030):
         return None
@@ -162,7 +162,9 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
             rec[field] = v
         name = re.sub(r"\s+", " ", str(rec.get("company_name", ""))).strip()  # cells often wrap names
         isin_m = ISIN_RE.search(str(rec.get("isin", "")).upper())
-        if not name and not isin_m:
+        if isin_m and not isin_valid(isin_m.group(0)):
+            isin_m = None
+        if not name:
             continue
         if name.lower() in ("company name", "name of the company", "total", "nan", "nat", "none"):
             continue
@@ -189,19 +191,23 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
     return out
 
 
+# Form labels and letterhead text that sit next to registration numbers in offer documents.
+LABEL_RE = re.compile(r"SEBI Reg|E-?mail|@|\bCIN\b|Target Company|Registration No|Website|Tel\b|Fax\b", re.I)
+
+
 def rows_from_text(text: str, doc_type: str) -> list[dict]:
     out = []
     for line in text.splitlines():
         m = ISIN_RE.search(line.upper())
-        if not m:
+        if not m or not isin_valid(m.group(0)):
             continue
         before = line[: m.start()].strip(" |,-:\t")
         before = re.sub(r"^\s*\d+[.)]?\s*", "", before)  # strip serial number
         syms = [s for s in SYMBOL_RE.findall(line[m.end():]) + SYMBOL_RE.findall(before)
                 if s not in ("LTD", "LIMITED", "INE", "THE", "AND", "OF") and not ISIN_RE.fullmatch(s)]
         dates = [d for d in (to_iso(x) for x in DATE_RE.findall(line)) if d]
-        if before and not name_ok(before, True):
-            before = ""
+        if not before or not name_ok(before, True) or LABEL_RE.search(before):
+            continue  # an ISIN without a usable company name on the line is not a record
         out.append({
             "company_name": before or None,
             "nse_symbol": syms[0] if syms else None,
@@ -217,38 +223,52 @@ def rows_from_text(text: str, doc_type: str) -> list[dict]:
 
 DELIST_RE = re.compile(r"delist", re.I)
 # NSE/BSE pages about trading members, brokers, arbitration etc. list firms, not delisted companies.
-NON_LISTING_RE = re.compile(r"member|broker|defaulter|expelled|arbitrat|complaint|debarred|"
+NON_LISTING_RE = re.compile(r"member|broker|defaulter|expelled|arbitrat|complaint|debarred|mcsgfc|"
                             r"authori[sz]ed.?person|sub.?broker|depositor", re.I)
 PROPOSED_RE = re.compile(r"propos|show.?cause|to.?be.?delisted", re.I)
+# "In the matter of the Company: SecUR Credentials Limited (SECURCRED)", or without the symbol and with
+# the name on the next line: "In the matter of the company\nM/s Petron Engineering Construction Limited".
 MATTER_RE = re.compile(
-    r"In the matter of(?: the Company)?\s*:?\s*(?:M/s\.?\s*)?(.{3,120}?)\s*\(\s*([A-Z][A-Z0-9&\-]{1,19})\s*\)", re.S)
-ORDER_DATE_RE = re.compile(r"\bDate[d]?\s*:?\s*([A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})")
-DECISION_RE = re.compile(r"(?:be|is hereby|are hereby|shall be)\s+(compulsorily\s+)?delisted\s+from\s+the\s+Exchange[^.]{0,200}", re.I)
+    r"In the matter of(?: the [Cc]ompany)?\s*:?\s*(?:M/s\.?\s*)?([^\n(]{3,120}?)\s*"
+    r"(?:\(\s*([A-Z][A-Z0-9&\-]{1,19})\s*\)|(?<=Limited)|(?<=Ltd)|(?<=Ltd\.)|\n)")
+# A company name followed by its symbol anywhere in the order: "Cox & Kings Limited (COX&KINGS)"
+NAME_SYMBOL_RE = re.compile(r"(?:Limited|Ltd\.?)\s*\(\s*([A-Z][A-Z0-9&\-]{2,19})\s*\)")
+# Trading-member disciplinary orders (MCSGFC) share the order template but are not about listed companies.
+MEMBER_ORDER_RE = re.compile(r"Trading Member|Settlement Guarantee Fund|MCSGFC")
+ORDER_DATE_RE = re.compile(r"\bDate[d]?\s*:?\s*([A-Z][a-z]+\.?\s+\d{1,2},?\s*\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})")
+DECISION_RE = re.compile(r"(?:be|is hereby|are hereby|shall be)\s+(compulsorily\s+)?(?:delisted|restrained and withdrawn)"
+                         r"\s+from\s+the\s+Exchange[^.]{0,200}", re.I)
+# Compulsory-delisting provisions: Reg 22(1) of the 2009 Regulations, Reg 32(1) of the 2021 Regulations.
+COMPULSORY_REG_RE = re.compile(r"Regulation\s+(?:22|32)\s*\(\s*1\s*\)|compulsor", re.I)
 EFFECTIVE_RE = re.compile(r"delisted[^.]{0,120}?(?:w\.e\.f\.?|with effect from)\s+([A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})", re.I)
 
 
 def rows_from_order(text: str) -> list[dict]:
     """Single-company Delisting Committee / exchange orders: one row from the order template."""
     head = text[:4000]
-    if not re.search(r"Delisting Committee|In the matter of", head, re.I):
+    if not re.search(r"Delisting Committee|In the matter of", head, re.I) or MEMBER_ORDER_RE.search(head):
         return []
     m = MATTER_RE.search(head)
     if not m:
         return []
     name = re.sub(r"\s+", " ", m.group(1)).strip(" :,-")
+    symbol = m.group(2)
+    if not symbol:
+        s = NAME_SYMBOL_RE.search(text)
+        symbol = s.group(1) if s else None
     dates = ORDER_DATE_RE.findall(text[-3000:])
     found = list(DECISION_RE.finditer(text))
     # Orders warn "failing which ... shall be delisted" before the actual decision: prefer the
     # compulsory decision, else the last delisting sentence.
     decision = next((d for d in found if d.group(1)), found[-1] if found else None)
     eff = EFFECTIVE_RE.search(decision.group(0)) if decision else None
-    isin = ISIN_RE.search(text.upper())
+    isin = next((i for i in ISIN_RE.finditer(text.upper()) if isin_valid(i.group(0))), None)
     dtype = classify(decision.group(0)) if decision else classify(head)
-    if decision and decision.group(1):
+    if decision and (decision.group(1) or COMPULSORY_REG_RE.search(decision.group(0))):
         dtype = "COMPULSORY"
     return [{
         "company_name": name,
-        "nse_symbol": m.group(2),
+        "nse_symbol": symbol,
         "isin": isin.group(0) if isin else None,
         "order_date": to_iso(dates[-1]) if dates else None,
         "effective_delisting_date": to_iso(eff.group(1)) if eff else None,

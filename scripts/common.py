@@ -102,6 +102,19 @@ def log(msg: str, level: str = "INFO", script: str | None = None, kind: str = "l
     event(kind, script=name, level=level, msg=msg, **fields)
 
 
+def isin_valid(code: str) -> bool:
+    """Indian equity ISIN (INE…, or IN9… for partly paid) with a valid Luhn check digit. SEBI
+    registration numbers (INM merchant banker, INR registrar, INZ broker) look similar but fail."""
+    if not re.fullmatch(r"IN[E9][A-Z0-9]{8}[0-9]", code or ""):
+        return False
+    digits = "".join(str(int(c, 36)) for c in code)
+    total = 0
+    for i, d in enumerate(reversed(digits)):
+        n = int(d) * (2 if i % 2 else 1)
+        total += n - 9 if n > 9 else n
+    return total % 10 == 0
+
+
 def sha256_text(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 

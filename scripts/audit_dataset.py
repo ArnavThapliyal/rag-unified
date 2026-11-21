@@ -16,9 +16,8 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-from common import METADATA, PROCESSED, ROOT, emit, now_iso
+from common import METADATA, PROCESSED, ROOT, emit, isin_valid, now_iso
 
-ISIN_RE = re.compile(r"^IN[A-Z0-9]{9}[0-9]$")
 TYPES = {"COMPULSORY", "VOLUNTARY_EXIT_OFFER", "VOLUNTARY_NO_EXIT", "AMALGAMATION_MERGER", "IBC_NCLT", "OTHER"}
 CONFIDENCE = {"VERIFIED_PRIMARY", "CORROBORATED_SECONDARY", "NEEDS_REVIEW"}
 NON_LISTING_RE = re.compile(r"member|broker|defaulter|expelled|arbitrat|complaint|debarred", re.I)
@@ -39,7 +38,7 @@ def audit(rows: list[dict]) -> dict:
     for r in rows:
         if ids[r.get("record_id")] > 1:
             flag(errors, "duplicate_record_id", r)
-        if r.get("isin") and not ISIN_RE.match(r["isin"]):
+        if r.get("isin") and not isin_valid(r["isin"]):
             flag(errors, "malformed_isin", r)
         if r.get("delisting_type") not in TYPES:
             flag(errors, "invalid_delisting_type", r)

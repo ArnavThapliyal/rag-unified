@@ -50,8 +50,8 @@ def test_order_extractor_ignores_other_documents():
 def test_table_rows_header_detection_and_junk_names():
     df = pd.DataFrame([
         ["Sr", "Company Name", "Symbol", "ISIN", "Date of Delisting", "Reason"],
-        [1, "ABC Industries Ltd", "abcind", "INE123A01016", "05-06-2017", "Compulsory delisting"],
-        [2, "XYZ Ltd", "XYZ", "INE999Z01011", "12/09/2020", "NCLT resolution plan"],
+        [1, "ABC Industries Ltd", "abcind", "INE002A01018", "05-06-2017", "Compulsory delisting"],
+        [2, "XYZ Ltd", "XYZ", "INE009A01021", "12/09/2020", "NCLT resolution plan"],
         [3, "NaT", None, None, None, None],
     ])
     rows = p.rows_from_table(df, "OTHER")
@@ -63,8 +63,8 @@ def test_table_rows_header_detection_and_junk_names():
 
 
 def test_text_rows_take_symbol_after_isin():
-    [row] = p.rows_from_text("1. ABC Industries Limited INE123A01016 ABCIND 08 June 2017", "COMPULSORY")
-    assert row["isin"] == "INE123A01016"
+    [row] = p.rows_from_text("1. ABC Industries Limited INE002A01018 ABCIND 08 June 2017", "COMPULSORY")
+    assert row["isin"] == "INE002A01018"
     assert row["nse_symbol"] == "ABCIND"
     assert row["effective_delisting_date"] == "2017-06-08"
 
@@ -122,3 +122,40 @@ def test_symbol_keyed_table_with_promoter_column_is_kept():
     df = pd.DataFrame([["Sr.no", "Symbol", "Name of Company", "Name of the Promoter"],
                        [1, "ARCOTECH", "Arcotech Limited", "Arvind Kumar Saraf"]])
     assert [r["nse_symbol"] for r in p.rows_from_table(df, "OTHER")] == ["ARCOTECH"]
+
+
+def test_order_without_symbol_in_matter_line_and_withdrawn_wording():
+    text = """Before the Delisting Committee ("Committee")
+In the matter of the company
+M/s Petron Engineering Construction Limited
+Members present:
+... the Committee, directs that the dealings in the securities of the Company M/s Petron Engineering
+Construction Limited (PETRONENGG) be restrained and withdrawn from the Exchange platform in terms of
+Regulation 22 (1) of SEBI (Delisting of Equity Shares) Regulation, 2009.
+Date: February 02,2023
+"""
+    [row] = p.rows_from_order(text)
+    assert row["company_name"] == "Petron Engineering Construction Limited"
+    assert row["nse_symbol"] == "PETRONENGG"
+    assert row["delisting_type"] == "COMPULSORY"
+    assert row["order_date"] == "2023-02-02"
+
+
+def test_trading_member_orders_are_not_companies():
+    text = """Member and Core Settlement Guarantee Fund Committee ("MCSGFC")
+In the matter of the Trading Member M/s. GSV Securities Private Limited
+... shall be expelled ..."""
+    assert p.rows_from_order(text) == []
+
+
+def test_isin_check_digit_rejects_sebi_registration_numbers():
+    from common import isin_valid
+    assert isin_valid("INE002A01018")          # Reliance Industries
+    assert not isin_valid("INE002A01019")      # bad check digit
+    assert not isin_valid("INM000010122")      # SEBI merchant-banker registration
+    assert not isin_valid("INZ000206732")      # SEBI broker registration
+
+
+def test_text_rows_skip_letterhead_labels():
+    text = "SEBI Reg. No. INE002A01018 CIN U67120\nE-mail: cs@x.com | SEBI Reg. No. INE002A01018"
+    assert p.rows_from_text(text, "OTHER") == []

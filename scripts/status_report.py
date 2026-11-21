@@ -16,6 +16,7 @@ import time
 from collections import Counter, defaultdict
 
 import build_metadata
+import report_issue
 from common import PRIORITY_YEARS, PROCESSED
 
 TYPES = ["COMPULSORY", "VOLUNTARY_EXIT_OFFER", "VOLUNTARY_NO_EXIT", "AMALGAMATION_MERGER", "IBC_NCLT", "OTHER"]
@@ -64,6 +65,9 @@ def print_indicators(meta: dict) -> None:
           f"(stop below {d['min_free_gb']:g} GB) {mark}")
     print(f" Data audit: {ind['audit_errors']} errors, {ind['audit_warnings']} warnings "
           f"(data/metadata/dataset_audit.json)")
+    open_issues = [i for i in report_issue.load() if i["status"] == "open"]
+    print(f" Reported issues: {len(open_issues)} open (logs/issues.jsonl)"
+          + (f" — latest: #{open_issues[-1]['id']} {open_issues[-1]['summary'][:70]}" if open_issues else ""))
     print()
 
 
@@ -102,6 +106,7 @@ def report(a) -> int:
 
     if a.json:
         print(json.dumps({"indicators": meta["indicators"],
+                          "open_issues": sum(i["status"] == "open" for i in report_issue.load()),
                           "by_year": {y: dict(grid[y]) for y in years},
                           "confidence_by_year": {y: dict(conf[y]) for y in years}}, default=str))
         return 0

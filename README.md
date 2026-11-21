@@ -27,8 +27,18 @@ config/query_plan.json  (phases: master → 2017 → 2020 → 2024 → 2007 → 
   └──────────────────────────────────────────────────────────────────────────┘
           │  every step → logs/events.jsonl, logs/agent_run.log, logs/runs/<run_id>.json
           ▼
-  Cline reads the summary → harvests backlog / runs more queries / fixes parser / adds gap queries
+  Cline reads the summary → harvests backlog / runs more queries / adds gap queries / REPORTS anomalies
 ```
+
+**The agent collects; you debug.** A 27B local model is good at running the loop but not at repairing the
+pipeline, so it is not allowed to edit code (`scripts/`, `tests/`, `skills/`, prompts, rules) or probe the
+parser with ad-hoc Python. When something looks wrong (relevant documents with 0 rows, junk names, audit
+errors, a blocked domain, a crash) it files a report with `scripts/report_issue.py` and keeps collecting.
+It stops only if a script crashes twice in a row. Review the reports with:
+```bash
+.venv/bin/python scripts/report_issue.py --list      # open issues; full detail in logs/issues.jsonl
+```
+The only file the agent edits is `config/query_plan.json`, to append searches to an `agent_added` phase.
 
 **Safeguards built in:**
 - **Polite fetching.** Waits a random 2–5 s between requests, backs off on 429/5xx, and moves failed downloads to `data/quarantine/`.
@@ -149,6 +159,7 @@ You'll see `!! DISK WARNING: data/ has grown to 5.1 GB …` in the terminal and 
 ```bash
 tail -f logs/agent_run.log                                   # every script action, human-readable
 tail -f logs/events.jsonl                                    # same, structured (JSON per line)
+tail -f logs/issues.jsonl                                    # anomalies the agent reported
 ~/.lmstudio/bin/lms log stream --source model --stats        # LM Studio: model input/output + tokens/s
 tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio server log
 ```
@@ -170,6 +181,7 @@ tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio s
 | `logs/fetch_manifest.jsonl` | Every download attempt: timestamp, url, http_status, sha256, local_path, year_tag | Yes |
 | `logs/events.jsonl` | Every action as JSON (search, fetch, harvest, parse, merge, run_start/end, agent tool calls), tagged with `run_id` and `agent_session` | No (large) |
 | `logs/agent_run.log` | The same events as readable lines | No |
+| `logs/issues.jsonl` | Anomalies reported by the agent (`report_issue.py`): kind, summary, evidence paths, times seen, open/closed | Yes |
 | `logs/agent_sessions/<session>.jsonl` | Cline's full raw event stream (its reasoning, tool calls, outputs, token usage) | No (large) |
 | `data/raw/master_lists/`, `priority_<year>/`, `archive_2006_2026/` | Downloaded documents | No (can be regenerated) |
 | `data/search_cache/`, `data/quarantine/`, `data/processed/parsed/` | Search results, failed downloads, per-file candidate rows | No |
@@ -202,6 +214,7 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 |---|---|
 | `scripts/run_agent.sh` | Launch Cline unattended. Checks that SearXNG and LM Studio are up, logs the session, prints the dashboard at the end. |
 | `scripts/collect.py` | The resumable pipeline run (search → fetch → harvest → parse → merge → metadata) |
+| `scripts/report_issue.py` | Records an anomaly for you to review (`--kind`, `--summary`, `--evidence`; `--list` shows open ones). The agent's only response to problems. |
 | `scripts/job.py` | Runs `collect.py` as a detached background job (`start`, `wait`, `status`, `stop`). The agent uses it because Cline kills shell commands after 30 s. |
 | `scripts/status_report.py` | Dashboard: indicator bars, year × type grid, gaps. Supports `--watch N`, `--json`, `--year`, `--needs-review`. |
 | `scripts/build_metadata.py` | Rebuilds `data/metadata/` (runs automatically) |
@@ -285,4 +298,4 @@ None of these is built yet. They are possible next steps.
 - Single-company order PDFs usually have no ISIN, so `isin` stays empty until another source (a master list or a BSE notice) supplies it.
 - Scanned (image-only) PDFs are flagged as `no_text` and need OCR or manual review.
 - Search results sometimes point to `nseindia.in`, which is not the official domain. Rows from it stay `NEEDS_REVIEW`.
-- The parser's heuristics are tuned on the formats seen so far. The agent extends them during runs, so check a sample of rows from each new format.
+- The parser's heuristics are tuned on the formats seen so far. New formats show up as `zero_rows` issues from the agent; extending the parser is a manual step.
