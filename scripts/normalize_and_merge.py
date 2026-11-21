@@ -102,6 +102,11 @@ def same_event(a: dict, b: dict) -> bool:
     return True
 
 
+def is_bse_only_source(r: dict) -> bool:
+    urls = r["all_source_urls"].split(" | ") if r.get("all_source_urls") else []
+    return bool(urls) and all(domain_of(u).endswith("bseindia.com") for u in urls)
+
+
 def merge_group(group: list[dict]) -> dict:
     group = sorted(group, key=lambda r: (CONF_RANK[r["confidence_status"]],
                                          sum(v is not None and v != "UNKNOWN" for v in r.values())),
@@ -154,6 +159,13 @@ def main() -> int:
 
     merged = sorted((merge_group(g) for g in groups),
                     key=lambda r: (r["calendar_year"] or 0, r["company_name"] or ""))
+    # BSE-only delistings (no NSE symbol, only BSE sources, company in no NSE-sourced record) are not NSE
+    # delistings: many of these companies were never NSE-listed. They go to their own file.
+    nse_keys = {r["_key"] for r in merged if not is_bse_only_source(r)}
+    bse_only = [r for r in merged if is_bse_only_source(r) and r["nse_symbol"] == "UNKNOWN"
+                and r["_key"] not in nse_keys]
+    bse_ids = {r["record_id"] for r in bse_only}
+    merged = [r for r in merged if r["record_id"] not in bse_ids]
     out_of_range = [r["record_id"] for r in merged if r["calendar_year"] and not 2006 <= r["calendar_year"] <= 2026]
 
     PROCESSED.mkdir(parents=True, exist_ok=True)
@@ -171,6 +183,11 @@ def main() -> int:
         w.writeheader()
         w.writerows(priority)
 
+    with (PROCESSED / "bse_only_delistings.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=audit_fields, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(bse_only)
+
     # Proposed-delisting leads: companies to verify later (not part of the master dataset).
     leads = {}
     delisted_keys = {r["_key"] for r in merged}
@@ -185,7 +202,7 @@ def main() -> int:
         w.writerows(sorted(leads.values(), key=lambda r: r["company_name"] or ""))
 
     summary = {
-        "parsed_rows_in": len(raw), "proposed_leads": len(leads), "dropped_no_key": dropped, "records_out": len(merged),
+        "parsed_rows_in": len(raw), "proposed_leads": len(leads), "bse_only": len(bse_only), "dropped_no_key": dropped, "records_out": len(merged),
         "duplicates_merged": len(rows) - len(merged), "priority_records": len(priority),
         "by_confidence": {c: sum(r["confidence_status"] == c for r in merged) for c in CONF_RANK},
         "out_of_range_years": out_of_range[:20],

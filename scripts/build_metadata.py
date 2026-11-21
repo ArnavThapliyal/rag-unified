@@ -46,7 +46,8 @@ def query_stats() -> dict:
         c = Counter()
         for q in ph["queries"]:
             text = q["q"] if isinstance(q, dict) else q
-            c[state["queries"].get(text, {}).get("status", "pending")] += 1
+            st = state["queries"].get(text, {}).get("status", "pending")
+            c["pending" if st == "engines_blocked" else st] += 1  # blocked = not really searched yet
         total = len(ph["queries"])
         phases[ph["name"]] = {"total": total, "done": c["done"], "no_results": c["no_results"],
                               "failed": c["failed"], "pending": c["pending"],
@@ -148,9 +149,12 @@ def agent_sessions(limit: int = 30) -> list[dict]:
     return out
 
 
-def leads_count() -> int:
-    p = PROCESSED / "proposed_delisting_leads.csv"
-    return max(0, sum(1 for _ in p.open(encoding="utf-8")) - 1) if p.exists() else 0
+def csv_rows(name: str) -> int:
+    p = PROCESSED / name
+    if not p.exists():
+        return 0
+    with p.open(encoding="utf-8", newline="") as f:
+        return max(0, sum(1 for _ in csv.reader(f)) - 1)
 
 
 def build() -> dict:
@@ -186,7 +190,8 @@ def build() -> dict:
         "isin_completeness_pct": records["field_completeness_pct"]["isin"],
         "last_run": runs[-1] if runs else None,
         "agent_sessions": len(sessions),
-        "proposed_delisting_leads": leads_count(),
+        "proposed_delisting_leads": csv_rows("proposed_delisting_leads.csv"),
+        "bse_only_delistings": csv_rows("bse_only_delistings.csv"),
         "audit_errors": audit["error_count"], "audit_warnings": audit["warning_count"],
         "disk": disk,
     }

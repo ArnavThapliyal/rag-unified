@@ -188,6 +188,7 @@ tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio s
 | `logs/fetch_manifest.jsonl` | Every download attempt: timestamp, url, http_status, sha256, local_path, year_tag | Yes |
 | `logs/events.jsonl` | Every action as JSON (search, fetch, harvest, parse, merge, run_start/end, agent tool calls), tagged with `run_id` and `agent_session` | No (large) |
 | `logs/agent_run.log` | The same events as readable lines | No |
+| `data/processed/bse_only_delistings.csv` | Companies delisted from BSE that appear in no NSE source and have no NSE symbol (many were never NSE-listed). Kept out of the master; same columns as the audit file | Yes |
 | `logs/issues.jsonl` | Anomalies reported by the agent (`report_issue.py`): kind, summary, evidence paths, times seen, open/closed | Yes |
 | `logs/agent_sessions/<session>.jsonl` | Cline's full raw event stream (its reasoning, tool calls, outputs, token usage) | No (large) |
 | `data/raw/master_lists/`, `priority_<year>/`, `archive_2006_2026/` | Downloaded documents | No (can be regenerated) |

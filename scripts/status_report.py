@@ -53,7 +53,8 @@ def print_indicators(meta: dict) -> None:
     print(f" Records: {ind['records_total']} (priority years: {ind['priority_year_records']}) | "
           f"files with rows: {ind['artifacts_with_rows']}, zero-row: {ind['artifacts_zero_rows']}, "
           f"off-topic: {ind['artifacts_irrelevant']} | "
-          f"blocked domains: {ind['blocked_domains']} | proposed leads: {ind['proposed_delisting_leads']}")
+          f"blocked domains: {ind['blocked_domains']} | proposed leads: {ind['proposed_delisting_leads']}"
+          f" | BSE-only (separate file): {ind.get('bse_only_delistings', 0)}")
     lr = ind.get("last_run")
     if lr:
         print(f" Last run {lr['run_id']}: {lr['status']} ({lr['stop_reason']}), {lr['queries_done']} queries, "

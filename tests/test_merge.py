@@ -77,3 +77,29 @@ def test_undated_row_joins_the_companys_only_event(tmp_path, monkeypatch):
     m.main()
     out = (tmp_path / "nse_delisted_master.jsonl").read_text().splitlines()
     assert len(out) == 1 and json.loads(out[0])["effective_delisting_date"] == "2016-11-22"
+
+
+def test_bse_only_delistings_go_to_their_own_file(tmp_path, monkeypatch):
+    import csv
+    import json
+    parsed = tmp_path / "parsed"
+    parsed.mkdir()
+    row = {"isin": None, "order_date": None, "effective_delisting_date": None, "delisting_type": "COMPULSORY",
+           "local_artifact_path": "x.pdf", "confidence_status": "NEEDS_REVIEW", "record_status": "DELISTED"}
+    rows = [dict(row, company_name="Adhunik Yarns Ltd", nse_symbol=None,
+                 source_url="https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"),
+            dict(row, company_name="Mandu Industries Ltd", nse_symbol=None,
+                 source_url="https://beta.bseindia.com/downloads1/TradingNotice.pdf"),
+            dict(row, company_name="Mandu Industries Limited", nse_symbol="MANDUIND", effective_delisting_date="2016-11-22",
+                 confidence_status="VERIFIED_PRIMARY",
+                 source_url="https://nsearchives.nseindia.com/content/equities/delisted.xlsx")]
+    (parsed / "a.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    monkeypatch.setattr(m, "PARSED", parsed)
+    monkeypatch.setattr(m, "PROCESSED", tmp_path)
+    monkeypatch.setattr(m, "log", lambda *a, **k: None)
+    monkeypatch.setattr(m, "emit", lambda *a, **k: None)
+    m.main()
+    master = list(csv.DictReader((tmp_path / "nse_delisted_master.csv").open()))
+    bse = list(csv.DictReader((tmp_path / "bse_only_delistings.csv").open()))
+    assert [r["company_name"] for r in bse] == ["Adhunik Yarns Ltd"]
+    assert [r["nse_symbol"] for r in master] == ["MANDUIND"]  # BSE notice joined the NSE company

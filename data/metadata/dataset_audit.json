@@ -1,62 +1,42 @@
 {
- "generated_at": "2026-11-21T12:33:41+00:00",
- "records": 596,
+ "generated_at": "2026-11-21T12:39:47+00:00",
+ "records": 484,
  "error_count": 0,
- "warning_count": 140,
+ "warning_count": 44,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 102,
+   "count": 6,
    "examples": [
     {
-     "record_id": "264894af7125efa0",
-     "company_name": "AEC India Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
+     "record_id": "c0a64e851ae82af1",
+     "company_name": "ISIN of BHAGYANAGAR PROPERTIES LIMITED",
+     "source_url": "https://nsearchives.nseindia.com/corporate/BHAGYAPROP_01122022164452_BPL_ExitOfferLetterSubmission.pdf"
     },
     {
-     "record_id": "c49b088a0cb5cad0",
-     "company_name": "Aakar Engineering & Manufacturing Company Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
+     "record_id": "1bfca654b5287942",
+     "company_name": "Non- Obtaining of SCORES Authentication",
+     "source_url": "https://www.sebi.gov.in/sebi_data/attachdocs/aug-2019/1567161016085.pdf"
     },
     {
-     "record_id": "611d159eabf445a2",
-     "company_name": "Accurate Exports Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
+     "record_id": "7abed1eab72f9118",
+     "company_name": "Parsoli Corporation Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/INVG64241.pdf"
     },
     {
-     "record_id": "ff40795d0933d579",
-     "company_name": "Adhunik Synthetics Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
+     "record_id": "ba5c92d5cf22ea3b",
+     "company_name": "Suumaya Industries Limited",
+     "source_url": "https://nsearchives.nseindia.com/web/mediaattachment/2026-10/Delisting_Order-_SUULD_20261009185359.pdf"
     },
     {
-     "record_id": "dabdd70a9e1274f6",
-     "company_name": "Adhunik Yarns Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
+     "record_id": "9b535790f95f90f8",
+     "company_name": "allotted to the Company\u2019s Equity shares is",
+     "source_url": "https://nsearchives.nseindia.com/corporate/XLENERGY_08092026172438_IntimationNoticeof39thAGM.pdf"
     },
     {
-     "record_id": "fa44ab885935c7bc",
-     "company_name": "Aditya Info-Soft Ltd",
-     "source_url": "https://beta.bseindia.com/downloads1/TradingNotice_No_20180228_14_Feb_28_2018.pdf"
-    },
-    {
-     "record_id": "f8afd8f619d671f3",
-     "company_name": "Aditya Polymers Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
-    },
-    {
-     "record_id": "d6855a456ae8f571",
-     "company_name": "Akai Impex Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
-    },
-    {
-     "record_id": "883208f58055e025",
-     "company_name": "Alert Petrogas Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
-    },
-    {
-     "record_id": "23336a0ff4ace1f9",
-     "company_name": "Alpine Industries Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
+     "record_id": "b3763d7806b7ef5f",
+     "company_name": "faites4 fra ISIN",
+     "source_url": "https://nsearchives.nseindia.com/corporate/DFMFOODS_12012023185127_PostOfferPublicAnnouncement.pdf"
     }
    ]
   },
