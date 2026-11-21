@@ -79,6 +79,7 @@ while :; do
   echo "■ session ended abnormally (exit $status${reason:+: $reason}) — restarting in 15 s ($attempt/$MAX_RESTARTS)"
   "$PY" scripts/common.py log "auto-restart $attempt/$MAX_RESTARTS after exit $status${reason:+: $reason}" >/dev/null
   sleep 15
+  [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
 done
 
 "$PY" scripts/status_report.py | head -16
