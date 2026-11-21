@@ -214,6 +214,7 @@ def main() -> int:
             d["pending"] += pending(it)
         emit({"dry_run": True, "would_run": len(todo), "phases": by_phase,
               "harvest_backlog": harvest_backlog(), "blocked_domains": state["blocked_domains"],
+              "search_cooldown_min_left": max(0, round((state.get("engines_suspended_until", 0) - time.time()) / 60)),
               "next": [t["query"] for t in todo[:5]]})
         return 0
 

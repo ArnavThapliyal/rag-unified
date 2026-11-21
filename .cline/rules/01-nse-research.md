@@ -29,7 +29,8 @@ Run every collection through the job runner (detached, survives the timeout):
 Each run writes `logs/runs/<run_id>.json` and refreshes `data/metadata/`. Read the JSON summary it prints; don't tail raw logs.
 
 ## You collect; the user debugs
-Never edit `scripts/`, `tests/`, `skills/`, `prompts/`, `.cline/` or `soul.md`, and never write ad-hoc
+Never read or edit the source of `scripts/`, `tests/`, `skills/`, `prompts/` or `.cline/` (everything you
+need is in the scripts' JSON output: e.g. `collect.py --dry-run` shows `search_cooldown_min_left`), never edit `soul.md`, and never write ad-hoc
 `python -c` probes of the parser or the data. When something looks wrong, report it with
 `report_issue.py` (at most 3 `inspect_artifact.py` looks for evidence) and carry on collecting.
 The only file you may edit is `config/query_plan.json` (append to the `agent_added` phase).

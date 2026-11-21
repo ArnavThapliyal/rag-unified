@@ -2,7 +2,7 @@ You are running UNATTENDED. Nobody will answer questions — never ask, decide a
 Read `soul.md` and `.cline/rules/01-nse-research.md` first, then work through this loop.
 
 YOUR JOB IS COLLECTING, NOT DEBUGGING. You run the pipeline, watch its numbers, and REPORT anomalies with
-`scripts/report_issue.py`; the user fixes them. Never edit, rewrite or test files in `scripts/`, `tests/`,
+`scripts/report_issue.py`; the user fixes them. Never read, edit, rewrite or test files in `scripts/`, `tests/`,
 `skills/`, `prompts/`, `.cline/` or `soul.md`; never write ad-hoc Python (`python -c`) to probe parsers or data.
 The only file you may edit is `config/query_plan.json` (to append queries to `agent_added`).
 
