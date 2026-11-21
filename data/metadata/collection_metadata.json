@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-21T11:13:48+00:00",
+ "generated_at": "2026-11-21T11:27:08+00:00",
  "indicators": {
   "records_total": 508,
   "priority_year_records": 115,
@@ -9,31 +9,31 @@
   "query_plan_complete_pct": 8.2,
   "queries_done": 8,
   "queries_total": 97,
-  "fetch_success_rate_pct": 97.9,
-  "artifacts_downloaded": 190,
+  "fetch_success_rate_pct": 98.3,
+  "artifacts_downloaded": 230,
   "artifacts_with_rows": 19,
-  "artifacts_zero_rows": 110,
-  "artifacts_irrelevant": 61,
+  "artifacts_zero_rows": 142,
+  "artifacts_irrelevant": 69,
   "blocked_domains": 0,
   "isin_completeness_pct": 4.7,
   "last_run": {
-   "run_id": "20261121-163437-58004",
-   "started_at": "2026-11-21T11:04:37+00:00",
+   "run_id": "20261121-165147-62154",
+   "started_at": "2026-11-21T11:21:47+00:00",
    "status": "completed",
    "stop_reason": "harvest_done",
-   "duration_s": 148.5,
+   "duration_s": 152.1,
    "queries_done": 0,
-   "fetched_ok": 36,
-   "quarantined": 4,
-   "new_records": -144
+   "fetched_ok": 40,
+   "quarantined": 0,
+   "new_records": -10
   },
-  "agent_sessions": 2,
+  "agent_sessions": 3,
   "proposed_delisting_leads": 14,
   "audit_errors": 0,
   "audit_warnings": 94,
   "disk": {
-   "data_gb": 0.36,
-   "free_gb": 354.0,
+   "data_gb": 0.37,
+   "free_gb": 351.8,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -96,15 +96,15 @@
   "blocked_domains": []
  },
  "fetch": {
-  "attempts": 194,
-  "ok": 190,
+  "attempts": 234,
+  "ok": 230,
   "quarantined": 4,
-  "success_rate_pct": 97.9,
-  "total_mb": 360.9,
+  "success_rate_pct": 98.3,
+  "total_mb": 369.07,
   "by_domain": {
    "nsearchives.nseindia.com": {
-    "ok": 118,
-    "bytes": 149830001,
+    "ok": 158,
+    "bytes": 158001695,
     "quarantined": 4
    },
    "beta.bseindia.com": {
@@ -129,23 +129,23 @@
    }
   },
   "by_http_status": {
-   "200": 190,
+   "200": 230,
    "404": 4
   },
   "by_content_type": {
    "text/html": 38,
-   "application/pdf": 132,
+   "application/pdf": 172,
    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 4,
    "application/x-zip-compressed": 20
   }
  },
  "artifacts": {
-  "total": 190,
+  "total": 230,
   "by_bucket": {
-   "master_lists": 174,
+   "master_lists": 214,
    "priority_2017": 16
   },
-  "parsed": 190,
+  "parsed": 230,
   "rows_extracted": 637
  },
  "records": {
@@ -318,6 +318,17 @@
    "fetched_ok": 36,
    "quarantined": 4,
    "new_records": -144
+  },
+  {
+   "run_id": "20261121-165147-62154",
+   "started_at": "2026-11-21T11:21:47+00:00",
+   "status": "completed",
+   "stop_reason": "harvest_done",
+   "duration_s": 152.1,
+   "queries_done": 0,
+   "fetched_ok": 40,
+   "quarantined": 0,
+   "new_records": -10
   }
  ],
  "agent_sessions": [
@@ -353,6 +364,19 @@
    },
    "input_tokens": null,
    "output_tokens": null
+  },
+  {
+   "file": "logs/agent_sessions/agent-20261121-165019.jsonl",
+   "started_at": "2026-11-21T11:20:21.250Z",
+   "finish_reason": "aborted",
+   "iterations": 7,
+   "tool_calls": 8,
+   "tools": {
+    "read_files": 1,
+    "run_commands": 7
+   },
+   "input_tokens": 97624,
+   "output_tokens": 403
   }
  ]
 }
