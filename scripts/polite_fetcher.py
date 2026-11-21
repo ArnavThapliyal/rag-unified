@@ -40,7 +40,8 @@ CONTENT_EXT = {
 }
 
 
-DOC_LINK_RE = re.compile(r"\.(pdf|xlsx?|csv|zip)(\?|#|$)", re.I)
+# No .zip: on BSE/NSE these are bundles of scanned newspaper notices (5–15 MB each, no extractable text).
+DOC_LINK_RE = re.compile(r"\.(pdf|xlsx?|csv)(\?|#|$)", re.I)
 RELEVANT_RE = re.compile(r"delist|exit|compuls|order|suspend|reverse.?book", re.I)
 
 

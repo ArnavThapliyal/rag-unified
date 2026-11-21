@@ -8,6 +8,7 @@ PAGE = """<html><head><title>Orders of Delisting</title></head><body>
 <a href="https://nsearchives.nseindia.com/web/inline-files/SOP_for_Delisting_of_Equity_Shares_0.pdf">SOP</a>
 <a href="https://nsearchives.nseindia.com/web/inline-files/Annexure%201_Checklist.pdf">checklist</a>
 <a href="https://example.com/other/Delisting_Order.pdf">off-domain</a>
+<a href="https://beta.bseindia.com/downloads1/Initial_Public_Notice_10042023.zip">newspaper scans</a>
 <a href="/static/list/page.html">html page</a>
 </body></html>"""
 

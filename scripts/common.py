@@ -50,7 +50,7 @@ SECONDARY_DOMAINS = (
 
 # Procedural documents (forms, checklists, SOPs, FAQs) describe the delisting process, not delisted companies.
 PROCEDURAL_RE = re.compile(r"checklist|\bsop\b|sop_for|annexure|format|faq|guidance|application.?form|"
-                           r"template|undertaking|declaration", re.I)
+                           r"template|undertaking|declaration|public.?notice", re.I)
 
 SCHEMA_FIELDS = [
     "record_id", "company_name", "nse_symbol", "isin", "delisting_type",
