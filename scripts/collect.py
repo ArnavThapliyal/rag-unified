@@ -77,6 +77,15 @@ def plan_items(plan: dict, phase: str | None) -> list[dict]:
 SEARCH_COOLDOWN_MIN = 30  # after search engines suspend SearXNG, no queries for this long
 
 
+def search_cooldown_min_left(state: dict) -> int:
+    """Minutes until searching is allowed: the global cooldown, or until the first benched engine is back."""
+    until = state.get("engines_suspended_until", 0)
+    rot = searxng_client.Rotation()
+    if not rot.usable():
+        until = max(until, min(rot.state[e]["benched_until"] for e in rot.s["engines"]))
+    return max(0, round((until - time.time()) / 60))
+
+
 def master_count() -> int:
     p = PROCESSED / "nse_delisted_master.csv"
     if not p.exists():
@@ -214,7 +223,8 @@ def main() -> int:
             d["pending"] += pending(it)
         emit({"dry_run": True, "would_run": len(todo), "phases": by_phase,
               "harvest_backlog": harvest_backlog(), "blocked_domains": state["blocked_domains"],
-              "search_cooldown_min_left": max(0, round((state.get("engines_suspended_until", 0) - time.time()) / 60)),
+              "search_cooldown_min_left": search_cooldown_min_left(state),
+              "search_engines_usable": searxng_client.Rotation().usable(),
               "next": [t["query"] for t in todo[:5]]})
         return 0
 
@@ -302,6 +312,7 @@ def main() -> int:
         return 1
 
     consecutive_search_errors = consecutive_engine_blocks = 0
+    query_delay = searxng_client.search_settings()["query_delay_s"]
     since_process = 0
     try:
         for i, it in enumerate(todo, 1):
@@ -310,11 +321,18 @@ def main() -> int:
             q, tag, phase = it["query"], it["year_tag"], it["phase"]
             ph = step["phases"].setdefault(phase, {"queries": 0, "urls": 0, "fetched_ok": 0, "quarantined": 0})
             if i > 1:
-                polite_sleep()
+                polite_sleep(*query_delay)  # long pause between queries: engines ban fast clients
             entry = {"phase": phase, "year_tag": tag, "ts": now_iso(), "run_id": rid}
             try:
                 s = searxng_client.run(q, it["pages"], tag)
                 consecutive_search_errors = 0
+            except searxng_client.EnginesExhausted as e:  # every engine benched: stop, query stays pending
+                state["engines_suspended_until"] = e.until
+                save_state(state)
+                step["stop_reason"] = "search_engines_suspended"
+                log(f"stopping: {e}; queries stay pending", level="ERROR", kind="search_engines_suspended",
+                    retry_after_min=round((e.until - time.time()) / 60))
+                break
             except Exception as e:  # network/SearXNG errors: record and continue
                 consecutive_search_errors += 1
                 entry.update(status="failed", error=str(e)[:200])

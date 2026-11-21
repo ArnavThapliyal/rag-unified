@@ -155,12 +155,20 @@ scripts/run_agent.sh prompts/my_task.md                        # different task 
 
 You'll see `!! DISK WARNING: data/ has grown to 5.1 GB …` in the terminal and get a macOS notification. When that happens, free up space, or raise `disk.warn_data_gb` in `config/query_plan.json` to keep going. If free space drops below `disk.min_free_gb` (20 GB), the run stops with `stop_reason: low_disk_space`, the agent finishes, and `run_agent.sh` won't start again until there's room. The dashboard always shows a `Disk:` line. The biggest folder is `data/raw/`, which you can delete once records are extracted (the dataset keeps `source_url` for every row).
 
-### Search engines suspending SearXNG
+### Search engines: rotation and bans
 
-SearXNG forwards each query to public engines (Brave, DuckDuckGo, Google CSE, Startpage), which rate-limit or CAPTCHA it after enough queries. When a query gets 0 results while engines report a suspension, `collect.py` marks it `engines_blocked` (it stays pending), and after 2 in a row it stops with `stop_reason: search_engines_suspended` and refuses further searches for 30 minutes (harvest-only still runs). `run_agent.sh` then waits 31 minutes and starts a fresh session, up to `CLINE_MAX_COOLDOWNS` (8) times. Check the engines yourself with:
+SearXNG forwards queries to public engines, which rate-limit, CAPTCHA or deny a client that searches too much. The collector rotates engines (`scripts/searxng_client.py`, settings in the `search` block of `config/query_plan.json`):
+- Each request asks only `engines_per_query` (2) engines, the ones rested longest; if both fail it tries the next pair once.
+- An engine that answers *too many requests* is benched 60 min, *CAPTCHA* 6 h, *access denied* 12 h, other errors 2 h.
+- An engine whose answers contain no official-domain result 3 times in a row (empty, or junk like Bing returning gaming forums) is benched 6 h.
+- Queries are 20–40 s apart.
+- When every engine is benched, `collect.py` stops with `search_engines_suspended` and the query stays pending; `run_agent.sh` waits until the first engine is back (5 min – 12 h, `search_cooldown_min_left` in `collect.py --dry-run`) and starts a fresh session, up to `CLINE_MAX_COOLDOWNS` (12) times. Harvest-only runs keep working.
+
+Engines are enabled in SearXNG's `/etc/searxng/settings.yml` (`engines:` list; backup `settings.yml.bak-before-engines`). Check them:
 ```bash
-curl -s "http://localhost:8082/search?q=test&format=json" | python3 -c "import sys,json; print(json.load(sys.stdin)['unresponsive_engines'])"
+.venv/bin/python scripts/searxng_client.py --engines     # usable / benched (+ reason, minutes left) / stats
 ```
+The bans are per IP: if all engines are banned at once, rotating doesn't help until they expire.
 
 ### Other things to watch
 

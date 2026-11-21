@@ -15,8 +15,8 @@
 # restarted: "session not found") or a run that did not finish "completed" (e.g. Cline's loop
 # detection aborts after 5 identical tool calls, which still exits 0).
 # A completed run, Ctrl-C, low disk, or SearXNG/LM Studio being down stops the loop. If the session stopped
-# because the search engines suspended SearXNG (search_engines_suspended), it waits 31 min and starts a new
-# session (up to CLINE_MAX_COOLDOWNS times).
+# because every search engine is benched (search_engines_suspended), it waits until the first engine is
+# usable again (5 min – 12 h) and starts a new session (up to CLINE_MAX_COOLDOWNS times).
 #
 # Raw Cline events  -> logs/agent_sessions/<session>.jsonl
 # Readable progress -> terminal + logs/agent_run.log (tool calls, errors, completion)
@@ -29,7 +29,7 @@ PROMPT_FILE="${1:-prompts/autonomous_collection.md}"
 TIMEOUT="${CLINE_TIMEOUT:-}"   # empty = no limit (cline rejects --timeout 0)
 MODEL="${CLINE_MODEL:-qwen/qwen3.8-27b}"
 MAX_RESTARTS="${CLINE_MAX_RESTARTS:-5}"
-MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-8}"   # search-engine suspensions to wait out (30 min each)
+MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-12}"  # search-engine suspensions to wait out
 PY="$ROOT/.venv/bin/python"
 
 [ -f "$PROMPT_FILE" ] || { echo "prompt file not found: $PROMPT_FILE" >&2; exit 2; }
@@ -79,9 +79,12 @@ while :; do
   [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
   if grep -q 'stop_reason[^a-z]*search_engines_suspended' "$OUT" && [ "$cooldowns" -lt "$MAX_COOLDOWNS" ]; then
     cooldowns=$((cooldowns + 1))
-    echo "■ search engines suspended SearXNG — waiting 31 min, then a fresh session ($cooldowns/$MAX_COOLDOWNS)"
-    "$PY" scripts/common.py log "search engines suspended: waiting 31 min before session restart ($cooldowns/$MAX_COOLDOWNS)" >/dev/null
-    for _ in $(seq 186); do sleep 10; [ "$interrupted" -eq 1 ] && break; done
+    # wait until the first search engine is usable again (collect.py --dry-run knows), 5 min .. 12 h
+    mins=$("$PY" scripts/collect.py --dry-run 2>/dev/null | "$PY" -c "import json,sys; print(json.load(sys.stdin)['search_cooldown_min_left'])" || echo 30)
+    mins=$(( mins < 5 ? 5 : (mins > 720 ? 720 : mins + 1) ))
+    echo "■ search engines benched — waiting $mins min, then a fresh session ($cooldowns/$MAX_COOLDOWNS)"
+    "$PY" scripts/common.py log "search engines benched: waiting $mins min before session restart ($cooldowns/$MAX_COOLDOWNS)" >/dev/null
+    for _ in $(seq $((mins * 6))); do sleep 10; [ "$interrupted" -eq 1 ] && break; done
     [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
     continue
   fi

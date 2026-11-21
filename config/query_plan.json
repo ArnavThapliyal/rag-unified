@@ -21,6 +21,36 @@
     "warn_step_gb": 5,
     "min_free_gb": 20
   },
+  "search": {
+    "_comment": "Engine rotation (searxng_client.py): each query asks engines_per_query engines, longest-rested first; failing or junk-returning engines are benched for cooldown_min[reason] minutes. Engines must be enabled in SearXNG's settings.yml.",
+    "engines": [
+      "google cse",
+      "brave",
+      "duckduckgo",
+      "startpage",
+      "bing",
+      "mojeek",
+      "yahoo",
+      "qwant",
+      "dogpile",
+      "presearch",
+      "yep"
+    ],
+    "engines_per_query": 2,
+    "cooldown_min": {
+      "too many requests": 60,
+      "suspended": 60,
+      "captcha": 360,
+      "access denied": 720,
+      "irrelevant": 360,
+      "default": 120
+    },
+    "irrelevant_after": 3,
+    "query_delay_s": [
+      20,
+      40
+    ]
+  },
   "phases": [
     {
       "name": "master",
