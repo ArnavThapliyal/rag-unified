@@ -114,6 +114,8 @@ CLINE_EXTRA_ARGS="--thinking low" scripts/run_agent.sh         # extra Cline fla
 scripts/run_agent.sh prompts/my_task.md                        # different task prompt
 ```
 
+> **Note:** Cline kills any shell command after 30 seconds (its `bashTimeoutMs`, which the CLI can't change). The agent therefore starts collections with `scripts/job.py start …` and polls `scripts/job.py wait`, so long runs survive the timeout.
+
 **Without the agent** (deterministic, no LLM), `collect.py` runs the plan by itself:
 ```bash
 .venv/bin/python scripts/collect.py --dry-run          # what's pending + harvest backlog
@@ -200,6 +202,7 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 |---|---|
 | `scripts/run_agent.sh` | Launch Cline unattended. Checks that SearXNG and LM Studio are up, logs the session, prints the dashboard at the end. |
 | `scripts/collect.py` | The resumable pipeline run (search → fetch → harvest → parse → merge → metadata) |
+| `scripts/job.py` | Runs `collect.py` as a detached background job (`start`, `wait`, `status`, `stop`). The agent uses it because Cline kills shell commands after 30 s. |
 | `scripts/status_report.py` | Dashboard: indicator bars, year × type grid, gaps. Supports `--watch N`, `--json`, `--year`, `--needs-review`. |
 | `scripts/build_metadata.py` | Rebuilds `data/metadata/` (runs automatically) |
 | `scripts/searxng_client.py` | One search, cached. Falls back to HTML if JSON is disabled. |

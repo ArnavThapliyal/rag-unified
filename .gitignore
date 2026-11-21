@@ -24,6 +24,8 @@ logs/agent_run.log
 logs/events.jsonl
 logs/agent_sessions/*
 !logs/agent_sessions/.gitkeep
+logs/jobs/
+data/metadata/job.json
 
 # OS
 .DS_Store

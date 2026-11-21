@@ -98,6 +98,20 @@ def searxng_ok() -> bool:
         return False
 
 
+def mark_stale_runs(current: str) -> None:
+    """Runs left at status "running" were killed without cleanup (e.g. by a tool timeout)."""
+    for p in RUNS.glob("*.json"):
+        if p.stem == current:
+            continue
+        try:
+            r = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if r.get("status") == "running":
+            r.update(status="killed", stop_reason="process ended without cleanup")
+            p.write_text(json.dumps(r, indent=1), encoding="utf-8")
+
+
 def harvestable_pages(only: list[str] | None = None) -> list[dict]:
     """Manifest entries for downloaded official HTML pages (optionally limited to `only` paths)."""
     pages = []
@@ -201,6 +215,7 @@ def main() -> int:
     os.environ.pop("NSE_RUN_ID", None)  # every collect.py invocation is its own run
     rid = run_id()
     RUNS.mkdir(parents=True, exist_ok=True)
+    mark_stale_runs(rid)
     summary_path = RUNS / f"{rid}.json"
     blocked = set(state["blocked_domains"])
     fetch_limit = a.fetch_limit or plan.get("fetch_limit_per_query", 8)

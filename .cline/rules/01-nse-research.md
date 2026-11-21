@@ -8,12 +8,18 @@ Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
 - Never open files under `data/raw/`, `data/search_cache/`, `data/quarantine/`, or `vendor/` directly
   (they are in `.clineignore`). Use `scripts/inspect_artifact.py <path>` for a bounded excerpt.
 
+## Shell commands are killed after 30 s
+Run every collection through the job runner (detached, survives the timeout):
+- `.venv/bin/python scripts/job.py start <collect.py args>` → returns at once
+- `.venv/bin/python scripts/job.py wait` → waits ≤25 s, prints progress; repeat until `"running": false`
+- `.venv/bin/python scripts/job.py status` / `stop`
+
 ## Main command: autonomous collection
 `scripts/collect.py` runs the whole pipeline from `config/query_plan.json` and is resumable:
 - `.venv/bin/python scripts/collect.py --dry-run` — pending queries per phase + harvest backlog
-- `.venv/bin/python scripts/collect.py --max-queries 8` — next 8 pending queries (search → fetch → harvest linked docs → parse → merge)
-- `.venv/bin/python scripts/collect.py --phase priority_2017` — one phase
-- `.venv/bin/python scripts/collect.py --harvest-only --max-harvest 40` — fetch documents linked from already-downloaded official pages
+- `job.py start --max-queries 8` — next 8 pending queries (search → fetch → harvest linked docs → parse → merge)
+- `job.py start --phase priority_2017` — one phase
+- `job.py start --harvest-only --max-harvest 40` — fetch documents linked from already-downloaded official pages
 - `.venv/bin/python scripts/status_report.py --json` — indicators (incl. `disk`, `audit_errors`) + year × type grid
 - `.venv/bin/python scripts/audit_dataset.py` — data-quality audit of the dataset
 - `scripts/check.sh --offline` — after editing any script: pyflakes + pytest must pass

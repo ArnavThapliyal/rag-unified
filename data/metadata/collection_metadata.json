@@ -1,0 +1,250 @@
+{
+ "generated_at": "2026-11-21T10:46:35+00:00",
+ "indicators": {
+  "records_total": 0,
+  "priority_year_records": 0,
+  "verified_primary_pct": 0.0,
+  "needs_review": 0,
+  "priority_grid_coverage_pct": 0.0,
+  "query_plan_complete_pct": 0.0,
+  "queries_done": 0,
+  "queries_total": 97,
+  "fetch_success_rate_pct": 100.0,
+  "artifacts_downloaded": 11,
+  "artifacts_with_rows": 0,
+  "artifacts_zero_rows": 0,
+  "artifacts_irrelevant": 0,
+  "blocked_domains": 0,
+  "isin_completeness_pct": 0.0,
+  "last_run": {
+   "run_id": "20261121-161603-53269",
+   "started_at": "2026-11-21T10:46:03+00:00",
+   "status": "running",
+   "stop_reason": null,
+   "duration_s": 0.0,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": 0
+  },
+  "agent_sessions": 2,
+  "proposed_delisting_leads": 0,
+  "audit_errors": 0,
+  "audit_warnings": 0,
+  "disk": {
+   "data_gb": 0.03,
+   "free_gb": 368.7,
+   "level": "ok",
+   "warn_tier": 0,
+   "warn_data_gb": 5.0,
+   "warn_step_gb": 5.0,
+   "min_free_gb": 20.0
+  }
+ },
+ "queries": {
+  "phases": {
+   "master": {
+    "total": 6,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 6,
+    "complete_pct": 0.0
+   },
+   "priority_2017": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "priority_2020": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "priority_2024": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "priority_2007": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "archive": {
+    "total": 51,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 51,
+    "complete_pct": 0.0
+   }
+  },
+  "adhoc_queries": 0,
+  "blocked_domains": []
+ },
+ "fetch": {
+  "attempts": 11,
+  "ok": 11,
+  "quarantined": 0,
+  "success_rate_pct": 100.0,
+  "total_mb": 28.35,
+  "by_domain": {
+   "nsearchives.nseindia.com": {
+    "ok": 3,
+    "bytes": 25784249
+   },
+   "nseindia.com": {
+    "ok": 8,
+    "bytes": 2561325
+   }
+  },
+  "by_http_status": {
+   "200": 11
+  },
+  "by_content_type": {
+   "text/html": 8,
+   "application/pdf": 3
+  }
+ },
+ "artifacts": {
+  "total": 11,
+  "by_bucket": {
+   "master_lists": 11
+  },
+  "parsed": 0,
+  "rows_extracted": 0
+ },
+ "records": {
+  "total": 0,
+  "by_year": {
+   "2007": 0,
+   "2017": 0,
+   "2020": 0,
+   "2024": 0
+  },
+  "by_type": {},
+  "by_confidence": {},
+  "by_regime": {},
+  "priority_year_records": 0,
+  "priority_grid": {
+   "2007": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   },
+   "2017": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   },
+   "2020": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   },
+   "2024": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   }
+  },
+  "priority_grid_cells_filled": 0,
+  "priority_grid_cells_total": 20,
+  "field_completeness_pct": {
+   "isin": 0.0,
+   "nse_symbol": 0.0,
+   "effective_delisting_date": 0.0,
+   "order_date": 0.0,
+   "exit_or_fair_value_inr": 0.0
+  },
+  "years_covered": [
+   "2007",
+   "2017",
+   "2020",
+   "2024"
+  ]
+ },
+ "audit": {
+  "errors": {},
+  "warnings": {}
+ },
+ "runs": [
+  {
+   "run_id": "20261121-161432-52703",
+   "started_at": "2026-11-21T10:44:32+00:00",
+   "status": "running",
+   "stop_reason": null,
+   "duration_s": 0.0,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": 0
+  },
+  {
+   "run_id": "20261121-161603-53269",
+   "started_at": "2026-11-21T10:46:03+00:00",
+   "status": "running",
+   "stop_reason": null,
+   "duration_s": 0.0,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": 0
+  }
+ ],
+ "agent_sessions": [
+  {
+   "file": "logs/agent_sessions/agent-20261121-160540.jsonl",
+   "started_at": "2026-11-21T10:35:42.987Z",
+   "finish_reason": "aborted",
+   "iterations": 6,
+   "tool_calls": 7,
+   "tools": {
+    "read_files": 1,
+    "run_commands": 1,
+    "start_background_command": 1,
+    "list_skills": 1,
+    "list_agent_presets": 1,
+    "get_skill": 1,
+    "save_handoff": 1
+   },
+   "input_tokens": 58630,
+   "output_tokens": 499
+  },
+  {
+   "file": "logs/agent_sessions/agent-20261121-161338.jsonl",
+   "started_at": "2026-11-21T10:43:42.121Z",
+   "finish_reason": "running_or_killed",
+   "iterations": null,
+   "tool_calls": 7,
+   "tools": {
+    "read_files": 1,
+    "run_commands": 5,
+    "start_background_command": 1
+   },
+   "input_tokens": null,
+   "output_tokens": null
+  }
+ ]
+}
