@@ -1,0 +1,236 @@
+{
+ "generated_at": "2026-11-21T10:14:04+00:00",
+ "indicators": {
+  "records_total": 4,
+  "priority_year_records": 0,
+  "verified_primary_pct": 100.0,
+  "needs_review": 0,
+  "priority_grid_coverage_pct": 0.0,
+  "query_plan_complete_pct": 2.1,
+  "queries_done": 2,
+  "queries_total": 97,
+  "fetch_success_rate_pct": 100.0,
+  "artifacts_downloaded": 13,
+  "artifacts_with_rows": 3,
+  "artifacts_zero_rows": 10,
+  "blocked_domains": 0,
+  "isin_completeness_pct": 0.0,
+  "last_run": {
+   "run_id": "20261121-153807-42006",
+   "started_at": "2026-11-21T10:08:07+00:00",
+   "status": "completed",
+   "stop_reason": "harvest_done",
+   "duration_s": 26.8,
+   "queries_done": 0,
+   "fetched_ok": 6,
+   "quarantined": 0,
+   "new_records": 19
+  },
+  "agent_sessions": 1,
+  "proposed_delisting_leads": 14
+ },
+ "queries": {
+  "phases": {
+   "master": {
+    "total": 6,
+    "done": 2,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 4,
+    "complete_pct": 33.3
+   },
+   "priority_2017": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "priority_2020": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "priority_2024": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "priority_2007": {
+    "total": 10,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 10,
+    "complete_pct": 0.0
+   },
+   "archive": {
+    "total": 51,
+    "done": 0,
+    "no_results": 0,
+    "failed": 0,
+    "pending": 51,
+    "complete_pct": 0.0
+   }
+  },
+  "adhoc_queries": 0,
+  "blocked_domains": []
+ },
+ "fetch": {
+  "attempts": 13,
+  "ok": 13,
+  "quarantined": 0,
+  "success_rate_pct": 100.0,
+  "total_mb": 19.73,
+  "by_domain": {
+   "nsearchives.nseindia.com": {
+    "ok": 7,
+    "bytes": 17740103
+   },
+   "nseindia.com": {
+    "ok": 4,
+    "bytes": 1391831
+   },
+   "sebi.gov.in": {
+    "ok": 2,
+    "bytes": 593398
+   }
+  },
+  "by_http_status": {
+   "200": 13
+  },
+  "by_content_type": {
+   "application/pdf": 7,
+   "text/html": 4,
+   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 2
+  }
+ },
+ "artifacts": {
+  "total": 13,
+  "by_bucket": {
+   "master_lists": 11,
+   "priority_2017": 2
+  },
+  "parsed": 13,
+  "rows_extracted": 18
+ },
+ "records": {
+  "total": 4,
+  "by_year": {
+   "2007": 0,
+   "2017": 0,
+   "2020": 0,
+   "2022": 2,
+   "2023": 1,
+   "2024": 0,
+   "2026": 1
+  },
+  "by_type": {
+   "VOLUNTARY_EXIT_OFFER": 3,
+   "COMPULSORY": 1
+  },
+  "by_confidence": {
+   "VERIFIED_PRIMARY": 4
+  },
+  "by_regime": {
+   "SEBI_2021_Regs": 3,
+   "SEBI_2024_Amendment": 1
+  },
+  "priority_year_records": 0,
+  "priority_grid": {
+   "2007": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   },
+   "2017": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   },
+   "2020": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   },
+   "2024": {
+    "COMPULSORY": 0,
+    "VOLUNTARY_EXIT_OFFER": 0,
+    "VOLUNTARY_NO_EXIT": 0,
+    "AMALGAMATION_MERGER": 0,
+    "IBC_NCLT": 0
+   }
+  },
+  "priority_grid_cells_filled": 0,
+  "priority_grid_cells_total": 20,
+  "field_completeness_pct": {
+   "isin": 0.0,
+   "nse_symbol": 100.0,
+   "effective_delisting_date": 75.0,
+   "order_date": 25.0,
+   "exit_or_fair_value_inr": 0.0
+  },
+  "years_covered": [
+   "2007",
+   "2017",
+   "2020",
+   "2022",
+   "2023",
+   "2024",
+   "2026"
+  ]
+ },
+ "runs": [
+  {
+   "run_id": "20261121-153523-40302",
+   "started_at": "2026-11-21T10:05:23+00:00",
+   "status": "completed",
+   "stop_reason": "plan_exhausted",
+   "duration_s": 30.1,
+   "queries_done": 2,
+   "fetched_ok": 4,
+   "quarantined": 0,
+   "new_records": 0
+  },
+  {
+   "run_id": "20261121-153807-42006",
+   "started_at": "2026-11-21T10:08:07+00:00",
+   "status": "completed",
+   "stop_reason": "harvest_done",
+   "duration_s": 26.8,
+   "queries_done": 0,
+   "fetched_ok": 6,
+   "quarantined": 0,
+   "new_records": 19
+  }
+ ],
+ "agent_sessions": [
+  {
+   "file": "logs/agent_sessions/agent-20261121-154035.jsonl",
+   "started_at": "2026-11-21T10:10:36.850Z",
+   "finish_reason": "completed",
+   "iterations": 3,
+   "tool_calls": 4,
+   "tools": {
+    "read_files": 1,
+    "run_commands": 2,
+    "submit_and_exit": 1
+   },
+   "input_tokens": 15956,
+   "output_tokens": 478
+  }
+ ]
+}

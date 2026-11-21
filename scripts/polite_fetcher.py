@@ -19,12 +19,12 @@ import re
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 from common import (
-    MANIFEST, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, emit, log,
+    MANIFEST, PRIMARY_DOMAINS, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, domain_of, emit, log,
     now_iso, polite_sleep, raw_dir_for_tag, read_jsonl, sha256_bytes, sha256_text,
 )
 
@@ -38,6 +38,29 @@ CONTENT_EXT = {
     "application/json": ".json",
     "text/plain": ".txt",
 }
+
+
+DOC_LINK_RE = re.compile(r"\.(pdf|xlsx?|csv|zip)(\?|#|$)", re.I)
+RELEVANT_RE = re.compile(r"delist|exit|compuls|order|suspend|reverse.?book", re.I)
+
+
+def harvest_links(path: Path, page_url: str) -> list[str]:
+    """Document links (PDF/XLS/XLSX/CSV/ZIP) on official domains found in a downloaded HTML page.
+    On pages whose URL mentions delisting every document link is kept; elsewhere only links whose
+    URL or anchor text looks delisting-related."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(path.read_text(encoding="utf-8", errors="ignore"), "lxml")
+    page_relevant = bool(re.search(r"delist", page_url, re.I))
+    out = []
+    for a in soup.find_all("a", href=True):
+        url = urljoin(page_url, a["href"].strip())
+        url = re.sub(r"(?<!:)//+", "/", url)  # NSE links often contain '//web/...'
+        if not DOC_LINK_RE.search(urlparse(url).path) or not domain_matches(url, PRIMARY_DOMAINS):
+            continue
+        if page_relevant or RELEVANT_RE.search(url) or RELEVANT_RE.search(a.get_text(" ", strip=True)):
+            out.append(url)
+    return list(dict.fromkeys(out))
 
 
 def already_fetched() -> dict[str, dict]:
@@ -94,7 +117,9 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None) -> dict
         entry["error"] = err
     append_jsonl(MANIFEST, entry)
     log(f"{'OK' if ok else 'QUARANTINE'} {status} {url} -> {entry['local_path']}",
-        level="INFO" if ok else "WARN")
+        level="INFO" if ok else "WARN", kind="fetch", url=url, domain=domain_of(url),
+        http_status=status, bytes=len(body), quarantined=not ok, year_tag=year_tag,
+        local_path=entry["local_path"])
     return entry
 
 
@@ -106,11 +131,52 @@ def urls_from_cache_file(path: Path, domains: list[str] | None) -> tuple[list[st
     return urls, d.get("year_tag")
 
 
+def fetch_urls(urls: list[str], tag: str | None, limit: int,
+               blocked_domains: set[str] | None = None, block_after: int = 3) -> dict:
+    """Fetch up to `limit` not-yet-fetched URLs. Domains that fail `block_after` times in a row
+    are added to `blocked_domains` and skipped for the rest of the call."""
+    blocked = blocked_domains if blocked_domains is not None else set()
+    done = already_fetched()
+    unique = list(dict.fromkeys(urls))
+    pending = [u for u in unique if u not in done]
+    skipped_blocked = [u for u in pending if domain_of(u) in blocked]
+    todo = [u for u in pending if domain_of(u) not in blocked][:limit]
+
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-IN,en;q=0.9"})
+    ok, quarantined, saved, fails = 0, 0, [], {}
+    newly_blocked = []
+    for i, url in enumerate(todo):
+        d = domain_of(url)
+        if d in blocked:
+            continue
+        if i:
+            polite_sleep()
+        e = fetch_one(session, url, tag)
+        if e["quarantined"]:
+            quarantined += 1
+            fails[d] = fails.get(d, 0) + 1
+            if fails[d] >= block_after:
+                blocked.add(d)
+                newly_blocked.append(d)
+                log(f"domain blocked after {fails[d]} consecutive failures: {d}", level="WARN",
+                    kind="domain_blocked", domain=d)
+        else:
+            ok += 1
+            fails[d] = 0
+            saved.append(e["local_path"])
+
+    return {"requested": len(unique), "skipped_cached": len(unique) - len(pending),
+            "skipped_blocked": len(skipped_blocked), "fetched_ok": ok, "quarantined": quarantined,
+            "newly_blocked_domains": newly_blocked, "year_tag": tag, "saved": saved}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--url")
     src.add_argument("--from-cache-file", type=Path)
+    src.add_argument("--harvest", type=Path, metavar="HTML", help="fetch document links found in a downloaded page")
     ap.add_argument("--year-tag", help="overrides the cache file's year_tag")
     ap.add_argument("--limit", type=int, default=10)
     ap.add_argument("--domains", help="comma-separated allowlist, e.g. nseindia.com,sebi.gov.in")
@@ -119,30 +185,16 @@ def main() -> int:
     domains = [x.strip() for x in a.domains.split(",")] if a.domains else None
     if a.url:
         urls, tag = [a.url], a.year_tag
+    elif a.harvest:
+        p = a.harvest if a.harvest.is_absolute() else ROOT / a.harvest
+        m = next((e for e in read_jsonl(MANIFEST) if e.get("local_path") == str(p.relative_to(ROOT))), {})
+        urls, tag = harvest_links(p, m.get("url", "")), a.year_tag or m.get("year_tag")
     else:
         p = a.from_cache_file if a.from_cache_file.is_absolute() else ROOT / a.from_cache_file
         urls, tag = urls_from_cache_file(p, domains)
         tag = a.year_tag or tag
 
-    done = already_fetched()
-    todo = [u for u in dict.fromkeys(urls) if u not in done][: a.limit]
-    skipped = len(set(urls)) - len([u for u in dict.fromkeys(urls) if u not in done])
-
-    session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-IN,en;q=0.9"})
-    ok, quarantined, saved = 0, 0, []
-    for i, url in enumerate(todo):
-        if i:
-            polite_sleep()
-        e = fetch_one(session, url, tag)
-        if e["quarantined"]:
-            quarantined += 1
-        else:
-            ok += 1
-            saved.append(e["local_path"])
-
-    emit({"requested": len(urls), "skipped_cached": skipped, "fetched_ok": ok,
-          "quarantined": quarantined, "year_tag": tag, "saved": saved})
+    emit(fetch_urls(urls, tag, a.limit))
     return 0
 
 

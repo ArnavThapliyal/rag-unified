@@ -1,0 +1,313 @@
+{
+  "_comment": "Edit freely. collect.py runs phases in this order and skips queries already completed (tracked in data/metadata/collection_state.json). Add queries to fill gaps.",
+  "fetch_domains": [
+    "nseindia.com",
+    "sebi.gov.in",
+    "bseindia.com",
+    "ibbi.gov.in",
+    "nclt.gov.in",
+    "business-standard.com",
+    "economictimes.indiatimes.com",
+    "moneycontrol.com",
+    "livemint.com",
+    "thehindubusinessline.com",
+    "financialexpress.com"
+  ],
+  "fetch_limit_per_query": 8,
+  "harvest_limit_per_page": 20,
+  "block_domain_after_failures": 3,
+  "phases": [
+    {
+      "name": "master",
+      "year_tag": "master",
+      "pages": 3,
+      "queries": [
+        "site:nseindia.com list of delisted companies xls",
+        "site:nseindia.com delisted companies list",
+        "NSE delisted companies archive",
+        "site:archives.nseindia.com delisted",
+        "site:bseindia.com list of delisted companies",
+        "site:sebi.gov.in delisting of equity shares regulations"
+      ]
+    },
+    {
+      "name": "priority_2017",
+      "year_tag": "2017",
+      "pages": 2,
+      "queries": [
+        "site:nseindia.com delisting circular 2017",
+        "site:nseindia.com compulsory delisting 2017",
+        "site:nseindia.com voluntary delisting exit offer 2017",
+        "site:sebi.gov.in delisting order 2017",
+        "site:bseindia.com compulsory delisting notice 2017",
+        "NSE voluntary delisting reverse book building 2017 exit price",
+        "NCLT resolution plan delisting NSE 2017",
+        "amalgamation scheme delisted from NSE 2017",
+        "NSE compulsory delisting 2017 shell companies",
+        "exchanges delist companies 2017 compulsory"
+      ]
+    },
+    {
+      "name": "priority_2020",
+      "year_tag": "2020",
+      "pages": 2,
+      "queries": [
+        "site:nseindia.com delisting circular 2020",
+        "site:nseindia.com compulsory delisting 2020",
+        "site:nseindia.com voluntary delisting exit offer 2020",
+        "site:sebi.gov.in delisting order 2020",
+        "site:bseindia.com compulsory delisting notice 2020",
+        "NSE voluntary delisting reverse book building 2020 exit price",
+        "NCLT resolution plan delisting NSE 2020",
+        "amalgamation scheme delisted from NSE 2020",
+        "delisting COVID 2020 NSE SEBI relaxation",
+        "IBC delisting 2020 NSE"
+      ]
+    },
+    {
+      "name": "priority_2024",
+      "year_tag": "2024",
+      "pages": 2,
+      "queries": [
+        "site:nseindia.com delisting circular 2024",
+        "site:nseindia.com compulsory delisting 2024",
+        "site:nseindia.com voluntary delisting exit offer 2024",
+        "site:sebi.gov.in delisting order 2024",
+        "site:bseindia.com compulsory delisting notice 2024",
+        "NSE voluntary delisting reverse book building 2024 exit price",
+        "NCLT resolution plan delisting NSE 2024",
+        "amalgamation scheme delisted from NSE 2024",
+        "SEBI delisting amendment 2024 fixed price NSE",
+        "NSE delisting 2024 counter offer"
+      ]
+    },
+    {
+      "name": "priority_2007",
+      "year_tag": "2007",
+      "pages": 2,
+      "queries": [
+        "site:nseindia.com delisting circular 2007",
+        "site:nseindia.com compulsory delisting 2007",
+        "site:nseindia.com voluntary delisting exit offer 2007",
+        "site:sebi.gov.in delisting order 2007",
+        "site:bseindia.com compulsory delisting notice 2007",
+        "NSE voluntary delisting reverse book building 2007 exit price",
+        "NCLT resolution plan delisting NSE 2007",
+        "amalgamation scheme delisted from NSE 2007",
+        "SEBI delisting guidelines 2003 NSE 2007",
+        "NSE delisted securities 2007"
+      ]
+    },
+    {
+      "name": "archive",
+      "year_tag": "per_query",
+      "pages": 1,
+      "queries": [
+        {
+          "q": "site:nseindia.com delisting 2006",
+          "year_tag": "2006"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2006",
+          "year_tag": "2006"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2006",
+          "year_tag": "2006"
+        },
+        {
+          "q": "site:nseindia.com delisting 2008",
+          "year_tag": "2008"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2008",
+          "year_tag": "2008"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2008",
+          "year_tag": "2008"
+        },
+        {
+          "q": "site:nseindia.com delisting 2009",
+          "year_tag": "2009"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2009",
+          "year_tag": "2009"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2009",
+          "year_tag": "2009"
+        },
+        {
+          "q": "site:nseindia.com delisting 2010",
+          "year_tag": "2010"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2010",
+          "year_tag": "2010"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2010",
+          "year_tag": "2010"
+        },
+        {
+          "q": "site:nseindia.com delisting 2011",
+          "year_tag": "2011"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2011",
+          "year_tag": "2011"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2011",
+          "year_tag": "2011"
+        },
+        {
+          "q": "site:nseindia.com delisting 2012",
+          "year_tag": "2012"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2012",
+          "year_tag": "2012"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2012",
+          "year_tag": "2012"
+        },
+        {
+          "q": "site:nseindia.com delisting 2013",
+          "year_tag": "2013"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2013",
+          "year_tag": "2013"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2013",
+          "year_tag": "2013"
+        },
+        {
+          "q": "site:nseindia.com delisting 2014",
+          "year_tag": "2014"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2014",
+          "year_tag": "2014"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2014",
+          "year_tag": "2014"
+        },
+        {
+          "q": "site:nseindia.com delisting 2015",
+          "year_tag": "2015"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2015",
+          "year_tag": "2015"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2015",
+          "year_tag": "2015"
+        },
+        {
+          "q": "site:nseindia.com delisting 2016",
+          "year_tag": "2016"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2016",
+          "year_tag": "2016"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2016",
+          "year_tag": "2016"
+        },
+        {
+          "q": "site:nseindia.com delisting 2018",
+          "year_tag": "2018"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2018",
+          "year_tag": "2018"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2018",
+          "year_tag": "2018"
+        },
+        {
+          "q": "site:nseindia.com delisting 2019",
+          "year_tag": "2019"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2019",
+          "year_tag": "2019"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2019",
+          "year_tag": "2019"
+        },
+        {
+          "q": "site:nseindia.com delisting 2021",
+          "year_tag": "2021"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2021",
+          "year_tag": "2021"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2021",
+          "year_tag": "2021"
+        },
+        {
+          "q": "site:nseindia.com delisting 2022",
+          "year_tag": "2022"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2022",
+          "year_tag": "2022"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2022",
+          "year_tag": "2022"
+        },
+        {
+          "q": "site:nseindia.com delisting 2023",
+          "year_tag": "2023"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2023",
+          "year_tag": "2023"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2023",
+          "year_tag": "2023"
+        },
+        {
+          "q": "site:nseindia.com delisting 2025",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2025",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2025",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:nseindia.com delisting 2026",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com compulsory delisting 2026",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:sebi.gov.in delisting order 2026",
+          "year_tag": "2026"
+        }
+      ]
+    }
+  ]
+}

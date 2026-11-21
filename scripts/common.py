@@ -1,11 +1,13 @@
 """Shared paths, logging, and helpers for the NSE delisting pipeline.
 
-CLI: `python scripts/common.py log "message"` appends a milestone to logs/agent_run.log.
+CLI: `python scripts/common.py log "message"` appends a milestone to logs/agent_run.log
+(and a structured `agent_note` event to logs/events.jsonl).
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
 import sys
 import time
@@ -23,6 +25,11 @@ PARSED = PROCESSED / "parsed"
 LOGS = ROOT / "logs"
 MANIFEST = LOGS / "fetch_manifest.jsonl"
 AGENT_LOG = LOGS / "agent_run.log"
+EVENTS = LOGS / "events.jsonl"
+RUNS = LOGS / "runs"
+AGENT_SESSIONS = LOGS / "agent_sessions"
+METADATA = DATA / "metadata"
+CONFIG = ROOT / "config"
 SCHEMA_CSV = ROOT / "nse_delisted_master.csv"
 
 SEARXNG_URL = "http://localhost:8082"
@@ -51,11 +58,31 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def log(msg: str, level: str = "INFO", script: str | None = None) -> None:
+def run_id() -> str:
+    """Shared id for one collection run. collect.py sets NSE_RUN_ID; standalone scripts get their own."""
+    rid = os.environ.get("NSE_RUN_ID")
+    if not rid:
+        rid = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}"
+        os.environ["NSE_RUN_ID"] = rid
+    return rid
+
+
+def event(kind: str, script: str | None = None, **fields) -> None:
+    """Append one machine-readable event to logs/events.jsonl."""
+    rec = {"ts": now_iso(), "run_id": run_id(), "script": script or Path(sys.argv[0]).stem,
+           "event": kind, **fields}
+    if os.environ.get("NSE_AGENT_SESSION"):  # set by scripts/run_agent.sh
+        rec["agent_session"] = os.environ["NSE_AGENT_SESSION"]
+    append_jsonl(EVENTS, rec)
+
+
+def log(msg: str, level: str = "INFO", script: str | None = None, kind: str = "log", **fields) -> None:
+    """Human-readable line in logs/agent_run.log plus a structured event in logs/events.jsonl."""
     AGENT_LOG.parent.mkdir(parents=True, exist_ok=True)
     name = script or Path(sys.argv[0]).stem
     with AGENT_LOG.open("a", encoding="utf-8") as f:
-        f.write(f"{now_iso()} [{level}] {name}: {msg}\n")
+        f.write(f"{now_iso()} [{level}] [{run_id()}] {name}: {msg}\n")
+    event(kind, script=name, level=level, msg=msg, **fields)
 
 
 def sha256_text(s: str) -> str:
@@ -125,7 +152,7 @@ def emit(summary: dict) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "log":
-        log(" ".join(sys.argv[2:]), script="agent")
+        log(" ".join(sys.argv[2:]), script="agent", kind="agent_note")
         emit({"logged": True})
     else:
         print('usage: python scripts/common.py log "message"')

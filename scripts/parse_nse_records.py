@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from common import (
-    MANIFEST, PARSED, RAW, ROOT, confidence_for_url, emit, log, read_jsonl,
+    MANIFEST, PARSED, RAW, ROOT, confidence_for_url, emit, event, log, read_jsonl,
 )
 
 warnings.filterwarnings("ignore")
@@ -134,7 +134,7 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
         isin_m = ISIN_RE.search(str(rec.get("isin", "")).upper())
         if not name and not isin_m:
             continue
-        if name.lower() in ("company name", "name of the company", "total"):
+        if name.lower() in ("company name", "name of the company", "total", "nan", "nat", "none"):
             continue
         row_text = " ".join(str(v) for v in vals)
         price = rec.get("exit_or_fair_value_inr")
@@ -180,6 +180,45 @@ def rows_from_text(text: str, doc_type: str) -> list[dict]:
     return out
 
 
+PROPOSED_RE = re.compile(r"propos|show.?cause|to.?be.?delisted", re.I)
+MATTER_RE = re.compile(
+    r"In the matter of(?: the Company)?\s*:?\s*(?:M/s\.?\s*)?(.{3,120}?)\s*\(\s*([A-Z][A-Z0-9&\-]{1,19})\s*\)", re.S)
+ORDER_DATE_RE = re.compile(r"\bDate[d]?\s*:?\s*([A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})")
+DECISION_RE = re.compile(r"(?:be|is hereby|are hereby|shall be)\s+(compulsorily\s+)?delisted\s+from\s+the\s+Exchange[^.]{0,200}", re.I)
+EFFECTIVE_RE = re.compile(r"delisted[^.]{0,120}?(?:w\.e\.f\.?|with effect from)\s+([A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})", re.I)
+
+
+def rows_from_order(text: str) -> list[dict]:
+    """Single-company Delisting Committee / exchange orders: one row from the order template."""
+    head = text[:4000]
+    if not re.search(r"Delisting Committee|In the matter of", head, re.I):
+        return []
+    m = MATTER_RE.search(head)
+    if not m:
+        return []
+    name = re.sub(r"\s+", " ", m.group(1)).strip(" :,-")
+    dates = ORDER_DATE_RE.findall(text[-3000:])
+    found = list(DECISION_RE.finditer(text))
+    # Orders warn "failing which ... shall be delisted" before the actual decision: prefer the
+    # compulsory decision, else the last delisting sentence.
+    decision = next((d for d in found if d.group(1)), found[-1] if found else None)
+    eff = EFFECTIVE_RE.search(decision.group(0)) if decision else None
+    isin = ISIN_RE.search(text.upper())
+    dtype = classify(decision.group(0)) if decision else classify(head)
+    if decision and decision.group(1):
+        dtype = "COMPULSORY"
+    return [{
+        "company_name": name,
+        "nse_symbol": m.group(2),
+        "isin": isin.group(0) if isin else None,
+        "order_date": to_iso(dates[-1]) if dates else None,
+        "effective_delisting_date": to_iso(eff.group(1)) if eff else None,
+        "exit_or_fair_value_inr": None,
+        "delisting_type": dtype,
+        "extraction": "order" if decision else "order_no_decision",
+    }]
+
+
 def parse_file(path: Path) -> tuple[list[dict], dict]:
     ext = path.suffix.lower()
     stats = {"tables_seen": 0, "no_text": False}
@@ -211,6 +250,8 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
             rows += rows_from_table(df, doc_type)
         if not rows:
             rows = rows_from_text(text, doc_type)
+        if not rows:
+            rows = rows_from_order(text)
     elif ext == ".pdf":
         import pdfplumber
         tables = []
@@ -223,10 +264,14 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
         stats["tables_seen"] = len(tables)
         stats["no_text"] = not text.strip()
         doc_type = classify(text)
-        for df in tables:
-            rows += rows_from_table(df, doc_type)
-        if not rows:
-            rows = rows_from_text(text, doc_type)
+        order_rows = rows_from_order(text)
+        if order_rows:  # order template wins: its tables are compliance lists, not delisted companies
+            rows = order_rows
+        else:
+            for df in tables:
+                rows += rows_from_table(df, doc_type)
+            if not rows:
+                rows = rows_from_text(text, doc_type)
     elif ext == ".txt":
         text = path.read_text(encoding="utf-8", errors="ignore")
         rows = rows_from_text(text, classify(text))
@@ -262,26 +307,32 @@ def main() -> int:
             rows, stats = parse_file(p)
         except Exception as e:  # keep going; one bad artifact shouldn't stop the batch
             summary["errors"].append({"file": rel, "error": f"{type(e).__name__}: {e}"[:200]})
-            log(f"parse error {rel}: {e}", level="ERROR")
+            log(f"parse error {rel}: {e}", level="ERROR", kind="parse_error", file=rel)
             continue
         m = idx.get(rel, {})
         src = m.get("url")
         conf = confidence_for_url(src) if src else "NEEDS_REVIEW"
+        # Lists of companies *proposed* to be delisted are leads, not delistings.
+        record_status = "PROPOSED" if PROPOSED_RE.search(src or rel) else "DELISTED"
         with out.open("w", encoding="utf-8") as f:
             for r in rows:
                 r.update({"source_url": src, "local_artifact_path": rel, "year_tag": m.get("year_tag"),
+                          "record_status": record_status,
                           "confidence_status": conf if (r.get("isin") or r.get("effective_delisting_date")
                                                         or r.get("order_date")) else "NEEDS_REVIEW"})
                 f.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
         summary["parsed"] += 1
         summary["rows"] += len(rows)
+        event("parse_file", file=rel, rows=len(rows), tables_seen=stats["tables_seen"],
+              no_text=stats.get("no_text", False), source_url=src)
         if not rows:
             summary["zero_row_files"].append({"file": rel, "tables_seen": stats["tables_seen"]})
         if stats.get("no_text"):
             summary["no_text"].append(rel)
 
     summary["zero_row_files"] = summary["zero_row_files"][:20]
-    log(f"parsed={summary['parsed']} rows={summary['rows']} errors={len(summary['errors'])}")
+    log(f"parsed={summary['parsed']} rows={summary['rows']} errors={len(summary['errors'])}",
+        kind="parse", files=summary["parsed"], rows=summary["rows"], errors=len(summary["errors"]))
     emit(summary)
     return 0
 

@@ -1,1 +1,7 @@
-.rooignore
+# Keep bulky / raw material out of the agent's context
+vendor/
+.venv/
+data/raw/
+data/search_cache/
+data/quarantine/
+data/processed/parsed/

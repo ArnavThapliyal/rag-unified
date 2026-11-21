@@ -126,6 +126,8 @@ def main() -> int:
     raw = []
     for p in sorted(PARSED.glob("*.jsonl")):
         raw.extend(read_jsonl(p))
+    proposed_raw = [r for r in raw if r.get("record_status") == "PROPOSED"]
+    raw = [r for r in raw if r.get("record_status") != "PROPOSED"]
     rows = [normalize(r) for r in raw]
     rows = [r for r in rows if r["_key"]]
     dropped = len(raw) - len(rows)
@@ -161,13 +163,27 @@ def main() -> int:
         w.writeheader()
         w.writerows(priority)
 
+    # Proposed-delisting leads: companies to verify later (not part of the master dataset).
+    leads = {}
+    delisted_keys = {r["_key"] for r in merged}
+    for r in (normalize(x) for x in proposed_raw):
+        if r["_key"] and r["_key"] not in leads:
+            r["already_in_master"] = r["_key"] in delisted_keys
+            leads[r["_key"]] = r
+    lead_fields = ["company_name", "nse_symbol", "isin", "source_url", "local_artifact_path", "already_in_master"]
+    with (PROCESSED / "proposed_delisting_leads.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=lead_fields, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(sorted(leads.values(), key=lambda r: r["company_name"] or ""))
+
     summary = {
-        "parsed_rows_in": len(raw), "dropped_no_key": dropped, "records_out": len(merged),
+        "parsed_rows_in": len(raw), "proposed_leads": len(leads), "dropped_no_key": dropped, "records_out": len(merged),
         "duplicates_merged": len(rows) - len(merged), "priority_records": len(priority),
         "by_confidence": {c: sum(r["confidence_status"] == c for r in merged) for c in CONF_RANK},
         "out_of_range_years": out_of_range[:20],
     }
-    log(f"merge in={len(raw)} out={len(merged)} priority={len(priority)}")
+    log(f"merge in={len(raw)} out={len(merged)} priority={len(priority)}", kind="merge",
+        **{k: v for k, v in summary.items() if k != "out_of_range_years"})
     emit(summary)
     return 0
 

@@ -93,7 +93,9 @@ def run(query: str, pages: int, year_tag: str | None) -> dict:
         if not page_new:
             break
 
-    log(f"query={query!r} pages={len(cache_files)} urls={len(new_urls)} mode={mode} tag={year_tag}")
+    log(f"query={query!r} pages={len(cache_files)} urls={len(new_urls)} mode={mode} tag={year_tag}",
+        kind="search", query=query, pages=len(cache_files), cached_pages=cached_pages,
+        urls=len(new_urls), mode=mode, year_tag=year_tag)
     return {
         "query": query, "year_tag": year_tag, "mode": mode,
         "cache_files": cache_files, "cached_pages": cached_pages,
@@ -129,7 +131,7 @@ def main() -> int:
     try:
         emit(run(a.query, max(1, a.pages), a.year_tag))
     except (requests.RequestException, RuntimeError) as e:
-        log(f"query={a.query!r} failed: {e}", level="ERROR")
+        log(f"query={a.query!r} failed: {e}", level="ERROR", kind="search_error", query=a.query)
         emit({"error": str(e), "query": a.query})
         return 1
     return 0
