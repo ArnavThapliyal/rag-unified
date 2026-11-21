@@ -32,3 +32,4 @@ data/metadata/job.json
 
 # Test caches
 .pytest_cache/
+logs/.issues.lock

@@ -14,8 +14,10 @@ bumps its `times_seen` instead of adding a duplicate.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import sys
+from contextlib import contextmanager
 
 from common import LOGS, agent_session, emit, log, now_iso, read_jsonl
 
@@ -32,7 +34,21 @@ def save(issues: list[dict]) -> None:
     ISSUES.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in issues), encoding="utf-8")
 
 
+@contextmanager
+def locked():
+    """Serialise read-modify-write: the agent may run several report_issue.py calls at once."""
+    ISSUES.parent.mkdir(parents=True, exist_ok=True)
+    with (LOGS / ".issues.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def report(kind: str, summary: str, evidence: list[str]) -> dict:
+    with locked():
+        return _report(kind, summary, evidence)
+
+
+def _report(kind: str, summary: str, evidence: list[str]) -> dict:
     issues = load()
     for i in issues:
         if i["status"] == "open" and i["kind"] == kind and i["summary"] == summary:
