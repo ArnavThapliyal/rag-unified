@@ -14,7 +14,9 @@
 # logs/, so the new session resumes the plan. Abnormal = non-zero exit (e.g. Cline's hub daemon
 # restarted: "session not found") or a run that did not finish "completed" (e.g. Cline's loop
 # detection aborts after 5 identical tool calls, which still exits 0).
-# A completed run, Ctrl-C, low disk, or SearXNG/LM Studio being down stops the loop.
+# A completed run, Ctrl-C, low disk, or SearXNG/LM Studio being down stops the loop. If the session stopped
+# because the search engines suspended SearXNG (search_engines_suspended), it waits 31 min and starts a new
+# session (up to CLINE_MAX_COOLDOWNS times).
 #
 # Raw Cline events  -> logs/agent_sessions/<session>.jsonl
 # Readable progress -> terminal + logs/agent_run.log (tool calls, errors, completion)
@@ -27,6 +29,7 @@ PROMPT_FILE="${1:-prompts/autonomous_collection.md}"
 TIMEOUT="${CLINE_TIMEOUT:-}"   # empty = no limit (cline rejects --timeout 0)
 MODEL="${CLINE_MODEL:-qwen/qwen3.8-27b}"
 MAX_RESTARTS="${CLINE_MAX_RESTARTS:-5}"
+MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-8}"   # search-engine suspensions to wait out (30 min each)
 PY="$ROOT/.venv/bin/python"
 
 [ -f "$PROMPT_FILE" ] || { echo "prompt file not found: $PROMPT_FILE" >&2; exit 2; }
@@ -50,6 +53,7 @@ TIMEOUT_ARGS=()
 [ -n "$TIMEOUT" ] && TIMEOUT_ARGS=(--timeout "$TIMEOUT")
 mkdir -p logs/agent_sessions
 attempt=0
+cooldowns=0
 status=0
 while :; do
   preflight || { status=1; break; }
@@ -73,6 +77,14 @@ while :; do
   finish=$(grep -o '"type":"run_result","finishReason":"[a-z_]*' "$OUT" | tail -1 | sed 's/.*"finishReason":"//' || true)
   "$PY" scripts/common.py log "agent session $SESSION ended (exit $status, finish: ${finish:-none})" >/dev/null
   [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
+  if grep -q 'stop_reason[^a-z]*search_engines_suspended' "$OUT" && [ "$cooldowns" -lt "$MAX_COOLDOWNS" ]; then
+    cooldowns=$((cooldowns + 1))
+    echo "■ search engines suspended SearXNG — waiting 31 min, then a fresh session ($cooldowns/$MAX_COOLDOWNS)"
+    "$PY" scripts/common.py log "search engines suspended: waiting 31 min before session restart ($cooldowns/$MAX_COOLDOWNS)" >/dev/null
+    for _ in $(seq 186); do sleep 10; [ "$interrupted" -eq 1 ] && break; done
+    [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
+    continue
+  fi
   [ "$status" -eq 0 ] && [ "$finish" = "completed" ] && break
   grep -q '"low_disk_space"' "$OUT" && { echo "■ stopped for low disk space — not restarting"; break; }
   attempt=$((attempt + 1))

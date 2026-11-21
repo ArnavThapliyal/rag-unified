@@ -41,6 +41,9 @@ directly, and never use `&`, `nohup` or /tmp logs.
 - All plan phases complete, harvest backlog 0, and the last two cycles added 0 new records; or
 - SearXNG unavailable (collect.py returns `searxng_unavailable` / `searxng_errors`) twice in a row; or
 - collect.py returns `stop_reason: low_disk_space` (the user must free disk space — stop immediately); or
+- collect.py returns `stop_reason: search_engines_suspended` (the search engines rate-limited SearXNG). If the
+  harvest backlog is > 0, finish it with `--harvest-only` first; then log it and stop. Don't retry searches —
+  `run_agent.sh` waits out the cooldown and starts a fresh session; or
 - A script crashes (traceback / non-JSON output) or a job ends `status: failed` twice in a row → report it
   (`--kind script_error`, include the job output path) and STOP: collection can't continue until the user fixes it; or
 - 25 cycles completed.

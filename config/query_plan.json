@@ -313,6 +313,53 @@
           "year_tag": "2026"
         }
       ]
+    },
+    {
+      "name": "agent_added",
+      "year_tag": "per_query",
+      "pages": 1,
+      "queries": [
+        {
+          "q": "site:nseindia.com \"3rd Rock Multimedia Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"AJR Infra and Tolling Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"ATN International Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"Arcotech Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"BDR Buildcon Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"Bright Solar Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"Debock Industries Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"Dharani Sugars & Chemicals Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"Eros International Media Limited\" delisting order",
+          "year_tag": "2026"
+        },
+        {
+          "q": "site:nseindia.com \"GIR Natureview Resorts Limited\" delisting order",
+          "year_tag": "2026"
+        }
+      ]
     }
   ]
 }

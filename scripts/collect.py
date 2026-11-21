@@ -74,6 +74,9 @@ def plan_items(plan: dict, phase: str | None) -> list[dict]:
     return items
 
 
+SEARCH_COOLDOWN_MIN = 30  # after search engines suspend SearXNG, no queries for this long
+
+
 def master_count() -> int:
     p = PROCESSED / "nse_delisted_master.csv"
     if not p.exists():
@@ -196,7 +199,8 @@ def main() -> int:
 
     def pending(it):
         st = state["queries"].get(it["query"], {}).get("status")
-        return st is None or (a.retry_failed and st in ("failed", "no_results"))
+        # engines_blocked = searched while SearXNG's engines were suspended: never really searched
+        return st in (None, "engines_blocked") or (a.retry_failed and st in ("failed", "no_results"))
 
     todo = [] if a.harvest_only else [it for it in items if pending(it)]
     if a.max_queries:
@@ -279,6 +283,16 @@ def main() -> int:
         emit({k: step[k] for k in ("run_id", "status", "stop_reason", "queries_planned")})
         return 0
 
+    wait_s = state.get("engines_suspended_until", 0) - time.time()
+    if wait_s > 0:  # engines rate-limited us recently: don't touch SearXNG until the cooldown ends
+        step.update(status="error", stop_reason="search_engines_suspended", finished_at=now_iso())
+        write_summary()
+        log(f"search cooldown: engines were suspended, {wait_s / 60:.0f} min left; no queries run",
+            level="WARN", kind="search_cooldown")
+        emit({"run_id": rid, "status": "error", "stop_reason": "search_engines_suspended",
+              "retry_after_min": round(wait_s / 60), "hint": "harvest-only still works; otherwise wait"})
+        return 1
+
     if not searxng_ok():
         step.update(status="error", stop_reason="searxng_unavailable", finished_at=now_iso())
         write_summary()
@@ -286,7 +300,7 @@ def main() -> int:
         emit({"run_id": rid, "status": "error", "stop_reason": "searxng_unavailable"})
         return 1
 
-    consecutive_search_errors = 0
+    consecutive_search_errors = consecutive_engine_blocks = 0
     since_process = 0
     try:
         for i, it in enumerate(todo, 1):
@@ -324,16 +338,30 @@ def main() -> int:
                 if f["saved"] else {"fetched_ok": 0}
             state["blocked_domains"] = sorted(blocked)
 
-            if not s["result_count"] and s.get("unresponsive_engines"):
+            engines_blocked = not s["result_count"] and bool(s.get("unresponsive_engines"))
+            if engines_blocked:
+                consecutive_engine_blocks += 1
                 log(f"0 results, unresponsive engines {s['unresponsive_engines']}: {q}", level="WARN",
                     kind="engines_unresponsive", query=q, engines=s["unresponsive_engines"])
-            entry.update(status="done" if s["result_count"] else "no_results", results=s["result_count"],
+            else:
+                consecutive_engine_blocks = 0
+            status = "done" if s["result_count"] else ("engines_blocked" if engines_blocked else "no_results")
+            entry.update(status=status, results=s["result_count"],
                          unresponsive_engines=s.get("unresponsive_engines", []),
                          candidate_urls=len(set(urls)), fetched_ok=f["fetched_ok"],
                          quarantined=f["quarantined"], cache_files=s["cache_files"])
             state["queries"][q] = entry
             save_state(state)
 
+            if consecutive_engine_blocks >= 2:
+                # Search engines rate-limit/CAPTCHA SearXNG; more queries would only extend the ban.
+                step["stop_reason"] = "search_engines_suspended"
+                state["engines_suspended_until"] = time.time() + 60 * SEARCH_COOLDOWN_MIN
+                save_state(state)
+                log(f"stopping: search engines suspended for {consecutive_engine_blocks} queries in a row "
+                    f"({', '.join(s['unresponsive_engines'])}); queries stay pending — retry later",
+                    level="ERROR", kind="search_engines_suspended", engines=s["unresponsive_engines"])
+                break
             step["queries_done"] += 1
             step["queries_no_results"] += not s["result_count"]
             step["urls_found"] += s["result_count"]

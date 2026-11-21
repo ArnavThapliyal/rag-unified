@@ -51,6 +51,8 @@ The only file you may edit is `config/query_plan.json` (append to the `agent_add
 - Do not hand-edit `data/processed/*` or `data/metadata/*`. Re-run scripts instead.
 - To add searches, append to a phase named `agent_added` in `config/query_plan.json`; never delete queries.
 - If collect.py stops with `low_disk_space`, stop working and log it — the user has to free space.
+- If collect.py stops with `search_engines_suspended`, don't retry searches (it extends the ban): finish any
+  harvest backlog with `--harvest-only`, log it, and stop. `run_agent.sh` restarts after the cooldown.
 - Log milestones: `.venv/bin/python scripts/common.py log "<what happened>"`.
 - If a script fails twice with the same error, report it (`--kind script_error`) and stop if collection can't continue.
 - Keep answers short: report counts and file paths, not document contents.
