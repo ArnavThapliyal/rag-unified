@@ -24,7 +24,7 @@ from urllib.parse import unquote, urljoin, urlparse
 import requests
 
 from common import (
-    MANIFEST, PRIMARY_DOMAINS, PROCEDURAL_RE, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, domain_of, emit, log,
+    MANIFEST, NON_LISTING_RE, PRIMARY_DOMAINS, PROCEDURAL_RE, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, domain_of, emit, log,
     now_iso, polite_sleep, raw_dir_for_tag, read_jsonl, sha256_bytes, sha256_text,
 )
 
@@ -59,7 +59,8 @@ def harvest_links(path: Path, page_url: str) -> list[str]:
         url = re.sub(r"(?<!:)//+", "/", url)  # NSE links often contain '//web/...'
         if not DOC_LINK_RE.search(urlparse(url).path) or not domain_matches(url, PRIMARY_DOMAINS):
             continue
-        if PROCEDURAL_RE.search(unquote(urlparse(url).path.rsplit("/", 1)[-1])):
+        fname = unquote(urlparse(url).path.rsplit("/", 1)[-1])
+        if PROCEDURAL_RE.search(fname) or NON_LISTING_RE.search(fname):  # forms/SOPs, broker/member orders
             continue
         if page_relevant or RELEVANT_RE.search(url) or RELEVANT_RE.search(a.get_text(" ", strip=True)):
             out.append(url)

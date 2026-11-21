@@ -22,7 +22,7 @@ from urllib.parse import unquote
 import pandas as pd
 
 from common import (
-    MANIFEST, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, isin_valid, log, read_jsonl,
+    MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, isin_valid, log, read_jsonl,
 )
 
 warnings.filterwarnings("ignore")
@@ -222,9 +222,6 @@ def rows_from_text(text: str, doc_type: str) -> list[dict]:
 
 
 DELIST_RE = re.compile(r"delist", re.I)
-# NSE/BSE pages about trading members, brokers, arbitration etc. list firms, not delisted companies.
-NON_LISTING_RE = re.compile(r"member|broker|defaulter|expelled|arbitrat|complaint|debarred|mcsgfc|"
-                            r"authori[sz]ed.?person|sub.?broker|depositor", re.I)
 PROPOSED_RE = re.compile(r"propos|show.?cause|to.?be.?delisted", re.I)
 # "In the matter of the Company: SecUR Credentials Limited (SECURCRED)", or without the symbol and with
 # the name on the next line: "In the matter of the company\nM/s Petron Engineering Construction Limited".

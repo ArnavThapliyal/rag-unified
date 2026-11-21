@@ -53,6 +53,10 @@ SECONDARY_DOMAINS = (
 PROCEDURAL_RE = re.compile(r"checklist|\bsop\b|sop_for|annexure|format|faq|guidance|application.?form|"
                            r"template|undertaking|declaration|public.?notice", re.I)
 
+# NSE/BSE pages about trading members, brokers, arbitration etc. list firms, not delisted companies.
+NON_LISTING_RE = re.compile(r"member|broker|defaulter|expelled|arbitrat|complaint|debarred|mcsgfc|"
+                            r"authori[sz]ed.?person|sub.?broker|depositor", re.I)
+
 SCHEMA_FIELDS = [
     "record_id", "company_name", "nse_symbol", "isin", "delisting_type",
     "order_date", "effective_delisting_date", "calendar_year", "financial_year",
