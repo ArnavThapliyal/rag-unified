@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run Cline unattended (auto-approve, no prompts) on the collection task.
+# Run Cline unattended (auto-approve all tools, no prompts) on the collection task.
 #
 #   scripts/run_agent.sh                         # default prompt: prompts/autonomous_collection.md
 #   scripts/run_agent.sh prompts/my_task.md      # custom prompt file
@@ -41,7 +41,9 @@ set +e
 TIMEOUT_ARGS=()
 [ -n "$TIMEOUT" ] && TIMEOUT_ARGS=(--timeout "$TIMEOUT")
 # shellcheck disable=SC2086
-npx --no-install cline --json -c "$ROOT" -P lmstudio -k lm-studio -m "$MODEL" \
+# --auto-approve true is required: it overrides any approval settings saved in ~/.cline by
+# interactive use, which would otherwise make every tool call fail in this non-interactive mode.
+npx --no-install cline --json -c "$ROOT" -P lmstudio -k lm-studio -m "$MODEL" --auto-approve true \
   "${TIMEOUT_ARGS[@]+"${TIMEOUT_ARGS[@]}"}" --retries 5 ${CLINE_EXTRA_ARGS:-} "$(cat "$PROMPT_FILE")" \
   | tee "$OUT" | "$PY" scripts/agent_progress.py
 status=${PIPESTATUS[0]}
