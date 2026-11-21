@@ -32,6 +32,9 @@ step "disk"
 d=$(cd scripts && "$PY" -c "import common; d = common.disk_status(); print(d['level'], d['data_gb'], 'GB data,', d['free_gb'], 'GB free')")
 case "$d" in critical*) bad "$d" ;; *) ok "$d" ;; esac
 
+step "tesseract (OCR)"
+v=$(tesseract --version 2>/dev/null | head -1) && ok "$v" || bad "brew install tesseract (scanned PDFs need OCR)"
+
 step "no stale references"
 hits=$(grep -rIil "roo code\|\.roo/\|rooignore" --exclude-dir={vendor,node_modules,.venv,.git} . 2>/dev/null | grep -v '^./scripts/check.sh$')
 [ -z "$hits" ] && ok || bad "$hits"

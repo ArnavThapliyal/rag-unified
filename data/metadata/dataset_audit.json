@@ -1,22 +1,17 @@
 {
- "generated_at": "2026-11-21T12:52:04+00:00",
- "records": 484,
+ "generated_at": "2026-11-21T13:03:37+00:00",
+ "records": 483,
  "error_count": 0,
- "warning_count": 44,
+ "warning_count": 43,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 6,
+   "count": 5,
    "examples": [
     {
      "record_id": "c0a64e851ae82af1",
      "company_name": "ISIN of BHAGYANAGAR PROPERTIES LIMITED",
      "source_url": "https://nsearchives.nseindia.com/corporate/BHAGYAPROP_01122022164452_BPL_ExitOfferLetterSubmission.pdf"
-    },
-    {
-     "record_id": "1bfca654b5287942",
-     "company_name": "Non- Obtaining of SCORES Authentication",
-     "source_url": "https://www.sebi.gov.in/sebi_data/attachdocs/aug-2019/1567161016085.pdf"
     },
     {
      "record_id": "7abed1eab72f9118",

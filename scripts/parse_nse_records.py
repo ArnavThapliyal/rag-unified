@@ -21,6 +21,8 @@ from urllib.parse import unquote
 
 import pandas as pd
 
+import ocr
+
 from common import (
     MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, isin_valid, log, read_jsonl,
 )
@@ -293,6 +295,8 @@ def rows_from_order(text: str) -> list[dict]:
     if not symbol:
         s = NAME_SYMBOL_RE.search(text)
         symbol = s.group(1) if s else None
+    if not name_ok(name, bool(symbol)):  # "In the matter of Non-Obtaining of SCORES Authentication"
+        return []
     dates = ORDER_DATE_RE.findall(text[-3000:])
     found = list(DECISION_RE.finditer(text))
     # Orders warn "failing which ... shall be delisted" before the actual decision: prefer the
@@ -313,6 +317,37 @@ def rows_from_order(text: str) -> list[dict]:
         "delisting_type": dtype,
         "extraction": "order" if decision else "order_no_decision",
     }]
+
+
+# NSE listing-department letters to a company ("Ref: NSE/LIST/... <date>", "The Company Secretary\n<name>",
+# "... delisted (withdrawn from admission to dealings) w.e.f <date>"), often scanned.
+LETTER_REF_RE = re.compile(r"Ref\s*[:.]?\s*NSE/LIST/[^\n]*?([A-Z][a-z]+\.?\s+\d{1,2},?\s*\d{4})")
+LETTER_TO_RE = re.compile(r"The Company Secretary\W*\n+\W*([^\n]{3,100})")
+LETTER_SUBJECT_RE = re.compile(r"Sub(?:ject)?\s*[:.\-]+\s*([^\n]{3,160})")
+LETTER_EFFECTIVE_RE = re.compile(r"delist\w*[^.]{0,220}?(?:w\.?e\.?f\.?|with effect from)\s*([A-Z][a-z]+\.?\s+\d{1,2},?\s*\d{4})",
+                                 re.I | re.S)
+
+
+def rows_from_letter(text: str) -> list[dict]:
+    text = text.replace("_", " ")  # OCR reads "March 24" as "March_24"
+    ref, to = LETTER_REF_RE.search(text), LETTER_TO_RE.search(text)
+    # The Exchange's own decision is the last "delist ... w.e.f." sentence; earlier ones quote BSE's
+    # delisting or the original listing date.
+    effs = [m for m in LETTER_EFFECTIVE_RE.finditer(text) if not re.search(r"\bBSE\b|listed on", m.group(0))]
+    eff = effs[-1] if effs else None
+    if not (ref and to and eff):
+        return []
+    name = re.sub(r"\s+", " ", re.sub(r"[^\w&.,()' -]", " ", to.group(1))).strip(" .,-")
+    name = re.sub(r"^M/s\.?\s*", "", name)
+    if not name_ok(name, False):
+        return []
+    subject = LETTER_SUBJECT_RE.search(text)
+    dtype = classify(subject.group(1)) if subject else "OTHER"
+    if dtype == "OTHER":
+        dtype = "COMPULSORY" if re.search(r"withdrawn from admission to dealings|compulsor", text, re.I) else classify(text)
+    return [{"company_name": name, "nse_symbol": None, "isin": None, "order_date": to_iso(ref.group(1)),
+             "effective_delisting_date": to_iso(eff.group(1)), "exit_or_fair_value_inr": None,
+             "delisting_type": dtype, "extraction": "letter"}]
 
 
 def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: dict) -> tuple[bool, str]:
@@ -378,8 +413,12 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
                         tables.append(pd.DataFrame(t))
         stats["tables_seen"] = len(tables)
         stats["no_text"] = not text.strip()
+        if stats["no_text"]:  # scanned PDF: OCR it (cached), then use the text extractors
+            text = ocr.ocr_pdf(path)
+            stats["ocr"] = bool(text.strip())
+            stats["text_head"] = text[:2000]
         doc_type = classify(text)
-        order_rows = rows_from_order(text)
+        order_rows = rows_from_order(text) or rows_from_letter(text)
         if order_rows:  # order template wins: its tables are compliance lists, not delisted companies
             rows = order_rows
         else:
@@ -435,6 +474,8 @@ def main() -> int:
             rows = []
             summary["irrelevant_files"] += 1
         conf = confidence_for_url(src) if src else "NEEDS_REVIEW"
+        if stats.get("ocr"):  # OCR can misread names and dates: a human should confirm
+            conf = "NEEDS_REVIEW"
         # Lists of companies *proposed* to be delisted are leads, not delistings.
         record_status = "PROPOSED" if PROPOSED_RE.search(src or rel) else "DELISTED"
         with out.open("w", encoding="utf-8") as f:

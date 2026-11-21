@@ -59,6 +59,7 @@ cd /Users/arnav/Projects/Software/nse-delisted-comp
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python pipeline
 .venv/bin/pip install -r requirements-dev.txt                         # pytest + pyflakes
 npm install                                                           # Cline CLI (pinned 3.0.75)
+brew install tesseract                                                # OCR for scanned PDFs
 
 # Optional reference copy of Cline's source (git-ignored)
 git clone --depth 1 https://github.com/cline/cline vendor/cline
@@ -188,6 +189,7 @@ tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio s
 | `logs/fetch_manifest.jsonl` | Every download attempt: timestamp, url, http_status, sha256, local_path, year_tag | Yes |
 | `logs/events.jsonl` | Every action as JSON (search, fetch, harvest, parse, merge, run_start/end, agent tool calls), tagged with `run_id` and `agent_session` | No (large) |
 | `logs/agent_run.log` | The same events as readable lines | No |
+| `data/processed/ocr/` | OCR text of scanned PDFs, one `.txt` per file (cache) | No (regenerable) |
 | `data/processed/bse_only_delistings.csv` | Companies delisted from BSE that appear in no NSE source and have no NSE symbol (many were never NSE-listed). Kept out of the master; same columns as the audit file | Yes |
 | `logs/issues.jsonl` | Anomalies reported by the agent (`report_issue.py`): kind, summary, evidence paths, times seen, open/closed | Yes |
 | `logs/agent_sessions/<session>.jsonl` | Cline's full raw event stream (its reasoning, tool calls, outputs, token usage) | No (large) |
@@ -222,6 +224,7 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 |---|---|
 | `scripts/run_agent.sh` | Launch Cline unattended. Checks that SearXNG and LM Studio are up, logs the session, prints the dashboard at the end. |
 | `scripts/collect.py` | The resumable pipeline run (search → fetch → harvest → parse → merge → metadata) |
+| `scripts/ocr.py` | OCR for scanned PDFs (tesseract on pages rendered by pypdfium2, first 12 pages, cached). Used automatically by the parser; `python scripts/ocr.py <pdf>` prints the text. Needs `brew install tesseract`. |
 | `scripts/report_issue.py` | Records an anomaly for you to review (`--kind`, `--summary`, `--evidence`; `--list` shows open ones). The agent's only response to problems. |
 | `scripts/job.py` | Runs `collect.py` as a detached background job (`start`, `wait`, `status`, `stop`). The agent uses it because Cline kills shell commands after 30 s. |
 | `scripts/status_report.py` | Dashboard: indicator bars, year × type grid, gaps. Supports `--watch N`, `--json`, `--year`, `--needs-review`. |
@@ -304,6 +307,6 @@ None of these is built yet. They are possible next steps.
 
 - Many `nseindia.com` pages load their content with JavaScript, so their HTML holds no table data. Harvesting gets around this by following the document links they contain (PDF/XLSX on `nsearchives.nseindia.com`).
 - Single-company order PDFs usually have no ISIN, so `isin` stays empty until another source (a master list or a BSE notice) supplies it.
-- Scanned (image-only) PDFs are flagged as `no_text` and need OCR or manual review.
+- Scanned (image-only) PDFs are OCR'd with tesseract (`scripts/ocr.py`, cached in `data/processed/ocr/`). OCR can misread names and dates, so rows from OCR are marked `NEEDS_REVIEW`; where NSE's own list has the same company, the verified row wins on merge.
 - Search results sometimes point to `nseindia.in`, which is not the official domain. Rows from it stay `NEEDS_REVIEW`.
 - The parser's heuristics are tuned on the formats seen so far. New formats show up as `zero_rows` issues from the agent; extending the parser is a manual step.

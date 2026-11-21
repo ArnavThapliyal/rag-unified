@@ -191,3 +191,39 @@ def test_voluntary_delisting_status_table_keeps_only_completed_delistings():
     [row] = p.rows_from_status_table(df)
     assert (row["company_name"], row["effective_delisting_date"]) == ("PAE Limited", "2022-04-18")
     assert row["delisting_type"].startswith("VOLUNTARY")
+
+
+LETTER = """NATIONAL STOCK EXCHANGE OF INDIA LIMITED
+Ref: NSE/LIST/2018/ 47637 May 18, 2018
+The Company Secretary
+Kingfisher Airlines Ltd.
+UB Tower, Level 12 UB City,
+Sub: Compulsory Delisting of equity shares of Kingfisher Airlines Ltd.
+The equity shares of the company were listed on the Exchange w.e.f. June 12, 2006.
+Further, it was observed that the equity shares your Company have been compulsory delisted
+by BSE Limited with effect from May 11, 2018.
+In view of the above, the Exchange has decided to delist (withdrawn from admission to dealings) the equity
+shares your Company pursuant to Regulation 21(2) (b) with effect from May_30, 2018.
+"""
+
+
+def test_nse_listing_letter_uses_the_exchanges_own_date():
+    [row] = p.rows_from_letter(LETTER)
+    assert row["company_name"] == "Kingfisher Airlines Ltd"
+    assert row["order_date"] == "2018-05-18"
+    assert row["effective_delisting_date"] == "2018-05-30"   # not BSE's May 11 or the 2006 listing date
+    assert row["delisting_type"] == "COMPULSORY"
+
+
+def test_ocr_is_cached_and_skipped_without_tesseract(tmp_path, monkeypatch):
+    import ocr
+    monkeypatch.setattr(ocr, "OCR_DIR", tmp_path)
+    pdf = tmp_path / "raw" / "scan.pdf"
+    monkeypatch.setattr(ocr, "available", lambda: False)
+    assert ocr.ocr_pdf(pdf) == ""
+    (tmp_path / "raw__scan.txt").write_text("cached text")
+    assert ocr.ocr_pdf(pdf) == "cached text"
+
+
+def test_order_title_that_is_not_a_company_is_skipped():
+    assert p.rows_from_order("Before the Whole Time Member\\nIn the matter of Non- Obtaining of SCORES Authentication\\n") == []

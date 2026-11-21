@@ -5,3 +5,4 @@ data/raw/
 data/search_cache/
 data/quarantine/
 data/processed/parsed/
+data/processed/ocr/

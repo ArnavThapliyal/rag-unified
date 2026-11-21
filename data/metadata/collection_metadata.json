@@ -1,18 +1,18 @@
 {
- "generated_at": "2026-11-21T12:52:04+00:00",
+ "generated_at": "2026-11-21T13:03:36+00:00",
  "indicators": {
-  "records_total": 484,
+  "records_total": 483,
   "priority_year_records": 118,
-  "verified_primary_pct": 99.4,
-  "needs_review": 3,
+  "verified_primary_pct": 99.6,
+  "needs_review": 2,
   "priority_grid_coverage_pct": 40.0,
   "query_plan_complete_pct": 13.1,
   "queries_done": 14,
   "queries_total": 107,
   "fetch_success_rate_pct": 97.8,
   "artifacts_downloaded": 407,
-  "artifacts_with_rows": 77,
-  "artifacts_zero_rows": 198,
+  "artifacts_with_rows": 96,
+  "artifacts_zero_rows": 179,
   "artifacts_irrelevant": 132,
   "blocked_domains": 0,
   "isin_completeness_pct": 0.6,
@@ -31,7 +31,7 @@
   "proposed_delisting_leads": 14,
   "bse_only_delistings": 116,
   "audit_errors": 0,
-  "audit_warnings": 44,
+  "audit_warnings": 43,
   "disk": {
    "data_gb": 0.66,
    "free_gb": 370.4,
@@ -171,10 +171,10 @@
    "priority_2017": 56
   },
   "parsed": 407,
-  "rows_extracted": 860
+  "rows_extracted": 879
  },
  "records": {
-  "total": 484,
+  "total": 483,
   "by_year": {
    "2002": 4,
    "2003": 7,
@@ -201,21 +201,21 @@
    "2024": 2,
    "2025": 2,
    "2026": 3,
-   "unknown": 6
+   "unknown": 5
   },
   "by_type": {
    "VOLUNTARY_EXIT_OFFER": 4,
-   "OTHER": 43,
+   "OTHER": 42,
    "COMPULSORY": 190,
    "IBC_NCLT": 120,
    "VOLUNTARY_NO_EXIT": 127
   },
   "by_confidence": {
    "VERIFIED_PRIMARY": 481,
-   "NEEDS_REVIEW": 3
+   "NEEDS_REVIEW": 2
   },
   "by_regime": {
-   "unknown": 6,
+   "unknown": 5,
    "SEBI_2003_Guidelines": 48,
    "SEBI_2009_Regs": 355,
    "SEBI_2021_Regs": 69,
@@ -256,9 +256,9 @@
   "priority_grid_cells_total": 20,
   "field_completeness_pct": {
    "isin": 0.6,
-   "nse_symbol": 91.3,
-   "effective_delisting_date": 94.6,
-   "order_date": 8.9,
+   "nse_symbol": 91.5,
+   "effective_delisting_date": 94.8,
+   "order_date": 13.0,
    "exit_or_fair_value_inr": 0.2
   },
   "years_covered": [
@@ -292,7 +292,7 @@
  "audit": {
   "errors": {},
   "warnings": {
-   "no_date": 6,
+   "no_date": 5,
    "possible_duplicate_event": 4,
    "year_out_of_range": 34
   }
