@@ -44,7 +44,7 @@ HEADER_MAP = [
     ("offer price", "exit_or_fair_value_inr"), ("price", "exit_or_fair_value_inr"),
     ("company", "company_name"), ("name of", "company_name"),
     ("security name", "company_name"), ("scrip name", "company_name"), ("name", "company_name"),
-    ("date", "effective_delisting_date"),
+    ("date", "_plain_date"),  # only trusted as the delisting date in tables that also carry a symbol/ISIN
     ("reason", "_reason"), ("remark", "_reason"), ("category", "_reason"), ("type", "_reason"),
 ]
 
@@ -55,6 +55,24 @@ TYPE_KEYWORDS = [
     ("VOLUNTARY_EXIT_OFFER", ("exit offer", "reverse book", "exit price", "discovered price")),
     ("VOLUNTARY_NO_EXIT", ("voluntar",)),
 ]
+
+
+# Tables about listings, people or shareholdings are never delisting lists.
+REJECT_HEADER_RE = re.compile(r"(?<!de)listing date|date of (?<!de)listing|listed on|director|designation|\bdin\b|"
+                              r"shareholder|promoter|particulars|no\.? of shares|holding|\bpan\b|address", re.I)
+COMPANY_RE = re.compile(r"\b(ltd|limited|corporation|corpn?|industries|company|co\.|inc|plc|bank|enterprises|"
+                        r"holdings|mills|private|pvt|infra\w*|finance|financial|textiles|chemicals|steels?|"
+                        r"pharma\w*|power|projects|exports|technologies|systems|services)\b", re.I)
+
+
+def name_ok(name: str, has_id: bool) -> bool:
+    """Plausible company name. Without a symbol/ISIN the name must look like a company (filters
+    sentences, people and OCR noise)."""
+    if not 3 <= len(name) <= 120 or "\n" in name or "•" in name or name[0] in "(-*•" or len(name.split()) > 12:
+        return False
+    if not re.search(r"[A-Za-z]{3}", name):
+        return False
+    return has_id or bool(COMPANY_RE.search(name))
 
 
 def classify(text: str) -> str:
@@ -102,11 +120,15 @@ def map_headers(cols) -> dict[int, str]:
 
 
 def find_header_row(df: pd.DataFrame, scan: int = 15) -> int | None:
-    """Return the index of the row that looks like a header (>=2 mapped fields incl. a name/isin)."""
+    """Index of the header row of a delisting table (-1 = the DataFrame's own columns), else None.
+    Needs a company-name column plus a symbol, ISIN or explicit delisting/order date column, and no
+    listing/people/shareholding columns."""
     candidates = [(-1, list(df.columns))] + [(i, list(df.iloc[i].values)) for i in range(min(scan, len(df)))]
     for idx, cells in candidates:
+        if any(REJECT_HEADER_RE.search(str(c)) for c in cells):
+            continue
         m = set(map_headers(cells).values())
-        if len(m - {"_reason"}) >= 2 and ({"company_name", "isin"} & m):
+        if "company_name" in m and m & {"nse_symbol", "isin", "effective_delisting_date", "order_date"}:
             return idx
     return None
 
@@ -122,6 +144,9 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
         df.columns = list(df.iloc[hdr].values)
         df = df.iloc[hdr + 1:]
     mapping = map_headers(df.columns)
+    fields = set(mapping.values())
+    if "_plain_date" in fields and "effective_delisting_date" not in fields and fields & {"nse_symbol", "isin"}:
+        mapping = {i: ("effective_delisting_date" if f == "_plain_date" else f) for i, f in mapping.items()}
     out = []
     for _, r in df.iterrows():
         vals = list(r.values)
@@ -131,11 +156,14 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
             if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == "":
                 continue
             rec[field] = v
-        name = str(rec.get("company_name", "")).strip()
+        name = re.sub(r"\s+", " ", str(rec.get("company_name", ""))).strip()  # cells often wrap names
         isin_m = ISIN_RE.search(str(rec.get("isin", "")).upper())
         if not name and not isin_m:
             continue
         if name.lower() in ("company name", "name of the company", "total", "nan", "nat", "none"):
+            continue
+        symbol = str(rec.get("nse_symbol", "")).strip().upper()
+        if name and not name_ok(name, bool(isin_m or symbol)):
             continue
         row_text = " ".join(str(v) for v in vals)
         price = rec.get("exit_or_fair_value_inr")
@@ -145,7 +173,7 @@ def rows_from_table(df: pd.DataFrame, doc_type: str) -> list[dict]:
             price = None
         out.append({
             "company_name": name or None,
-            "nse_symbol": str(rec.get("nse_symbol", "")).strip().upper() or None,
+            "nse_symbol": symbol or None,
             "isin": isin_m.group(0) if isin_m else None,
             "order_date": to_iso(rec.get("order_date")),
             "effective_delisting_date": to_iso(rec.get("effective_delisting_date")),
@@ -168,6 +196,8 @@ def rows_from_text(text: str, doc_type: str) -> list[dict]:
         syms = [s for s in SYMBOL_RE.findall(line[m.end():]) + SYMBOL_RE.findall(before)
                 if s not in ("LTD", "LIMITED", "INE", "THE", "AND", "OF") and not ISIN_RE.fullmatch(s)]
         dates = [d for d in (to_iso(x) for x in DATE_RE.findall(line)) if d]
+        if before and not name_ok(before, True):
+            before = ""
         out.append({
             "company_name": before or None,
             "nse_symbol": syms[0] if syms else None,

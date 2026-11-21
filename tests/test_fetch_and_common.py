@@ -74,3 +74,16 @@ def test_disk_levels_and_warning_tiers(tmp_path, monkeypatch):
     fake(6, 300)
     common.check_disk(state)
     assert state["disk_warn_tier"] == 1
+
+
+def test_404s_do_not_block_a_domain(monkeypatch):
+    monkeypatch.setattr(pf, "already_fetched", lambda: {})
+    monkeypatch.setattr(pf, "polite_sleep", lambda *a: None)
+    monkeypatch.setattr(pf, "log", lambda *a, **k: None)
+    monkeypatch.setattr(pf, "fetch_one", lambda s, u, t, h=None: {"quarantined": True, "http_status": 404})
+    blocked = set()
+    pf.fetch_urls([f"https://nsearchives.nseindia.com/{i}.pdf" for i in range(5)], "master", 5, blocked, 3)
+    assert blocked == set()
+    monkeypatch.setattr(pf, "fetch_one", lambda s, u, t, h=None: {"quarantined": True, "http_status": 403})
+    pf.fetch_urls([f"https://nsearchives.nseindia.com/x{i}.pdf" for i in range(5)], "master", 5, blocked, 3)
+    assert blocked == {"nsearchives.nseindia.com"}

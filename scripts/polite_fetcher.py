@@ -142,7 +142,7 @@ def fetch_urls(urls: list[str], tag: str | None, limit: int,
                blocked_domains: set[str] | None = None, block_after: int = 3,
                harvested_from: str | None = None) -> dict:
     """Fetch up to `limit` not-yet-fetched URLs. Domains that fail `block_after` times in a row
-    are added to `blocked_domains` and skipped for the rest of the call."""
+    (403/429/5xx/timeouts; 404/410 don't count) are added to `blocked_domains` and skipped."""
     blocked = blocked_domains if blocked_domains is not None else set()
     done = already_fetched()
     unique = list(dict.fromkeys(urls))
@@ -163,6 +163,8 @@ def fetch_urls(urls: list[str], tag: str | None, limit: int,
         e = fetch_one(session, url, tag, harvested_from)
         if e["quarantined"]:
             quarantined += 1
+            if e["http_status"] in (404, 410):  # missing file: not a sign the site is blocking us
+                continue
             fails[d] = fails.get(d, 0) + 1
             if fails[d] >= block_after:
                 blocked.add(d)

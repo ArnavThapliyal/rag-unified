@@ -90,3 +90,29 @@ def test_relevance_gate():
 def test_proposed_lists_are_detected():
     assert p.PROPOSED_RE.search("Companies_proposed_to_be_delisted_list.xlsx")
     assert not p.PROPOSED_RE.search("Delisting_Order-SECURCRED.pdf")
+
+
+def test_listing_and_people_tables_are_rejected():
+    listing = pd.DataFrame([["Company Name", "Symbol", "Date of Listing"], ["AXIS BANK LIMITED", "AXISBANK", "31-08-2016"]])
+    people = pd.DataFrame([["Name", "Designation", "DIN"], ["Togo Shimizu", "Senior Managing Director", "0123"]])
+    assert p.rows_from_table(listing, "OTHER") == []
+    assert p.rows_from_table(people, "OTHER") == []
+
+
+def test_name_needs_identifier_or_company_suffix():
+    df = pd.DataFrame([["Name of the Company", "Date of Delisting"],
+                       ["Parsoli Corporation", "01-02-2017"], ["Amber Zaidi", "01-02-2017"],
+                       ["(a) The Discovered Price that is accepted by the Acquirer shall be final", "01-02-2017"]])
+    assert [r["company_name"] for r in p.rows_from_table(df, "COMPULSORY")] == ["Parsoli Corporation"]
+
+
+def test_plain_date_only_trusted_with_symbol():
+    with_sym = pd.DataFrame([["Symbol", "Company Name", "Date"], ["ABC", "ABC Ltd", "05-06-2017"]])
+    no_sym = pd.DataFrame([["Company Name", "Date", "Remarks"], ["ABC Ltd", "05-06-2017", "x"]])
+    assert p.rows_from_table(with_sym, "OTHER")[0]["effective_delisting_date"] == "2017-06-05"
+    assert p.rows_from_table(no_sym, "OTHER") == []
+
+
+def test_wrapped_names_are_joined():
+    df = pd.DataFrame([["Symbol", "Company Name", "Delisted Date"], ["GTNIND", "GTN Industries\nLimited", "2018-01-01"]])
+    assert p.rows_from_table(df, "COMPULSORY")[0]["company_name"] == "GTN Industries Limited"
