@@ -1,0 +1,1 @@
+../../.roo/rules/01-nse-research.md

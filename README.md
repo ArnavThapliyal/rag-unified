@@ -81,6 +81,16 @@ git clone --depth 1 https://github.com/cline/cline vendor/cline
 
 4. Watch progress in `logs/agent_run.log`, which logs a line for every query, fetch, parse and merge. Run `status_report.py` whenever you want the overview.
 
+**Or from the terminal with Cline CLI.** It loads the same rules through `.cline/rules/` and points at your local LM Studio model:
+
+```bash
+cd /Users/arnav/Projects/Software/nse-delisted-comp
+cline auth lmstudio      # base URL http://localhost:1234, model qwen/qwen3.8-27b (one-time)
+cline -i                 # interactive terminal UI; paste the starting prompt above
+```
+
+The Roo Code CLI (`roo`) can't use LM Studio, since it only supports cloud providers. Use the Roo Code extension or Cline for local models.
+
 Good follow-up prompts:
 - "Fill the gaps listed in the status report for 2024, using the year-specific queries in the discovery skill."
 - "List the NEEDS_REVIEW rows for 2020 and find an official source for each."
@@ -250,6 +260,8 @@ The dataset links every delisting to its date, type, regime, ISIN and source, so
 | `skills/nse-document-parser/SKILL.md` | How each field is extracted (ISIN regex, dates, type keywords, regulatory regime) |
 | `skills/dataset-auditor/SKILL.md` | Deduplication, confidence upgrades and the audit checklist |
 | `.rooignore` | Hides `vendor/`, `.venv/` and the raw data folders from the agent |
+| `.cline/rules/01-nse-research.md` | Symlink to the Roo rules file, so Cline (CLI or extension) follows the same workflow. Edit the Roo file only. |
+| `.clineignore` | Symlink to `.rooignore` |
 
 ## Layout
 
