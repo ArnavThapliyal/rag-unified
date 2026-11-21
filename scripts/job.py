@@ -3,11 +3,14 @@
 
   python scripts/job.py start --max-queries 8            # any collect.py args; returns immediately
   python scripts/job.py start --harvest-only --max-harvest 40
-  python scripts/job.py wait                             # block up to 25 s, then print status
+  python scripts/job.py wait 1                           # block up to 25 s, then print status;
+                                                         # repeat with the "next" command it prints (wait 2, 3, …)
   python scripts/job.py status                           # running? progress? final summary?
   python scripts/job.py stop                             # graceful stop (collect.py saves its summary)
 
-Only one job runs at a time. Output goes to logs/jobs/<started>.out.
+Only one job runs at a time. Output goes to logs/jobs/<started>.out; progress comes from the job's
+events in logs/events.jsonl. The wait counter matters: Cline stops a session after 5 identical tool
+calls in a row (its loop detection), so every wait call must differ from the last.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ import sys
 import time
 from datetime import datetime
 
-from common import LOGS, METADATA, ROOT, emit, log
+from common import EVENTS, LOGS, METADATA, ROOT, emit, log
 
 JOB_FILE = METADATA / "job.json"
 JOBS_DIR = LOGS / "jobs"
@@ -51,6 +54,28 @@ def tail(path, n: int) -> list[str]:
     return lines[-n:]
 
 
+def progress(pid: int, n: int = 4) -> list[str]:
+    """Last n events of the job's collect.py run (its run_id ends with -<pid>)."""
+    try:
+        with EVENTS.open("rb") as f:
+            start = max(0, f.seek(0, 2) - 200_000)
+            f.seek(start)
+            lines = f.read().decode("utf-8", errors="ignore").splitlines()[1 if start else 0:]  # skip a cut line
+    except OSError:
+        return []
+    out = []
+    for line in reversed(lines):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if str(e.get("run_id", "")).endswith(f"-{pid}") and e.get("msg"):
+            out.append(f"[{e['ts'][11:19]}] {e.get('event')}: {e['msg'][:140]}")
+            if len(out) == n:
+                break
+    return out[::-1]
+
+
 def status() -> dict:
     job = load_job()
     if not job:
@@ -65,9 +90,9 @@ def status() -> dict:
             except ValueError:
                 pass
             break
-    progress = [ln for ln in out if ln.startswith("[") or ln.startswith("    ↳") or ln.startswith("!!")][-4:]
     s = {"running": running, "args": job["args"], "started_at": job["started_at"],
-         "elapsed_s": round(time.time() - job["started_ts"]), "output": job["output"], "progress": progress}
+         "elapsed_s": round(time.time() - job["started_ts"]), "output": job["output"],
+         "progress": progress(job["pid"])}
     if not running:
         s["result"] = result or {"status": "unknown", "last_output": out[-5:]}
     return s
@@ -90,15 +115,18 @@ def start(args: list[str]) -> dict:
     JOB_FILE.write_text(json.dumps(job, indent=1), encoding="utf-8")
     log(f"job started pid={p.pid}: collect.py {' '.join(args)}", kind="job_start", pid=p.pid, args=args)
     return {"started": True, "pid": p.pid, "output": job["output"],
-            "next": "run `python scripts/job.py wait` until running is false"}
+            "next": ".venv/bin/python scripts/job.py wait 1"}
 
 
-def wait(seconds: int) -> dict:
+def wait(poll: int) -> dict:
     job = load_job()
-    deadline = time.time() + min(seconds, WAIT_MAX_S)
+    deadline = time.time() + WAIT_MAX_S
     while job and alive(job["pid"]) and time.time() < deadline:
         time.sleep(1)
-    return status()
+    s = status()
+    if s.get("running"):
+        s["next"] = f".venv/bin/python scripts/job.py wait {poll + 1}"
+    return s
 
 
 def stop() -> dict:
@@ -122,7 +150,7 @@ def main() -> int:
     if cmd == "start":
         emit(start(rest))
     elif cmd == "wait":
-        emit(wait(int(rest[0]) if rest else WAIT_MAX_S))
+        emit(wait(int(rest[0]) if rest and rest[0].isdigit() else 1))
     elif cmd == "stop":
         emit(stop())
     else:

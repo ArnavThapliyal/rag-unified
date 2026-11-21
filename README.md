@@ -114,7 +114,7 @@ CLINE_EXTRA_ARGS="--thinking low" scripts/run_agent.sh         # extra Cline fla
 scripts/run_agent.sh prompts/my_task.md                        # different task prompt
 ```
 
-> **Note:** Cline kills any shell command after 30 seconds (its `bashTimeoutMs`, which the CLI can't change). The agent therefore starts collections with `scripts/job.py start …` and polls `scripts/job.py wait`, so long runs survive the timeout.
+> **Note:** Cline kills any shell command after 30 seconds (its `bashTimeoutMs`, which the CLI can't change). The agent therefore starts collections with `scripts/job.py start …` and polls `scripts/job.py wait 1`, `wait 2`, …, so long runs survive the timeout. The counter is there because Cline's loop detection aborts a session after 5 identical tool calls in a row. `run_agent.sh` also restarts a session whose run didn't finish `completed` (aborted, mistake limit), not just one that exited non-zero.
 
 **Without the agent** (deterministic, no LLM), `collect.py` runs the plan by itself:
 ```bash

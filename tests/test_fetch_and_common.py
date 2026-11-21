@@ -87,3 +87,29 @@ def test_404s_do_not_block_a_domain(monkeypatch):
     monkeypatch.setattr(pf, "fetch_one", lambda s, u, t, h=None: {"quarantined": True, "http_status": 403})
     pf.fetch_urls([f"https://nsearchives.nseindia.com/x{i}.pdf" for i in range(5)], "master", 5, blocked, 3)
     assert blocked == {"nsearchives.nseindia.com"}
+
+
+def test_agent_session_file_beats_stale_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("NSE_AGENT_SESSION", "agent-old")
+    monkeypatch.setattr(common, "CURRENT_SESSION", tmp_path / "current")
+    assert common.agent_session() == "agent-old"
+    (tmp_path / "current").write_text("agent-new\n")
+    assert common.agent_session() == "agent-new"
+
+
+def test_job_wait_counts_up_and_shows_run_progress(tmp_path, monkeypatch):
+    import job
+    events = tmp_path / "events.jsonl"
+    events.write_text("\n".join(json.dumps(e) for e in [
+        {"ts": "2026-11-21T11:21:00+00:00", "run_id": "20261121-165147-4242", "event": "run_start", "msg": "run start"},
+        {"ts": "2026-11-21T11:22:00+00:00", "run_id": "20261121-165147-999", "event": "harvest", "msg": "other run"},
+        {"ts": "2026-11-21T11:23:00+00:00", "run_id": "20261121-165147-4242", "event": "fetch", "msg": "OK https://x/a.pdf"},
+    ]) + "\n")
+    monkeypatch.setattr(job, "EVENTS", events)
+    monkeypatch.setattr(job, "load_job", lambda: {"pid": 4242, "args": [], "started_at": "x", "started_ts": 0,
+                                                   "output": "nope.out"})
+    monkeypatch.setattr(job, "alive", lambda pid: True)
+    monkeypatch.setattr(job, "WAIT_MAX_S", 0)
+    s = job.wait(3)
+    assert s["next"].endswith("job.py wait 4")
+    assert s["progress"] == ["[11:21:00] run_start: run start", "[11:23:00] fetch: OK https://x/a.pdf"]

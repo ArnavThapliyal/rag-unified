@@ -11,7 +11,8 @@ Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
 ## Shell commands are killed after 30 s
 Run every collection through the job runner (detached, survives the timeout):
 - `.venv/bin/python scripts/job.py start <collect.py args>` → returns at once
-- `.venv/bin/python scripts/job.py wait` → waits ≤25 s, prints progress; repeat until `"running": false`
+- `.venv/bin/python scripts/job.py wait 1` → waits ≤25 s, prints progress and a `next` command (`wait 2`, `wait 3`, …);
+  run `next` until `"running": false`. Don't repeat an identical command 5× in a row: Cline aborts that as a loop.
 - `.venv/bin/python scripts/job.py status` / `stop`
 
 ## Main command: autonomous collection

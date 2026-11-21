@@ -31,6 +31,7 @@ AGENT_LOG = LOGS / "agent_run.log"
 EVENTS = LOGS / "events.jsonl"
 RUNS = LOGS / "runs"
 AGENT_SESSIONS = LOGS / "agent_sessions"
+CURRENT_SESSION = AGENT_SESSIONS / "current"  # written by scripts/run_agent.sh while a session runs
 METADATA = DATA / "metadata"
 CONFIG = ROOT / "config"
 
@@ -77,9 +78,19 @@ def event(kind: str, script: str | None = None, **fields) -> None:
     """Append one machine-readable event to logs/events.jsonl."""
     rec = {"ts": now_iso(), "run_id": run_id(), "script": script or Path(sys.argv[0]).stem,
            "event": kind, **fields}
-    if os.environ.get("NSE_AGENT_SESSION"):  # set by scripts/run_agent.sh
-        rec["agent_session"] = os.environ["NSE_AGENT_SESSION"]
+    session = agent_session()
+    if session:
+        rec["agent_session"] = session
     append_jsonl(EVENTS, rec)
+
+
+def agent_session() -> str | None:
+    """The running agent session. Read from the file run_agent.sh writes, because Cline runs commands
+    under its long-lived hub process, whose environment still holds the first session's name."""
+    try:
+        return CURRENT_SESSION.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return os.environ.get("NSE_AGENT_SESSION")
 
 
 def log(msg: str, level: str = "INFO", script: str | None = None, kind: str = "log", **fields) -> None:

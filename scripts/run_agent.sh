@@ -10,13 +10,15 @@
 # Uses LM Studio (localhost:1234) via Cline's lmstudio provider; LM Studio ignores the key.
 # Extra Cline flags can be passed with CLINE_EXTRA_ARGS (e.g. "--thinking low").
 #
-# A session that ends abnormally (e.g. Cline's hub daemon restarts: "session not found") is restarted
-# with a fresh session; all progress lives in data/ and logs/, so the new session resumes the plan.
-# A clean finish (exit 0), Ctrl-C, low disk, or SearXNG/LM Studio being down stops the loop.
+# A session that ends abnormally is restarted with a fresh session; all progress lives in data/ and
+# logs/, so the new session resumes the plan. Abnormal = non-zero exit (e.g. Cline's hub daemon
+# restarted: "session not found") or a run that did not finish "completed" (e.g. Cline's loop
+# detection aborts after 5 identical tool calls, which still exits 0).
+# A completed run, Ctrl-C, low disk, or SearXNG/LM Studio being down stops the loop.
 #
 # Raw Cline events  -> logs/agent_sessions/<session>.jsonl
 # Readable progress -> terminal + logs/agent_run.log (tool calls, errors, completion)
-# Every script the agent runs tags its events with NSE_AGENT_SESSION=<session>.
+# Every script the agent runs tags its events with the session named in logs/agent_sessions/current.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,6 +44,7 @@ preflight() {
 
 interrupted=0
 trap 'interrupted=1' INT
+trap 'rm -f logs/agent_sessions/current' EXIT
 
 TIMEOUT_ARGS=()
 [ -n "$TIMEOUT" ] && TIMEOUT_ARGS=(--timeout "$TIMEOUT")
@@ -53,6 +56,7 @@ while :; do
   SESSION="agent-$(date +%Y%m%d-%H%M%S)"
   OUT="logs/agent_sessions/$SESSION.jsonl"
   export NSE_AGENT_SESSION="$SESSION"
+  echo "$SESSION" > logs/agent_sessions/current  # Cline's hub keeps the first session's env; scripts read this
   "$PY" scripts/common.py log "agent session $SESSION started (model: $MODEL, prompt: $PROMPT_FILE, timeout: ${TIMEOUT:-none}, attempt $((attempt + 1)))" >/dev/null
   echo "■ $SESSION — raw log: $OUT"
 
@@ -65,17 +69,19 @@ while :; do
     | tee "$OUT" | "$PY" scripts/agent_progress.py
   status=${PIPESTATUS[0]}
   set -e
-  "$PY" scripts/common.py log "agent session $SESSION ended (exit $status)" >/dev/null
 
-  [ "$status" -eq 0 ] && break
+  finish=$(grep -o '"type":"run_result","finishReason":"[a-z_]*' "$OUT" | tail -1 | sed 's/.*"finishReason":"//' || true)
+  "$PY" scripts/common.py log "agent session $SESSION ended (exit $status, finish: ${finish:-none})" >/dev/null
   [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
+  [ "$status" -eq 0 ] && [ "$finish" = "completed" ] && break
   grep -q '"low_disk_space"' "$OUT" && { echo "■ stopped for low disk space — not restarting"; break; }
   attempt=$((attempt + 1))
   if [ "$attempt" -gt "$MAX_RESTARTS" ]; then
     echo "■ session failed $attempt times — giving up (see $OUT)"
     break
   fi
-  reason=$(grep -o '"type":"error","message":"[^"]*' "$OUT" | tail -1 | sed 's/.*"message":"//')
+  reason=$(grep -o '"type":"error","message":"[^"]*' "$OUT" | tail -1 | sed 's/.*"message":"//' || true)
+  [ -z "$reason" ] && [ -n "$finish" ] && reason="finish: $finish"
   echo "■ session ended abnormally (exit $status${reason:+: $reason}) — restarting in 15 s ($attempt/$MAX_RESTARTS)"
   "$PY" scripts/common.py log "auto-restart $attempt/$MAX_RESTARTS after exit $status${reason:+: $reason}" >/dev/null
   sleep 15

@@ -3,14 +3,16 @@ Read `soul.md` and `.cline/rules/01-nse-research.md` first, then work through th
 
 IMPORTANT: shell commands are killed after 30 seconds. Collection runs take minutes, so ALWAYS run them
 through the job runner: `.venv/bin/python scripts/job.py start <collect.py args>` (returns immediately), then
-repeat `.venv/bin/python scripts/job.py wait` (blocks ≤25 s, prints progress) until `"running": false`, then read
-`result`. Never run `collect.py` without `--dry-run` directly, and never use `&`, `nohup` or /tmp logs.
+`.venv/bin/python scripts/job.py wait 1` (blocks ≤25 s, prints progress). While `"running": true`, run the exact
+`next` command it prints (`wait 2`, `wait 3`, …); when `"running": false`, read `result`. Never repeat the same
+command 5 times in a row — Cline aborts the session as a loop. Never run `collect.py` without `--dry-run`
+directly, and never use `&`, `nohup` or /tmp logs.
 
 ## Loop (repeat until a stop condition)
 1. `.venv/bin/python scripts/collect.py --dry-run` — see pending queries and the harvest backlog.
 2. If `harvest_backlog` > 0: `.venv/bin/python scripts/job.py start --harvest-only --max-harvest 40`, then
-   `job.py wait` until done (repeat this step until the backlog is 0 or nothing new is fetched).
-3. Else if queries are pending: `.venv/bin/python scripts/job.py start --max-queries 8`, then `job.py wait` until done.
+   `job.py wait 1`, `wait 2`, … until done (repeat this step until the backlog is 0 or nothing new is fetched).
+3. Else if queries are pending: `.venv/bin/python scripts/job.py start --max-queries 8`, then `job.py wait 1`, `wait 2`, … until done.
 4. `.venv/bin/python scripts/status_report.py --json` and decide the next action:
    - `artifacts_zero_rows` grew → `.venv/bin/python scripts/inspect_artifact.py --zero-rows`, inspect up to 3
      with `scripts/inspect_artifact.py <path> --lines 40`. If a new document layout is clearly a list of
