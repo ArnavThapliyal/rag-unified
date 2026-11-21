@@ -1,102 +1,62 @@
 {
- "generated_at": "2026-11-21T11:27:08+00:00",
- "records": 508,
+ "generated_at": "2026-11-21T12:00:53+00:00",
+ "records": 521,
  "error_count": 0,
- "warning_count": 94,
+ "warning_count": 84,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 54,
+   "count": 50,
    "examples": [
     {
-     "record_id": "dd4deb6454e25478",
-     "company_name": "",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
-    },
-    {
-     "record_id": "c7c62a80bc79ca82",
-     "company_name": "",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
-    },
-    {
-     "record_id": "31edff6f7db8eac1",
-     "company_name": "AEC India Ltd (Paid Up Value Rs. 10/-)",
+     "record_id": "264894af7125efa0",
+     "company_name": "AEC India Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
      "record_id": "c49b088a0cb5cad0",
-     "company_name": "Aakar Engineering & Manufacturing Company Ltd (Paid Up Value Rs. 10/-)",
+     "company_name": "Aakar Engineering & Manufacturing Company Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
      "record_id": "611d159eabf445a2",
-     "company_name": "Accurate Exports Ltd (Paid Up Value Rs. 10/-)",
+     "company_name": "Accurate Exports Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
-     "record_id": "220382614b712b93",
-     "company_name": "Adhunik Synthetics Ltd (Paid Up Value Rs. 10/-)",
+     "record_id": "ff40795d0933d579",
+     "company_name": "Adhunik Synthetics Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
-     "record_id": "1b329f62483956fd",
-     "company_name": "Adhunik Yarns Ltd (Paid Up Value Rs. 10/-)",
+     "record_id": "dabdd70a9e1274f6",
+     "company_name": "Adhunik Yarns Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
-     "record_id": "92c73d43815f1050",
-     "company_name": "Aditya Polymers Ltd (Paid Up Value Rs. 10/-)",
+     "record_id": "f8afd8f619d671f3",
+     "company_name": "Aditya Polymers Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
-     "record_id": "cb10797e3d7824e5",
-     "company_name": "Akai Impex Ltd (Paid Up Value Rs. 10/-)",
+     "record_id": "d6855a456ae8f571",
+     "company_name": "Akai Impex Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
-     "record_id": "313585091d17d4c3",
-     "company_name": "Alert Petrogas Ltd (Paid Up Value Rs. 10/-)",
+     "record_id": "883208f58055e025",
+     "company_name": "Alert Petrogas Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
-    }
-   ]
-  },
-  "possible_duplicate_event": {
-   "count": 2,
-   "examples": [
-    {
-     "record_id": "3eeb229baabdc95c",
-     "company_name": "SEBI Reg. No.",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
     },
     {
-     "record_id": "05a2fe7c683812c0",
-     "company_name": "",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
-    }
-   ]
-  },
-  "suspicious_company_name": {
-   "count": 4,
-   "examples": [
-    {
-     "record_id": "dd4deb6454e25478",
-     "company_name": "",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
+     "record_id": "23336a0ff4ace1f9",
+     "company_name": "Alpine Industries Ltd",
+     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
-     "record_id": "c7c62a80bc79ca82",
-     "company_name": "",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
-    },
-    {
-     "record_id": "f98f487dc690b2e2",
-     "company_name": "",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
-    },
-    {
-     "record_id": "05a2fe7c683812c0",
-     "company_name": "",
-     "source_url": "https://nsearchives.nseindia.com/corporate/INSPIRISYS_01042024160831_ISLDPAPublication01042024.pdf"
+     "record_id": "3a79c9e93cf94093",
+     "company_name": "Alps Infosys Ltd",
+     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     }
    ]
   },
