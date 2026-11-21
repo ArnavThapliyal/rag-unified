@@ -27,6 +27,10 @@ Full specification: [`instructions.md`](instructions.md).
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+
+# Optional: reference copies of the agent IDEs (git-ignored)
+git clone --depth 1 https://github.com/RooCodeInc/Roo-Code vendor/Roo-Code
+git clone --depth 1 https://github.com/cline/cline vendor/cline
 ```
 
 ## Pipeline
