@@ -6,8 +6,8 @@ A pre-long-run review of everything built so far: removals, bugs fixed, and item
 
 | Item | Why it was unneeded |
 |---|---|
-| `.roo/`, `.rooignore`, `vendor/Roo-Code` (476 MB) | Roo Code dropped in favour of Cline. Its rules and ignore files now live in `.cline/rules/` and `.clineignore`. |
-| `projectstructure.txt` | A stale `tree` snapshot that still listed Roo-Code, test PDFs and `__pycache__`. Superseded by the README layout section. |
+| The earlier IDE-extension agent config (its rules folder, ignore file and a 476 MB vendor clone) | Cline is now the only agent. Rules and ignore files live in `.cline/rules/` and `.clineignore`. |
+| `projectstructure.txt` | A stale `tree` snapshot that still listed the removed vendor clone, test PDFs and `__pycache__`. Superseded by the README layout section. |
 | `scripts/__pycache__/` | Python bytecode (and git-ignored) |
 | `SCHEMA_CSV` constant in `scripts/common.py` | Defined but never used |
 | **All test-run data** | Reset so the long run starts clean. Removed: 13 raw downloads, 6 search-cache files, 13 parsed files, 13 manifest lines, 63 events, 2 test run summaries, 1 smoke-test agent session, plus the derived CSVs and metadata. |
@@ -32,7 +32,6 @@ A pre-long-run review of everything built so far: removals, bugs fixed, and item
 
 | Item | Why it stays |
 |---|---|
-| `instructions.md` mentions Roo Code | It's your original spec, so I left it unchanged. The README documents the switch to Cline. |
 | `vendor/cline` (125 MB, git-ignored) | A reference clone you asked for. It was used to confirm the rules/skills paths, auto-approve behaviour and provider ids. Safe to delete. |
 | `node_modules/` (371 MB, git-ignored) | Needed for `npx cline` (pinned 3.0.75) |
 | `npm audit`: 12 remaining findings (0 critical) | All upstream inside Cline (`zod` 3 in the unused `dify-ai-provider`, and a beta ai-sdk in Langfuse telemetry). The critical ones are fixed via `overrides`. |
@@ -52,3 +51,16 @@ A pre-long-run review of everything built so far: removals, bugs fixed, and item
 ## 5. Ready state
 
 The real repo has an empty `data/` and `logs/` (only `.gitkeep` files plus an empty `logs/fetch_manifest.jsonl`). The plan has 97 queries in 6 phases. Start the long run with `scripts/run_agent.sh`.
+
+## 6. Second pass (tests, checks, disk guard)
+
+| Change | Notes |
+|---|---|
+| `tests/` (pytest, 24 tests, offline) | Cover the parser (dates, types, order extractor, tables, ISIN lines, relevance gate, proposed lists), merging (FY, regime boundaries, dedupe, confidence upgrade, stable ids), the fetcher (harvest filtering, fetch-once rules, extensions), domain rules, the disk guard, the dataset audit, and query-plan validity. |
+| `scripts/check.sh` | One command for everything: pyflakes, bash syntax, JSON configs, pytest, dataset audit, disk, stale-reference scan, SearXNG, LM Studio, the Cline CLI. `--offline` skips the services. |
+| `scripts/audit_dataset.py` | Data-quality audit of the master CSV, written to `data/metadata/dataset_audit.json` and summarized in the dashboard. |
+| Disk guard (`common.check_disk`) | Warns when `data/` passes 5 GB and again every +5 GB (terminal, log and macOS notification). Stops the run when free space drops below 20 GB. Thresholds are in `config/query_plan.json` → `disk`. |
+| **Bug caught by the new tests** | `check_disk()` passed a dict with a `level` key into `log(level=…)`. The first disk warning would have crashed the run. Fixed. |
+| `instructions.md` | The agent references now name Cline (`.cline/rules/`, Cline CLI in LM Studio) |
+| `status_report.py` trimmed | No longer recounts the manifest and search cache itself; it reads the metadata, plus disk and audit lines |
+| `requirements-dev.txt` | `pytest`, `pyflakes` |

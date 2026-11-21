@@ -28,6 +28,9 @@ curl -sf -m 10 "http://localhost:8082/search?q=nse&format=json" >/dev/null \
   || { echo "SearXNG not reachable with JSON at localhost:8082" >&2; exit 1; }
 curl -sf -m 5 "http://localhost:1234/v1/models" >/dev/null \
   || { echo "LM Studio not reachable at localhost:1234 (load the model first)" >&2; exit 1; }
+disk=$(cd scripts && "$PY" -c "import json, common; print(json.dumps(common.disk_status()))")
+echo "■ disk: $disk"
+case "$disk" in *'"level": "critical"'*) echo "Not enough free disk space — free some up first." >&2; exit 1;; esac
 
 mkdir -p logs/agent_sessions
 export NSE_AGENT_SESSION="$SESSION"

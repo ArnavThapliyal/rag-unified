@@ -10,6 +10,8 @@ import json
 import os
 import random
 import re
+import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -147,6 +149,61 @@ def read_jsonl(path: Path) -> list[dict]:
                 except json.JSONDecodeError:
                     continue
     return rows
+
+
+DISK_DEFAULTS = {"warn_data_gb": 5.0, "warn_step_gb": 5.0, "min_free_gb": 20.0}
+
+
+def disk_settings() -> dict:
+    """Thresholds from the "disk" section of config/query_plan.json (falls back to defaults)."""
+    try:
+        cfg = json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8")).get("disk", {})
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+    return {**DISK_DEFAULTS, **{k: float(v) for k, v in cfg.items() if k in DISK_DEFAULTS}}
+
+
+def dir_size(path: Path) -> int:
+    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
+
+
+def disk_status() -> dict:
+    """Size of data/ and free space on its volume, with a level: ok | warn | critical.
+    `warn_tier` increases by one for every `warn_step_gb` beyond `warn_data_gb`."""
+    s = disk_settings()
+    data_gb = dir_size(DATA) / 1e9
+    free_gb = shutil.disk_usage(ROOT).free / 1e9
+    tier = int((data_gb - s["warn_data_gb"]) // s["warn_step_gb"]) + 1 if data_gb >= s["warn_data_gb"] else 0
+    level = "critical" if free_gb < s["min_free_gb"] else "warn" if tier else "ok"
+    return {"data_gb": round(data_gb, 2), "free_gb": round(free_gb, 1), "level": level,
+            "warn_tier": tier, **s}
+
+
+def notify(title: str, message: str) -> None:
+    """Best-effort macOS notification (no-op elsewhere)."""
+    if sys.platform == "darwin":
+        script = f"display notification {json.dumps(message)} with title {json.dumps(title)} sound name \"Glass\""
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10)
+
+
+def check_disk(state: dict) -> dict:
+    """Warn (log + terminal + notification) once per new warn tier; `state` remembers the last tier.
+    Returns disk_status(); callers stop the run when level == "critical"."""
+    d = disk_status()
+    last = state.get("disk_warn_tier", 0)
+    if d["level"] == "critical":
+        msg = f"Free disk space {d['free_gb']} GB < {d['min_free_gb']} GB — stopping. data/ is {d['data_gb']} GB."
+        print(f"!! DISK CRITICAL: {msg}", flush=True)
+        log(msg, level="ERROR", kind="disk_critical", disk=d)
+        notify("NSE collection stopped: low disk", msg)
+    elif d["warn_tier"] > last:
+        msg = (f"data/ has grown to {d['data_gb']} GB (warning threshold {d['warn_data_gb']} GB, "
+               f"free {d['free_gb']} GB). Free up space or raise disk.warn_data_gb in config/query_plan.json.")
+        print(f"!! DISK WARNING: {msg}", flush=True)
+        log(msg, level="WARN", kind="disk_warning", disk=d)
+        notify("NSE collection: data folder is large", msg)
+    state["disk_warn_tier"] = max(last, d["warn_tier"])
+    return d
 
 
 def emit(summary: dict) -> None:

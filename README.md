@@ -37,6 +37,8 @@ config/query_plan.json  (phases: master → 2017 → 2020 → 2024 → 2007 → 
 - **Resumable.** Completed queries are tracked in `data/metadata/collection_state.json`, so you can stop at any time (Ctrl-C) and re-run.
 - **Retries after throttling.** Empty search results are not cached, so a query can be retried with `--retry-failed` if SearXNG's upstream engines were throttling it.
 - **Proposed delistings kept out of the dataset.** NSE's "companies proposed to be delisted" lists go to `proposed_delisting_leads.csv` as companies to verify later.
+- **Off-topic documents rejected.** Only documents about delisting produce rows. Pages about trading members, brokers and defaulters, and procedural files (checklists, SOPs, forms), are skipped.
+- **Disk guard.** Warns when `data/` passes 5 GB and again every +5 GB (terminal line, log entry and macOS notification). The run stops cleanly if free space drops below 20 GB. Adjust under `disk` in `config/query_plan.json`.
 
 ---
 
@@ -45,6 +47,7 @@ config/query_plan.json  (phases: master → 2017 → 2020 → 2024 → 2007 → 
 ```bash
 cd /Users/arnav/Projects/Software/nse-delisted-comp
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python pipeline
+.venv/bin/pip install -r requirements-dev.txt                         # pytest + pyflakes
 npm install                                                           # Cline CLI (pinned 3.0.75)
 
 # Optional reference copy of Cline's source (git-ignored)
@@ -55,10 +58,22 @@ Requirements:
 - **SearXNG** (Docker) at `http://localhost:8082` with JSON output enabled (`search.formats: [html, json]` in its `settings.yml`).
 - **LM Studio** serving at `http://localhost:1234` with `qwen/qwen3.8-27b` loaded. Give it a large context length, since the agent session gets long.
 
-Check both:
+Check everything (code, tests, configs, data audit, disk, SearXNG, LM Studio, Cline) in one go:
 ```bash
-curl -s "http://localhost:8082/search?q=test&format=json" | head -c 80; echo
-curl -s http://localhost:1234/v1/models | head -c 120; echo
+scripts/check.sh            # add --offline to skip the service checks
+```
+
+```text
+pyflakes                    ok
+bash syntax                 ok
+json configs                ok
+pytest                      ok  (24 passed in 0.16s)
+dataset audit               ok  ({"records": 0, "errors": {}, …})
+disk                        ok  (ok 0.0 GB data, 374.4 GB free)
+no stale references         ok
+SearXNG json                ok
+LM Studio                   ok
+cline cli                   ok  (3.0.75)
 ```
 
 ---
@@ -123,6 +138,10 @@ scripts/run_agent.sh prompts/my_task.md                        # different task 
  Records: 140 (priority years: 37) | files with rows: 120, zero-row: 43 | blocked domains: 1 | proposed leads: 14
 ```
 
+### Disk-space warnings
+
+You'll see `!! DISK WARNING: data/ has grown to 5.1 GB …` in the terminal and get a macOS notification. When that happens, free up space, or raise `disk.warn_data_gb` in `config/query_plan.json` to keep going. If free space drops below `disk.min_free_gb` (20 GB), the run stops with `stop_reason: low_disk_space`, the agent finishes, and `run_agent.sh` won't start again until there's room. The dashboard always shows a `Disk:` line. The biggest folder is `data/raw/`, which you can delete once records are extracted (the dataset keeps `source_url` for every row).
+
 ### Other things to watch
 
 ```bash
@@ -143,6 +162,7 @@ tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio s
 | `data/processed/proposed_delisting_leads.csv` | Companies NSE has *proposed* for delisting, to be verified | Yes |
 | `data/metadata/collection_metadata.json` | **Metadata of everything done**: indicators, queries per phase, fetches per domain/status/type, artifacts, records by year/type/confidence/regime, field completeness, run history, agent-session stats | Yes |
 | `data/metadata/artifacts.csv` | One row per downloaded file: source URL, domain, type, size, sha256, rows extracted | Yes |
+| `data/metadata/dataset_audit.json` | Data-quality checks on the dataset (errors and warnings, with examples) | Yes |
 | `data/metadata/collection_state.json` | Status of each query (done, no_results or failed) and the blocked domains. This is what makes runs resumable. | Yes |
 | `logs/runs/<run_id>.json` | Per-run summary: duration, queries, URLs, fetched/quarantined/harvested, records before → after | Yes |
 | `logs/fetch_manifest.jsonl` | Every download attempt: timestamp, url, http_status, sha256, local_path, year_tag | Yes |
@@ -188,6 +208,8 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | `scripts/normalize_and_merge.py` | Normalize, dedupe, write the master, priority-audit and leads CSVs |
 | `scripts/inspect_artifact.py` | Bounded excerpt of a downloaded file, or `--zero-rows` to list files that gave no rows |
 | `scripts/agent_progress.py` | Turns Cline's JSON stream into the readable terminal lines |
+| `scripts/audit_dataset.py` | Data-quality audit (duplicate ids, bad ISINs, off-topic sources, missing artifacts, no-date rows, suspicious names) |
+| `scripts/check.sh` | Repo health check: pyflakes, pytest, configs, audit, disk, stale references, services |
 | `scripts/common.py` | Paths, logging and events, domain rules. `python scripts/common.py log "msg"` adds a milestone. |
 
 ---
@@ -239,7 +261,8 @@ None of these is built yet. They are possible next steps.
 .
 ├── instructions.md, soul.md, README.md, AUDIT.md
 ├── nse_delisted_master.csv          # schema reference
-├── requirements.txt, package.json   # Python deps; Cline CLI (pinned) + overrides
+├── requirements.txt, requirements-dev.txt, package.json   # Python deps; pytest/pyflakes; Cline CLI
+├── tests/                           # pytest suite (offline)
 ├── config/query_plan.json           # what to search, in order
 ├── prompts/autonomous_collection.md # unattended agent task
 ├── .cline/rules/, .cline/skills → skills/, .clineignore
@@ -248,7 +271,7 @@ None of these is built yet. They are possible next steps.
 ├── data/
 │   ├── search_cache/  raw/  quarantine/
 │   ├── processed/                   # dataset, priority audit, leads, parsed/
-│   └── metadata/                    # collection metadata, artifact inventory, resumable state
+│   └── metadata/                    # collection metadata, artifact inventory, dataset audit, resumable state
 ├── logs/                            # fetch_manifest, events, agent_run.log, runs/, agent_sessions/
 └── vendor/cline/                    # reference clone (git-ignored)
 ```

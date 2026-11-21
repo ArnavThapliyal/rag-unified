@@ -1,5 +1,5 @@
 {
-  "_comment": "Edit freely. collect.py runs phases in this order and skips queries already completed (tracked in data/metadata/collection_state.json). Add queries to fill gaps.",
+  "_comment": "Edit freely. collect.py runs phases in this order and skips queries already completed (tracked in data/metadata/collection_state.json). Add queries to fill gaps. disk: warn when data/ passes warn_data_gb (and every warn_step_gb after), stop when free space < min_free_gb.",
   "fetch_domains": [
     "nseindia.com",
     "sebi.gov.in",
@@ -16,6 +16,11 @@
   "fetch_limit_per_query": 8,
   "harvest_limit_per_page": 20,
   "block_domain_after_failures": 3,
+  "disk": {
+    "warn_data_gb": 5,
+    "warn_step_gb": 5,
+    "min_free_gb": 20
+  },
   "phases": [
     {
       "name": "master",

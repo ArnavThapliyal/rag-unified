@@ -1,0 +1,60 @@
+from datetime import date
+
+import normalize_and_merge as m
+
+
+def test_financial_year():
+    assert m.financial_year(date(2017, 4, 1)) == "FY2017-18"
+    assert m.financial_year(date(2018, 3, 31)) == "FY2017-18"
+    assert m.financial_year(None) is None
+
+
+def test_regime_boundaries():
+    assert m.regime_for(date(2009, 6, 9)) == "SEBI_2003_Guidelines"
+    assert m.regime_for(date(2009, 6, 10)) == "SEBI_2009_Regs"
+    assert m.regime_for(date(2021, 6, 10)) == "SEBI_2021_Regs"
+    assert m.regime_for(date(2024, 9, 25)) == "SEBI_2024_Amendment"
+
+
+def test_normalize_derives_fields():
+    r = m.normalize({"company_name": "  ABC   Ltd ", "nse_symbol": "abc", "isin": "ine123a01016",
+                     "delisting_type": "BOGUS", "order_date": "2017-02-01",
+                     "effective_delisting_date": None, "confidence_status": "VERIFIED_PRIMARY"})
+    assert r["company_name"] == "ABC Ltd"
+    assert r["nse_symbol"] == "ABC"
+    assert r["isin"] == "INE123A01016"
+    assert r["delisting_type"] == "OTHER"
+    assert r["calendar_year"] == 2017 and r["is_priority_year"] is True
+    assert r["financial_year"] == "FY2016-17"
+
+
+def _row(**kw):
+    base = {"company_name": "ABC Ltd", "nse_symbol": None, "isin": "INE123A01016", "delisting_type": "COMPULSORY",
+            "order_date": None, "effective_delisting_date": "2017-06-05", "source_url": "https://nseindia.com/a",
+            "confidence_status": "VERIFIED_PRIMARY"}
+    return m.normalize({**base, **kw})
+
+
+def test_merge_prefers_confidence_and_fills_gaps():
+    a = _row(nse_symbol=None)
+    b = _row(nse_symbol="ABC", confidence_status="NEEDS_REVIEW", source_url="https://blog.example/x",
+             effective_delisting_date="2017-06-20")
+    assert m.same_event(a, b)
+    merged = m.merge_group([b, a])
+    assert merged["confidence_status"] == "VERIFIED_PRIMARY"
+    assert merged["nse_symbol"] == "ABC"
+    assert merged["source_count"] == 2
+
+
+def test_events_far_apart_are_separate():
+    assert not m.same_event(_row(), _row(effective_delisting_date="2019-01-01"))
+
+
+def test_record_id_is_stable():
+    assert m.merge_group([_row()])["record_id"] == m.merge_group([_row()])["record_id"]
+
+
+def test_two_unverified_domains_upgrade_to_corroborated():
+    a = _row(confidence_status="NEEDS_REVIEW", source_url="https://one.example/a")
+    b = _row(confidence_status="NEEDS_REVIEW", source_url="https://two.example/b")
+    assert m.merge_group([a, b])["confidence_status"] == "CORROBORATED_SECONDARY"

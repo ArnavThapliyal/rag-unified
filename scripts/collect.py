@@ -32,9 +32,13 @@ import build_metadata
 import polite_fetcher
 import searxng_client
 from common import (
-    CONFIG, MANIFEST, METADATA, PRIMARY_DOMAINS, PROCESSED, ROOT, RUNS, SEARXNG_URL, domain_matches,
-    emit, log, now_iso, polite_sleep, read_jsonl, run_id,
+    CONFIG, MANIFEST, METADATA, PRIMARY_DOMAINS, PROCESSED, ROOT, RUNS, SEARXNG_URL, check_disk,
+    domain_matches, emit, log, now_iso, polite_sleep, read_jsonl, run_id,
 )
+
+
+class LowDisk(Exception):
+    pass
 
 PLAN = CONFIG / "query_plan.json"
 STATE = METADATA / "collection_state.json"
@@ -118,6 +122,8 @@ def harvest(pages: list[dict], limit: int, blocked: set[str], block_after: int, 
     """Fetch not-yet-fetched document links from `pages`, at most `limit` in total."""
     total = {"links": 0, "fetched_ok": 0, "quarantined": 0}
     for pg in pages:
+        if check_disk(step["_disk_state"])["level"] == "critical":
+            raise LowDisk()
         links = polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"])
         total["links"] += len(links)
         budget = limit - total["fetched_ok"] - total["quarantined"]
@@ -211,13 +217,15 @@ def main() -> int:
         "parse_errors": 0, "records_before": master_count(), "records_after": None, "new_records": None,
     }
     step["records_after"] = step["records_before"]
+    step["_disk_state"] = state  # check_disk() remembers the last warning tier in collection_state.json
     t0 = time.time()
 
     def write_summary():
         step["duration_s"] = round(time.time() - t0, 1)
         if step["records_after"] is not None:
             step["new_records"] = step["records_after"] - step["records_before"]
-        summary_path.write_text(json.dumps(step, indent=1), encoding="utf-8")
+        out = {k: v for k, v in step.items() if not k.startswith("_")}
+        summary_path.write_text(json.dumps(out, indent=1), encoding="utf-8")
 
     log(f"run start: {len(todo)} queries, phase={a.phase}", kind="run_start",
         queries_planned=len(todo), phase=a.phase)
@@ -230,6 +238,9 @@ def main() -> int:
             if h["fetched_ok"]:
                 process(step)
             step.update(status="completed", stop_reason="harvest_done")
+        except LowDisk:
+            process(step)
+            step.update(status="stopped", stop_reason="low_disk_space")
         except KeyboardInterrupt:
             step.update(status="interrupted", stop_reason="keyboard_interrupt")
         state["blocked_domains"] = sorted(blocked)
@@ -263,6 +274,8 @@ def main() -> int:
     since_process = 0
     try:
         for i, it in enumerate(todo, 1):
+            if check_disk(state)["level"] == "critical":
+                raise LowDisk()
             q, tag, phase = it["query"], it["year_tag"], it["phase"]
             ph = step["phases"].setdefault(phase, {"queries": 0, "urls": 0, "fetched_ok": 0, "quarantined": 0})
             if i > 1:
@@ -337,6 +350,10 @@ def main() -> int:
             process(step)
         step["status"] = "completed"
         step["stop_reason"] = step["stop_reason"] or "plan_exhausted"
+    except LowDisk:
+        if since_process:
+            process(step)
+        step.update(status="stopped", stop_reason="low_disk_space")
     except KeyboardInterrupt:
         step.update(status="interrupted", stop_reason="keyboard_interrupt")
     except Exception as e:

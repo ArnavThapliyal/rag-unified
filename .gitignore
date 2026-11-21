@@ -27,3 +27,6 @@ logs/agent_sessions/*
 
 # OS
 .DS_Store
+
+# Test caches
+.pytest_cache/

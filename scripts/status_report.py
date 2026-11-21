@@ -16,7 +16,7 @@ import time
 from collections import Counter, defaultdict
 
 import build_metadata
-from common import MANIFEST, PRIORITY_YEARS, PROCESSED, SEARCH_CACHE, read_jsonl
+from common import PRIORITY_YEARS, PROCESSED
 
 TYPES = ["COMPULSORY", "VOLUNTARY_EXIT_OFFER", "VOLUNTARY_NO_EXIT", "AMALGAMATION_MERGER", "IBC_NCLT", "OTHER"]
 SHORT = {"COMPULSORY": "COMP", "VOLUNTARY_EXIT_OFFER": "VOL_EX", "VOLUNTARY_NO_EXIT": "VOL_NO",
@@ -58,6 +58,12 @@ def print_indicators(meta: dict) -> None:
         print(f" Last run {lr['run_id']}: {lr['status']} ({lr['stop_reason']}), {lr['queries_done']} queries, "
               f"{lr['fetched_ok']} fetched, +{lr['new_records'] or 0} records, {lr['duration_s']} s")
     print(" Phases: " + "  ".join(f"{n} {p['complete_pct']:.0f}%" for n, p in meta["queries"]["phases"].items()))
+    d = ind["disk"]
+    mark = {"ok": "✓", "warn": "⚠ WARNING", "critical": "✖ CRITICAL"}[d["level"]]
+    print(f" Disk: data/ {d['data_gb']} GB (warn at {d['warn_data_gb']:g} GB) | free {d['free_gb']} GB "
+          f"(stop below {d['min_free_gb']:g} GB) {mark}")
+    print(f" Data audit: {ind['audit_errors']} errors, {ind['audit_warnings']} warnings "
+          f"(data/metadata/dataset_audit.json)")
     print()
 
 
@@ -83,9 +89,6 @@ def main() -> int:
 def report(a) -> int:
     meta = build_metadata.build()
     rows = load_master()
-    manifest = read_jsonl(MANIFEST)
-    fetch = Counter("quarantined" if e.get("quarantined") else "ok" for e in manifest)
-    searches = len(list(SEARCH_CACHE.glob("*.json")))
 
     grid: dict[str, Counter] = defaultdict(Counter)
     conf: dict[str, Counter] = defaultdict(Counter)
@@ -98,14 +101,12 @@ def report(a) -> int:
         years = [str(a.year)]
 
     if a.json:
-        print(json.dumps({"indicators": meta["indicators"], "records": len(rows), "searches_cached": searches, "fetch": fetch,
+        print(json.dumps({"indicators": meta["indicators"],
                           "by_year": {y: dict(grid[y]) for y in years},
                           "confidence_by_year": {y: dict(conf[y]) for y in years}}, default=str))
         return 0
 
     print_indicators(meta)
-    print(f"Records: {len(rows)} | Searches cached: {searches} | "
-          f"Fetched OK: {fetch['ok']} | Quarantined: {fetch['quarantined']}")
     hdr = f"{'YEAR':<9}" + "".join(f"{SHORT[t]:>8}" for t in TYPES) + f"{'TOTAL':>7}{'VERIF':>7}{'REVIEW':>7}"
     print(hdr)
     print("-" * len(hdr))

@@ -1,8 +1,9 @@
 """Build the collection metadata: what has been searched, fetched, parsed, and recorded.
 
 Writes:
-  data/metadata/collection_metadata.json   totals, indicators, breakdowns, run + agent-session history
+  data/metadata/collection_metadata.json   totals, indicators, breakdowns, disk, audit, run + agent-session history
   data/metadata/artifacts.csv              one row per downloaded file (source, status, size, rows parsed)
+  data/metadata/dataset_audit.json         data-quality checks (via audit_dataset.py)
 
 Run automatically at the end of every collect.py run; safe to run any time:
   python scripts/build_metadata.py
@@ -14,9 +15,10 @@ import json
 import sys
 from collections import Counter, defaultdict
 
+import audit_dataset
 from common import (
     AGENT_SESSIONS, CONFIG, MANIFEST, METADATA, PARSED, PRIORITY_YEARS, PROCESSED, RAW, ROOT, RUNS,
-    domain_of, emit, now_iso, read_jsonl,
+    disk_status, domain_of, emit, now_iso, read_jsonl,
 )
 
 TYPES = ["COMPULSORY", "VOLUNTARY_EXIT_OFFER", "VOLUNTARY_NO_EXIT", "AMALGAMATION_MERGER", "IBC_NCLT"]
@@ -160,6 +162,8 @@ def build() -> dict:
     records = record_stats(master)
     runs = run_history()
     sessions = agent_sessions()
+    audit = audit_dataset.run()
+    disk = disk_status()
 
     total_q = sum(p["total"] for p in queries["phases"].values())
     done_q = sum(p["total"] - p["pending"] - p["failed"] for p in queries["phases"].values())
@@ -183,11 +187,15 @@ def build() -> dict:
         "last_run": runs[-1] if runs else None,
         "agent_sessions": len(sessions),
         "proposed_delisting_leads": leads_count(),
+        "audit_errors": audit["error_count"], "audit_warnings": audit["warning_count"],
+        "disk": disk,
     }
     meta = {"generated_at": now_iso(), "indicators": indicators, "queries": queries, "fetch": fetch,
             "artifacts": {"total": len(inventory), "by_bucket": dict(Counter(a["bucket"] for a in inventory)),
                           "parsed": len(parsed), "rows_extracted": sum(a["rows_extracted"] or 0 for a in parsed)},
-            "records": records, "runs": runs, "agent_sessions": sessions}
+            "records": records, "audit": {"errors": {k: v["count"] for k, v in audit["errors"].items()},
+                                          "warnings": {k: v["count"] for k, v in audit["warnings"].items()}},
+            "runs": runs, "agent_sessions": sessions}
 
     METADATA.mkdir(parents=True, exist_ok=True)
     (METADATA / "collection_metadata.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")

@@ -7,7 +7,7 @@ You are scaffolding and operating a local-first research and data-engineering wo
 - **2020**: COVID-19 pandemic disruptions, IBC/NCLT insolvency-driven delistings, and regulatory relief/timeline extensions.
 - **2024**: SEBI (Delisting of Equity Shares) (Amendment) Regulations, 2024 (fixed-price delisting route, counter-offer changes, Investment Holding Company framework) and baseline calculation anchor.
 
-Your immediate responsibility in this host folder is to **create the project architecture, agent configuration files (`soul.md`, IDE agent rules, and `/skills`), Python search/fetch/parse scripts, and structured logging** so the local coding agent (Roo Code / Cline running a local ~27B–30B model on Apple Silicon 48 GB RAM) can execute deterministic collection and verification without context bloat or IP blocks.
+Your immediate responsibility in this host folder is to **create the project architecture, agent configuration files (`soul.md`, Cline agent rules, and `/skills`), Python search/fetch/parse scripts, and structured logging** so the local coding agent (Cline CLI running a local ~27B–30B model via LM Studio on Apple Silicon 48 GB RAM) can execute deterministic collection and verification without context bloat or IP blocks.
 
 ---
 
@@ -16,7 +16,7 @@ Your immediate responsibility in this host folder is to **create the project arc
 | Parameter | Specification / Value | Operational Rule |
 | :--- | :--- | :--- |
 | **Host Hardware** | MacBook Pro — Apple M4 Pro, 48 GB Unified Memory (14 CPU / 20 GPU cores) | Offload all HTTP fetching, HTML/PDF parsing, deduplication, and CSV/Parquet generation to Python scripts. Never dump raw HTML or large PDFs into LLM context. |
-| **Local IDE Agent** | Roo Code (primary monitorable IDE) with local ~27B–30B model | Keep prompt/skill instructions modular and concise; pass only structured JSON/CSV summaries and file paths back to the agent. |
+| **Local Agent** | Cline CLI (unattended, auto-approve) with local ~27B–30B model in LM Studio | Keep prompt/skill instructions modular and concise; pass only structured JSON/CSV summaries and file paths back to the agent. |
 | **Search Endpoint** | Dockerized SearXNG at `http://localhost:8082` | Use `http://localhost:8082/search?q=<query>&format=json` as the primary discovery layer. Verify `format=json` is enabled in SearXNG `settings.yml`; provide an HTML fallback parser in the client script if `403` is returned. |
 | **Network & Anti-Block Policy** | Polite, rate-limited, compliant collection | **Do not use WAF/Akamai bypass scripts or aggressive scraping.** Use SearXNG for discovery, official NSE/SEBI/BSE public archives and circulars, randomized delays (`2.0–5.0s`), exponential backoff on `429`/`5xx`, and local disk caching so no URL is fetched twice. |
 
@@ -28,10 +28,10 @@ Create and maintain this exact folder layout in the host workspace:
 ```text
 .
 ├── instructions.md                  # Master project specification (this file)
-├── soul.md                          # Persona, discipline, and execution rules for the local IDE agent
-├── .roo/
+├── soul.md                          # Persona, discipline, and execution rules for the local Cline agent
+├── .cline/
 │   └── rules/
-│       └── 01-nse-research.md       # Auto-loaded workspace rules for Roo Code
+│       └── 01-nse-research.md       # Auto-loaded workspace rules for Cline
 ├── skills/
 │   ├── searxng-discovery/
 │   │   └── SKILL.md                 # Query patterns & pagination rules for http://localhost:8082
@@ -61,4 +61,4 @@ Create and maintain this exact folder layout in the host workspace:
 │       └── priority_years_audit.csv # Filtered & enriched dataset for 2007, 2017, 2020, 2024
 └── logs/
     ├── fetch_manifest.jsonl         # Append-only log: timestamp, url, http_status, sha256, local_path, year_tag
-    └── agent_run.log                # Human-readable milestone & error log viewable live in Roo Code
+    └── agent_run.log                # Human-readable milestone & error log (tail -f to watch live)

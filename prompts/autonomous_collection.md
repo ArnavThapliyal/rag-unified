@@ -17,11 +17,15 @@ Read `soul.md` and `.cline/rules/01-nse-research.md` first, then work through th
      (use the discovery skill templates; set `year_tag`). Never delete existing queries.
    - `data/processed/proposed_delisting_leads.csv` has companies with `already_in_master = False` →
      add queries like `site:nseindia.com "<company name>" delisting order` to `agent_added` (max 10 per cycle).
+   - `indicators.audit_errors` > 0 → `.venv/bin/python scripts/audit_dataset.py`, find which parser rule
+     produced the bad rows, fix the rule (never the CSV), reparse and merge.
+   - A `disk_warning` appears in the output → mention it in your milestone log line; keep going.
 5. Log a one-line milestone: `.venv/bin/python scripts/common.py log "cycle N: <what you did>, records X"`.
 
 ## Stop conditions (then write a final summary log line and finish)
 - All plan phases complete, harvest backlog 0, and the last two cycles added 0 new records; or
 - SearXNG unavailable (collect.py returns `searxng_unavailable` / `searxng_errors`) twice in a row; or
+- collect.py returns `stop_reason: low_disk_space` (the user must free disk space — stop immediately); or
 - 25 cycles completed.
 
 ## Hard rules

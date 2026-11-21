@@ -14,7 +14,9 @@ Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
 - `.venv/bin/python scripts/collect.py --max-queries 8` — next 8 pending queries (search → fetch → harvest linked docs → parse → merge)
 - `.venv/bin/python scripts/collect.py --phase priority_2017` — one phase
 - `.venv/bin/python scripts/collect.py --harvest-only --max-harvest 40` — fetch documents linked from already-downloaded official pages
-- `.venv/bin/python scripts/status_report.py --json` — indicators + year × type grid
+- `.venv/bin/python scripts/status_report.py --json` — indicators (incl. `disk`, `audit_errors`) + year × type grid
+- `.venv/bin/python scripts/audit_dataset.py` — data-quality audit of the dataset
+- `scripts/check.sh --offline` — after editing any script: pyflakes + pytest must pass
 
 Each run writes `logs/runs/<run_id>.json` and refreshes `data/metadata/`. Read the JSON summary it prints; don't tail raw logs.
 
@@ -34,6 +36,7 @@ Each run writes `logs/runs/<run_id>.json` and refreshes `data/metadata/`. Read t
 - No WAF/Akamai bypass, no headless-browser scraping, no removing delays. Blocked domains stay blocked.
 - Do not hand-edit `data/processed/*` or `data/metadata/*`. Re-run scripts instead.
 - To add searches, append to a phase named `agent_added` in `config/query_plan.json`; never delete queries.
+- If collect.py stops with `low_disk_space`, stop working and log it — the user has to free space.
 - Log milestones: `.venv/bin/python scripts/common.py log "<what happened>"`.
 - If a script fails twice with the same error, log it and move on to a different step (or stop if unattended work can't continue).
 - Keep answers short: report counts and file paths, not document contents.
