@@ -1,12 +1,12 @@
 {
- "generated_at": "2026-11-21T12:00:53+00:00",
- "records": 521,
+ "generated_at": "2026-11-21T12:20:09+00:00",
+ "records": 509,
  "error_count": 0,
  "warning_count": 84,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 50,
+   "count": 48,
    "examples": [
     {
      "record_id": "264894af7125efa0",
@@ -57,6 +57,21 @@
      "record_id": "3a79c9e93cf94093",
      "company_name": "Alps Infosys Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
+    }
+   ]
+  },
+  "possible_duplicate_event": {
+   "count": 2,
+   "examples": [
+    {
+     "record_id": "574af156693cb5f3",
+     "company_name": "B S Appliances Limited",
+     "source_url": "https://archives.nseindia.com/research/dynaContent/NSE_Factbook-2017_Final.pdf"
+    },
+    {
+     "record_id": "2ef5edf94cf151d1",
+     "company_name": "B S Appliances Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
     }
    ]
   },
