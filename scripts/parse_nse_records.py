@@ -17,11 +17,12 @@ import sys
 import warnings
 from io import StringIO
 from pathlib import Path
+from urllib.parse import unquote
 
 import pandas as pd
 
 from common import (
-    MANIFEST, PARSED, RAW, ROOT, confidence_for_url, emit, event, log, read_jsonl,
+    MANIFEST, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, log, read_jsonl,
 )
 
 warnings.filterwarnings("ignore")
@@ -180,6 +181,10 @@ def rows_from_text(text: str, doc_type: str) -> list[dict]:
     return out
 
 
+DELIST_RE = re.compile(r"delist", re.I)
+# NSE/BSE pages about trading members, brokers, arbitration etc. list firms, not delisted companies.
+NON_LISTING_RE = re.compile(r"member|broker|defaulter|expelled|arbitrat|complaint|debarred|"
+                            r"authori[sz]ed.?person|sub.?broker|depositor", re.I)
 PROPOSED_RE = re.compile(r"propos|show.?cause|to.?be.?delisted", re.I)
 MATTER_RE = re.compile(
     r"In the matter of(?: the Company)?\s*:?\s*(?:M/s\.?\s*)?(.{3,120}?)\s*\(\s*([A-Z][A-Z0-9&\-]{1,19})\s*\)", re.S)
@@ -219,9 +224,25 @@ def rows_from_order(text: str) -> list[dict]:
     }]
 
 
+def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: dict) -> tuple[bool, str]:
+    """Only documents about delisting may produce rows. Returns (relevant, reason)."""
+    where = " ".join(x for x in (src, harvested_from, path.name) if x)
+    if NON_LISTING_RE.search(src or ""):
+        return False, "non_listing_page"
+    if PROCEDURAL_RE.search(unquote((src or path.name).rsplit("/", 1)[-1])):
+        return False, "procedural_document"
+    if DELIST_RE.search(src or "") or DELIST_RE.search(harvested_from or ""):
+        return True, "url"
+    if path.suffix.lower() in (".html", ".htm"):  # page bodies include site-wide nav menus: trust the title only
+        return (True, "title") if DELIST_RE.search(stats.get("title", "")) else (False, "html_title_unrelated")
+    if DELIST_RE.search(stats.get("text_head", "")):
+        return True, "content"
+    return False, f"no_delisting_signal ({where[-60:]})"
+
+
 def parse_file(path: Path) -> tuple[list[dict], dict]:
     ext = path.suffix.lower()
-    stats = {"tables_seen": 0, "no_text": False}
+    stats = {"tables_seen": 0, "no_text": False, "title": "", "text_head": ""}
     rows: list[dict] = []
     text = ""
     if ext in (".xlsx", ".xls"):
@@ -235,11 +256,14 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
     elif ext == ".csv":
         df = pd.read_csv(path, header=None, dtype=str, on_bad_lines="skip", encoding_errors="ignore")
         stats["tables_seen"] = 1
+        text = df.head(50).to_string()
         rows = rows_from_table(df, classify(df.to_string()[:20000]))
     elif ext in (".html", ".htm"):
         from bs4 import BeautifulSoup
         html = path.read_text(encoding="utf-8", errors="ignore")
-        text = BeautifulSoup(html, "lxml").get_text("\n", strip=True)
+        soup = BeautifulSoup(html, "lxml")
+        stats["title"] = soup.title.get_text(" ", strip=True) if soup.title else ""
+        text = soup.get_text("\n", strip=True)
         doc_type = classify(text)
         try:
             tables = pd.read_html(StringIO(html), header=None)
@@ -277,6 +301,7 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
         rows = rows_from_text(text, classify(text))
     else:
         stats["skipped_ext"] = ext
+    stats["text_head"] = text[:6000]
     return rows, stats
 
 
@@ -294,8 +319,10 @@ def main() -> int:
     files = [a.file if a.file.is_absolute() else ROOT / a.file] if a.file else \
         sorted(p for p in RAW.rglob("*") if p.is_file() and not p.name.startswith("."))
     idx = manifest_index()
-    summary = {"files_seen": len(files), "parsed": 0, "skipped_up_to_date": 0,
-               "rows": 0, "zero_row_files": [], "no_text": [], "errors": []}
+    relevance_path = PARSED / "_relevance.json"
+    relevance = json.loads(relevance_path.read_text(encoding="utf-8")) if relevance_path.exists() else {}
+    summary = {"files_seen": len(files), "parsed": 0, "skipped_up_to_date": 0, "rows": 0,
+               "irrelevant_files": 0, "zero_row_files": [], "no_text": [], "errors": []}
 
     for p in files:
         rel = str(p.relative_to(ROOT))
@@ -311,6 +338,11 @@ def main() -> int:
             continue
         m = idx.get(rel, {})
         src = m.get("url")
+        relevant, reason = is_relevant(p, src, m.get("harvested_from"), stats)
+        relevance[rel] = reason if relevant else f"irrelevant:{reason}"
+        if not relevant:
+            rows = []
+            summary["irrelevant_files"] += 1
         conf = confidence_for_url(src) if src else "NEEDS_REVIEW"
         # Lists of companies *proposed* to be delisted are leads, not delistings.
         record_status = "PROPOSED" if PROPOSED_RE.search(src or rel) else "DELISTED"
@@ -324,12 +356,13 @@ def main() -> int:
         summary["parsed"] += 1
         summary["rows"] += len(rows)
         event("parse_file", file=rel, rows=len(rows), tables_seen=stats["tables_seen"],
-              no_text=stats.get("no_text", False), source_url=src)
-        if not rows:
+              no_text=stats.get("no_text", False), source_url=src, relevant=relevant, relevance=reason)
+        if not rows and relevant:
             summary["zero_row_files"].append({"file": rel, "tables_seen": stats["tables_seen"]})
         if stats.get("no_text"):
             summary["no_text"].append(rel)
 
+    relevance_path.write_text(json.dumps(relevance, indent=1), encoding="utf-8")
     summary["zero_row_files"] = summary["zero_row_files"][:20]
     log(f"parsed={summary['parsed']} rows={summary['rows']} errors={len(summary['errors'])}",
         kind="parse", files=summary["parsed"], rows=summary["rows"], errors=len(summary["errors"]))

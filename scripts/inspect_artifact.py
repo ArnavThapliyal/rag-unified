@@ -47,7 +47,8 @@ def main() -> int:
         p = METADATA / "artifacts.csv"
         rows = list(csv.DictReader(p.open(encoding="utf-8"))) if p.exists() else []
         zero = [{"local_path": r["local_path"], "source_url": r["source_url"], "content_type": r["content_type"]}
-                for r in rows if r["parsed"] == "True" and r["rows_extracted"] == "0"]
+                for r in rows if r["parsed"] == "True" and r["rows_extracted"] == "0"
+                and not (r.get("relevance") or "").startswith("irrelevant")]
         emit({"zero_row_artifacts": len(zero), "items": zero[:30]})
         return 0
     if not a.path:

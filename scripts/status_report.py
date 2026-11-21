@@ -50,7 +50,8 @@ def print_indicators(meta: dict) -> None:
     ]:
         print(f" {label:<18} {bar(val)} {val:>5.1f}%  {extra}")
     print(f" Records: {ind['records_total']} (priority years: {ind['priority_year_records']}) | "
-          f"files with rows: {ind['artifacts_with_rows']}, zero-row: {ind['artifacts_zero_rows']} | "
+          f"files with rows: {ind['artifacts_with_rows']}, zero-row: {ind['artifacts_zero_rows']}, "
+          f"off-topic: {ind['artifacts_irrelevant']} | "
           f"blocked domains: {ind['blocked_domains']} | proposed leads: {ind['proposed_delisting_leads']}")
     lr = ind.get("last_run")
     if lr:

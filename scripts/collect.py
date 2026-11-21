@@ -107,29 +107,33 @@ def harvestable_pages(only: list[str] | None = None) -> list[dict]:
     return list({p["local_path"]: p for p in pages}.values())
 
 
+def harvest_backlog() -> int:
+    """Linked documents on downloaded official pages that have not been fetched yet."""
+    done = polite_fetcher.already_fetched()
+    return len({u for pg in harvestable_pages()
+                for u in polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"]) if u not in done})
+
+
 def harvest(pages: list[dict], limit: int, blocked: set[str], block_after: int, step: dict) -> dict:
     """Fetch not-yet-fetched document links from `pages`, at most `limit` in total."""
-    total = {"links": 0, "fetched_ok": 0, "quarantined": 0, "pending_after": 0}
+    total = {"links": 0, "fetched_ok": 0, "quarantined": 0}
     for pg in pages:
         links = polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"])
         total["links"] += len(links)
         budget = limit - total["fetched_ok"] - total["quarantined"]
         if budget <= 0 or not links:
             continue
-        f = polite_fetcher.fetch_urls(links, pg.get("year_tag"), budget, blocked, block_after)
+        f = polite_fetcher.fetch_urls(links, pg.get("year_tag"), budget, blocked, block_after,
+                                      harvested_from=pg["url"])
         total["fetched_ok"] += f["fetched_ok"]
         total["quarantined"] += f["quarantined"]
         step["newly_blocked_domains"] += f["newly_blocked_domains"]
-    done = polite_fetcher.already_fetched()
-    total["pending_after"] = len({u for pg in pages
-                                  for u in polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"])
-                                  if u not in done})
     step["harvested_ok"] += total["fetched_ok"]
     step["fetched_ok"] += total["fetched_ok"]
     step["quarantined"] += total["quarantined"]
     if total["links"]:
-        log(f"harvest: {total['fetched_ok']} ok, {total['quarantined']} quarantined, "
-            f"{total['pending_after']} links still pending", kind="harvest", **total)
+        log(f"harvest: {total['links']} links, {total['fetched_ok']} ok, {total['quarantined']} quarantined",
+            kind="harvest", **total)
     return total
 
 
@@ -154,7 +158,8 @@ def main() -> int:
     ap.add_argument("--max-queries", type=int, default=0, help="stop after N queries (0 = no limit)")
     ap.add_argument("--fetch-limit", type=int, help="override fetch_limit_per_query")
     ap.add_argument("--process-every", type=int, default=5, help="parse+merge every N queries")
-    ap.add_argument("--retry-failed", action="store_true", help="re-run queries that previously failed")
+    ap.add_argument("--retry-failed", action="store_true",
+                    help="re-run queries that failed or returned no results (e.g. engines were throttled)")
     ap.add_argument("--harvest-only", action="store_true", help="only fetch pending linked documents")
     ap.add_argument("--max-harvest", type=int, help="override harvest_limit_per_page / per harvest-only run")
     ap.add_argument("--dry-run", action="store_true")
@@ -170,7 +175,7 @@ def main() -> int:
 
     def pending(it):
         st = state["queries"].get(it["query"], {}).get("status")
-        return st is None or (a.retry_failed and st == "failed")
+        return st is None or (a.retry_failed and st in ("failed", "no_results"))
 
     todo = [] if a.harvest_only else [it for it in items if pending(it)]
     if a.max_queries:
@@ -182,11 +187,8 @@ def main() -> int:
             d = by_phase.setdefault(it["phase"], {"total": 0, "pending": 0})
             d["total"] += 1
             d["pending"] += pending(it)
-        done = polite_fetcher.already_fetched()
-        backlog = {u for pg in harvestable_pages()
-                   for u in polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"]) if u not in done}
         emit({"dry_run": True, "would_run": len(todo), "phases": by_phase,
-              "harvest_backlog": len(backlog), "blocked_domains": state["blocked_domains"],
+              "harvest_backlog": harvest_backlog(), "blocked_domains": state["blocked_domains"],
               "next": [t["query"] for t in todo[:5]]})
         return 0
 
@@ -224,7 +226,7 @@ def main() -> int:
     if a.harvest_only:
         try:
             h = harvest(harvestable_pages(), harvest_limit, blocked, block_after, step)
-            step["harvest_backlog"] = h["pending_after"]
+            step["harvest_backlog"] = harvest_backlog()
             if h["fetched_ok"]:
                 process(step)
             step.update(status="completed", stop_reason="harvest_done")
@@ -290,11 +292,14 @@ def main() -> int:
             for d in f["newly_blocked_domains"]:
                 step["newly_blocked_domains"].append(d)
             h = harvest(harvestable_pages(f["saved"]), harvest_limit, blocked, block_after, step) \
-                if f["saved"] else {"fetched_ok": 0, "pending_after": 0}
-            step["harvest_backlog"] = h["pending_after"]
+                if f["saved"] else {"fetched_ok": 0}
             state["blocked_domains"] = sorted(blocked)
 
+            if not s["result_count"] and s.get("unresponsive_engines"):
+                log(f"0 results, unresponsive engines {s['unresponsive_engines']}: {q}", level="WARN",
+                    kind="engines_unresponsive", query=q, engines=s["unresponsive_engines"])
             entry.update(status="done" if s["result_count"] else "no_results", results=s["result_count"],
+                         unresponsive_engines=s.get("unresponsive_engines", []),
                          candidate_urls=len(set(urls)), fetched_ok=f["fetched_ok"],
                          quarantined=f["quarantined"], cache_files=s["cache_files"])
             state["queries"][q] = entry
@@ -339,6 +344,7 @@ def main() -> int:
         log(traceback.format_exc()[-800:], level="ERROR", kind="run_error")
     finally:
         step["finished_at"] = now_iso()
+        step["harvest_backlog"] = harvest_backlog()
         save_state(state)
         write_summary()
         try:

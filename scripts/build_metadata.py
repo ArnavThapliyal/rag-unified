@@ -75,6 +75,8 @@ def fetch_stats(manifest: list[dict]) -> dict:
 
 def artifact_inventory(manifest: list[dict]) -> list[dict]:
     by_path = {e["local_path"]: e for e in manifest if e.get("local_path")}
+    rp = PARSED / "_relevance.json"
+    relevance = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else {}
     rows = []
     for p in sorted(x for x in RAW.rglob("*") if x.is_file() and not x.name.startswith(".")):
         rel = str(p.relative_to(ROOT))
@@ -85,7 +87,8 @@ def artifact_inventory(manifest: list[dict]) -> list[dict]:
                      "domain": domain_of(m["url"]) if m.get("url") else None,
                      "year_tag": m.get("year_tag"), "content_type": m.get("content_type"),
                      "bytes": p.stat().st_size, "sha256": m.get("sha256"),
-                     "fetched_at": m.get("timestamp"), "parsed": parsed.exists(), "rows_extracted": n_rows})
+                     "harvested_from": m.get("harvested_from"), "fetched_at": m.get("timestamp"),
+                     "parsed": parsed.exists(), "relevance": relevance.get(rel), "rows_extracted": n_rows})
     return rows
 
 
@@ -172,7 +175,9 @@ def build() -> dict:
         "fetch_success_rate_pct": fetch["success_rate_pct"],
         "artifacts_downloaded": len(inventory),
         "artifacts_with_rows": sum(1 for a in parsed if a["rows_extracted"]),
-        "artifacts_zero_rows": sum(1 for a in parsed if a["rows_extracted"] == 0),
+        "artifacts_zero_rows": sum(1 for a in parsed if a["rows_extracted"] == 0
+                                   and not (a["relevance"] or "").startswith("irrelevant")),
+        "artifacts_irrelevant": sum(1 for a in parsed if (a["relevance"] or "").startswith("irrelevant")),
         "blocked_domains": len(queries["blocked_domains"]),
         "isin_completeness_pct": records["field_completeness_pct"]["isin"],
         "last_run": runs[-1] if runs else None,
@@ -188,7 +193,7 @@ def build() -> dict:
     (METADATA / "collection_metadata.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
     with (METADATA / "artifacts.csv").open("w", newline="", encoding="utf-8") as f:
         fields = ["local_path", "bucket", "source_url", "domain", "year_tag", "content_type", "bytes",
-                  "sha256", "fetched_at", "parsed", "rows_extracted"]
+                  "sha256", "harvested_from", "fetched_at", "parsed", "relevance", "rows_extracted"]
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(inventory)

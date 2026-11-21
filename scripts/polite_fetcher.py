@@ -19,12 +19,12 @@ import re
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 
 from common import (
-    MANIFEST, PRIMARY_DOMAINS, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, domain_of, emit, log,
+    MANIFEST, PRIMARY_DOMAINS, PROCEDURAL_RE, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, domain_of, emit, log,
     now_iso, polite_sleep, raw_dir_for_tag, read_jsonl, sha256_bytes, sha256_text,
 )
 
@@ -58,16 +58,20 @@ def harvest_links(path: Path, page_url: str) -> list[str]:
         url = re.sub(r"(?<!:)//+", "/", url)  # NSE links often contain '//web/...'
         if not DOC_LINK_RE.search(urlparse(url).path) or not domain_matches(url, PRIMARY_DOMAINS):
             continue
+        if PROCEDURAL_RE.search(unquote(urlparse(url).path.rsplit("/", 1)[-1])):
+            continue
         if page_relevant or RELEVANT_RE.search(url) or RELEVANT_RE.search(a.get_text(" ", strip=True)):
             out.append(url)
     return list(dict.fromkeys(out))
 
 
 def already_fetched() -> dict[str, dict]:
-    """URL -> latest successful manifest entry."""
+    """URL -> manifest entry for URLs that must not be requested again: successful downloads and
+    definitive client errors (4xx except 429). Timeouts, 429 and 5xx stay retryable."""
     done = {}
     for e in read_jsonl(MANIFEST):
-        if e.get("http_status") == 200 and not e.get("quarantined"):
+        st = e.get("http_status")
+        if (st == 200 and not e.get("quarantined")) or (isinstance(st, int) and 400 <= st < 500 and st != 429):
             done[e["url"]] = e
     return done
 
@@ -82,7 +86,7 @@ def pick_ext(url: str, content_type: str) -> str:
     return mimetypes.guess_extension(ct) or ".bin"
 
 
-def fetch_one(session: requests.Session, url: str, year_tag: str | None) -> dict:
+def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvested_from: str | None = None) -> dict:
     status, body, ctype, err = None, b"", "", None
     for attempt in range(MAX_RETRIES):
         try:
@@ -113,6 +117,8 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None) -> dict
         "content_type": ctype.split(";")[0] if ctype else None, "bytes": len(body),
         "quarantined": not ok,
     }
+    if harvested_from:
+        entry["harvested_from"] = harvested_from
     if err and status is None:
         entry["error"] = err
     append_jsonl(MANIFEST, entry)
@@ -132,7 +138,8 @@ def urls_from_cache_file(path: Path, domains: list[str] | None) -> tuple[list[st
 
 
 def fetch_urls(urls: list[str], tag: str | None, limit: int,
-               blocked_domains: set[str] | None = None, block_after: int = 3) -> dict:
+               blocked_domains: set[str] | None = None, block_after: int = 3,
+               harvested_from: str | None = None) -> dict:
     """Fetch up to `limit` not-yet-fetched URLs. Domains that fail `block_after` times in a row
     are added to `blocked_domains` and skipped for the rest of the call."""
     blocked = blocked_domains if blocked_domains is not None else set()
@@ -152,7 +159,7 @@ def fetch_urls(urls: list[str], tag: str | None, limit: int,
             continue
         if i:
             polite_sleep()
-        e = fetch_one(session, url, tag)
+        e = fetch_one(session, url, tag, harvested_from)
         if e["quarantined"]:
             quarantined += 1
             fails[d] = fails.get(d, 0) + 1
@@ -183,6 +190,7 @@ def main() -> int:
     a = ap.parse_args()
 
     domains = [x.strip() for x in a.domains.split(",")] if a.domains else None
+    m: dict = {}
     if a.url:
         urls, tag = [a.url], a.year_tag
     elif a.harvest:
@@ -194,7 +202,7 @@ def main() -> int:
         urls, tag = urls_from_cache_file(p, domains)
         tag = a.year_tag or tag
 
-    emit(fetch_urls(urls, tag, a.limit))
+    emit(fetch_urls(urls, tag, a.limit, harvested_from=m.get("url") if a.harvest else None))
     return 0
 
 

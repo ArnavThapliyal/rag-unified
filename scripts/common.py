@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -30,7 +31,6 @@ RUNS = LOGS / "runs"
 AGENT_SESSIONS = LOGS / "agent_sessions"
 METADATA = DATA / "metadata"
 CONFIG = ROOT / "config"
-SCHEMA_CSV = ROOT / "nse_delisted_master.csv"
 
 SEARXNG_URL = "http://localhost:8082"
 PRIORITY_YEARS = {2007, 2017, 2020, 2024}
@@ -45,6 +45,10 @@ SECONDARY_DOMAINS = (
     "livemint.com", "thehindubusinessline.com", "financialexpress.com",
     "ibbi.gov.in", "nclt.gov.in", "taxguru.in", "indiankanoon.org",
 )
+
+# Procedural documents (forms, checklists, SOPs, FAQs) describe the delisting process, not delisted companies.
+PROCEDURAL_RE = re.compile(r"checklist|\bsop\b|sop_for|annexure|format|faq|guidance|application.?form|"
+                           r"template|undertaking|declaration", re.I)
 
 SCHEMA_FIELDS = [
     "record_id", "company_name", "nse_symbol", "isin", "delisting_type",

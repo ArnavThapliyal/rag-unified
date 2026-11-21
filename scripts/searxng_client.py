@@ -43,17 +43,20 @@ def parse_html_results(html: str) -> list[dict]:
     return results
 
 
-def search_page(session: requests.Session, query: str, page: int, retries: int = 3) -> tuple[list[dict], str]:
+def search_page(session: requests.Session, query: str, page: int,
+                retries: int = 3) -> tuple[list[dict], str, list]:
+    """Returns (results, mode, unresponsive_engines)."""
     params = {"q": query, "pageno": page, "format": "json"}
     for attempt in range(retries):
         r = session.get(f"{SEARXNG_URL}/search", params=params, timeout=30)
         if r.status_code == 200:
-            return r.json().get("results", []), "json"
+            d = r.json()
+            return d.get("results", []), "json", d.get("unresponsive_engines", [])
         if r.status_code == 403:
             params.pop("format")
             h = session.get(f"{SEARXNG_URL}/search", params=params, timeout=30)
             h.raise_for_status()
-            return parse_html_results(h.text), "html_fallback"
+            return parse_html_results(h.text), "html_fallback", []
         if r.status_code == 429 or r.status_code >= 500:
             time.sleep(2 ** (attempt + 1))
             continue
@@ -68,18 +71,20 @@ def run(query: str, pages: int, year_tag: str | None) -> dict:
     seen: set[str] = set()
     cache_files, new_urls, mode, cached_pages = [], [], "json", 0
 
+    unresponsive: set[str] = set()
     for page in range(1, pages + 1):
         path = cache_path(query, page)
-        if path.exists():
-            payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        if payload and payload["results"]:
             cached_pages += 1
-        else:
-            if page > 1 or cached_pages:
+        else:  # not cached, or cached empty (engines may have been throttled) -> ask again
+            if page > 1:
                 polite_sleep()
-            results, mode = search_page(session, query, page)
+            results, mode, unresp = search_page(session, query, page)
+            unresponsive.update(str(e[0]) if isinstance(e, list) else str(e) for e in unresp)
             payload = {
                 "query": query, "page": page, "year_tag": year_tag, "mode": mode,
-                "retrieved_at": now_iso(),
+                "retrieved_at": now_iso(), "unresponsive_engines": unresp,
                 "results": [
                     {k: r.get(k) for k in ("url", "title", "content", "engines", "publishedDate")}
                     for r in results
@@ -95,10 +100,11 @@ def run(query: str, pages: int, year_tag: str | None) -> dict:
 
     log(f"query={query!r} pages={len(cache_files)} urls={len(new_urls)} mode={mode} tag={year_tag}",
         kind="search", query=query, pages=len(cache_files), cached_pages=cached_pages,
-        urls=len(new_urls), mode=mode, year_tag=year_tag)
+        urls=len(new_urls), mode=mode, year_tag=year_tag, unresponsive_engines=sorted(unresponsive))
     return {
         "query": query, "year_tag": year_tag, "mode": mode,
         "cache_files": cache_files, "cached_pages": cached_pages,
+        "unresponsive_engines": sorted(unresponsive),
         "result_count": len(new_urls), "top_urls": new_urls[:10],
     }
 
