@@ -4,8 +4,8 @@
  "started_at": "2026-11-21T10:44:32+00:00",
  "finished_at": null,
  "duration_s": 0.0,
- "status": "running",
- "stop_reason": null,
+ "status": "killed",
+ "stop_reason": "process ended without cleanup",
  "args": {
   "phase": "all",
   "max_queries": 8,

@@ -1,39 +1,39 @@
 {
- "generated_at": "2026-11-21T10:46:35+00:00",
+ "generated_at": "2026-11-21T11:13:48+00:00",
  "indicators": {
-  "records_total": 0,
-  "priority_year_records": 0,
-  "verified_primary_pct": 0.0,
-  "needs_review": 0,
-  "priority_grid_coverage_pct": 0.0,
-  "query_plan_complete_pct": 0.0,
-  "queries_done": 0,
+  "records_total": 508,
+  "priority_year_records": 115,
+  "verified_primary_pct": 93.5,
+  "needs_review": 33,
+  "priority_grid_coverage_pct": 45.0,
+  "query_plan_complete_pct": 8.2,
+  "queries_done": 8,
   "queries_total": 97,
-  "fetch_success_rate_pct": 100.0,
-  "artifacts_downloaded": 11,
-  "artifacts_with_rows": 0,
-  "artifacts_zero_rows": 0,
-  "artifacts_irrelevant": 0,
+  "fetch_success_rate_pct": 97.9,
+  "artifacts_downloaded": 190,
+  "artifacts_with_rows": 19,
+  "artifacts_zero_rows": 110,
+  "artifacts_irrelevant": 61,
   "blocked_domains": 0,
-  "isin_completeness_pct": 0.0,
+  "isin_completeness_pct": 4.7,
   "last_run": {
-   "run_id": "20261121-161603-53269",
-   "started_at": "2026-11-21T10:46:03+00:00",
-   "status": "running",
-   "stop_reason": null,
-   "duration_s": 0.0,
+   "run_id": "20261121-163437-58004",
+   "started_at": "2026-11-21T11:04:37+00:00",
+   "status": "completed",
+   "stop_reason": "harvest_done",
+   "duration_s": 148.5,
    "queries_done": 0,
-   "fetched_ok": 0,
-   "quarantined": 0,
-   "new_records": 0
+   "fetched_ok": 36,
+   "quarantined": 4,
+   "new_records": -144
   },
   "agent_sessions": 2,
-  "proposed_delisting_leads": 0,
+  "proposed_delisting_leads": 14,
   "audit_errors": 0,
-  "audit_warnings": 0,
+  "audit_warnings": 94,
   "disk": {
-   "data_gb": 0.03,
-   "free_gb": 368.7,
+   "data_gb": 0.36,
+   "free_gb": 354.0,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -45,19 +45,19 @@
   "phases": {
    "master": {
     "total": 6,
-    "done": 0,
+    "done": 6,
     "no_results": 0,
     "failed": 0,
-    "pending": 6,
-    "complete_pct": 0.0
+    "pending": 0,
+    "complete_pct": 100.0
    },
    "priority_2017": {
     "total": 10,
-    "done": 0,
+    "done": 2,
     "no_results": 0,
     "failed": 0,
-    "pending": 10,
-    "complete_pct": 0.0
+    "pending": 8,
+    "complete_pct": 20.0
    },
    "priority_2020": {
     "total": 10,
@@ -96,105 +96,190 @@
   "blocked_domains": []
  },
  "fetch": {
-  "attempts": 11,
-  "ok": 11,
-  "quarantined": 0,
-  "success_rate_pct": 100.0,
-  "total_mb": 28.35,
+  "attempts": 194,
+  "ok": 190,
+  "quarantined": 4,
+  "success_rate_pct": 97.9,
+  "total_mb": 360.9,
   "by_domain": {
    "nsearchives.nseindia.com": {
-    "ok": 3,
-    "bytes": 25784249
+    "ok": 118,
+    "bytes": 149830001,
+    "quarantined": 4
+   },
+   "beta.bseindia.com": {
+    "ok": 24,
+    "bytes": 113763899
+   },
+   "archives.nseindia.com": {
+    "ok": 15,
+    "bytes": 86894192
    },
    "nseindia.com": {
+    "ok": 20,
+    "bytes": 7847357
+   },
+   "sebi.gov.in": {
     "ok": 8,
-    "bytes": 2561325
+    "bytes": 1633115
+   },
+   "bseindia.com": {
+    "ok": 5,
+    "bytes": 927123
    }
   },
   "by_http_status": {
-   "200": 11
+   "200": 190,
+   "404": 4
   },
   "by_content_type": {
-   "text/html": 8,
-   "application/pdf": 3
+   "text/html": 38,
+   "application/pdf": 132,
+   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 4,
+   "application/x-zip-compressed": 20
   }
  },
  "artifacts": {
-  "total": 11,
+  "total": 190,
   "by_bucket": {
-   "master_lists": 11
+   "master_lists": 174,
+   "priority_2017": 16
   },
-  "parsed": 0,
-  "rows_extracted": 0
+  "parsed": 190,
+  "rows_extracted": 637
  },
  "records": {
-  "total": 0,
+  "total": 508,
   "by_year": {
-   "2007": 0,
-   "2017": 0,
-   "2020": 0,
-   "2024": 0
+   "2002": 4,
+   "2003": 7,
+   "2004": 17,
+   "2005": 6,
+   "2006": 3,
+   "2007": 7,
+   "2008": 2,
+   "2009": 7,
+   "2010": 4,
+   "2011": 1,
+   "2012": 8,
+   "2013": 1,
+   "2014": 6,
+   "2015": 4,
+   "2016": 62,
+   "2017": 81,
+   "2018": 95,
+   "2019": 19,
+   "2020": 24,
+   "2021": 45,
+   "2022": 21,
+   "2023": 6,
+   "2024": 3,
+   "2025": 2,
+   "2026": 19,
+   "unknown": 54
   },
-  "by_type": {},
-  "by_confidence": {},
-  "by_regime": {},
-  "priority_year_records": 0,
+  "by_type": {
+   "IBC_NCLT": 138,
+   "COMPULSORY": 203,
+   "VOLUNTARY_EXIT_OFFER": 8,
+   "VOLUNTARY_NO_EXIT": 127,
+   "OTHER": 25,
+   "AMALGAMATION_MERGER": 7
+  },
+  "by_confidence": {
+   "VERIFIED_PRIMARY": 475,
+   "NEEDS_REVIEW": 33
+  },
+  "by_regime": {
+   "unknown": 54,
+   "SEBI_2003_Guidelines": 48,
+   "SEBI_2009_Regs": 332,
+   "SEBI_2021_Regs": 52,
+   "SEBI_2024_Amendment": 22
+  },
+  "priority_year_records": 115,
   "priority_grid": {
    "2007": {
     "COMPULSORY": 0,
     "VOLUNTARY_EXIT_OFFER": 0,
-    "VOLUNTARY_NO_EXIT": 0,
+    "VOLUNTARY_NO_EXIT": 7,
     "AMALGAMATION_MERGER": 0,
     "IBC_NCLT": 0
    },
    "2017": {
-    "COMPULSORY": 0,
+    "COMPULSORY": 55,
     "VOLUNTARY_EXIT_OFFER": 0,
-    "VOLUNTARY_NO_EXIT": 0,
+    "VOLUNTARY_NO_EXIT": 5,
     "AMALGAMATION_MERGER": 0,
-    "IBC_NCLT": 0
+    "IBC_NCLT": 17
    },
    "2020": {
-    "COMPULSORY": 0,
+    "COMPULSORY": 4,
     "VOLUNTARY_EXIT_OFFER": 0,
-    "VOLUNTARY_NO_EXIT": 0,
+    "VOLUNTARY_NO_EXIT": 9,
     "AMALGAMATION_MERGER": 0,
-    "IBC_NCLT": 0
+    "IBC_NCLT": 9
    },
    "2024": {
-    "COMPULSORY": 0,
+    "COMPULSORY": 2,
     "VOLUNTARY_EXIT_OFFER": 0,
     "VOLUNTARY_NO_EXIT": 0,
     "AMALGAMATION_MERGER": 0,
-    "IBC_NCLT": 0
+    "IBC_NCLT": 1
    }
   },
-  "priority_grid_cells_filled": 0,
+  "priority_grid_cells_filled": 9,
   "priority_grid_cells_total": 20,
   "field_completeness_pct": {
-   "isin": 0.0,
-   "nse_symbol": 0.0,
-   "effective_delisting_date": 0.0,
-   "order_date": 0.0,
-   "exit_or_fair_value_inr": 0.0
+   "isin": 4.7,
+   "nse_symbol": 88.4,
+   "effective_delisting_date": 88.2,
+   "order_date": 1.4,
+   "exit_or_fair_value_inr": 0.2
   },
   "years_covered": [
+   "2002",
+   "2003",
+   "2004",
+   "2005",
+   "2006",
    "2007",
+   "2008",
+   "2009",
+   "2010",
+   "2011",
+   "2012",
+   "2013",
+   "2014",
+   "2015",
+   "2016",
    "2017",
+   "2018",
+   "2019",
    "2020",
-   "2024"
+   "2021",
+   "2022",
+   "2023",
+   "2024",
+   "2025",
+   "2026"
   ]
  },
  "audit": {
   "errors": {},
-  "warnings": {}
+  "warnings": {
+   "no_date": 54,
+   "possible_duplicate_event": 2,
+   "suspicious_company_name": 4,
+   "year_out_of_range": 34
+  }
  },
  "runs": [
   {
    "run_id": "20261121-161432-52703",
    "started_at": "2026-11-21T10:44:32+00:00",
-   "status": "running",
-   "stop_reason": null,
+   "status": "killed",
+   "stop_reason": "process ended without cleanup",
    "duration_s": 0.0,
    "queries_done": 0,
    "fetched_ok": 0,
@@ -204,13 +289,35 @@
   {
    "run_id": "20261121-161603-53269",
    "started_at": "2026-11-21T10:46:03+00:00",
-   "status": "running",
-   "stop_reason": null,
-   "duration_s": 0.0,
-   "queries_done": 0,
-   "fetched_ok": 0,
+   "status": "completed",
+   "stop_reason": "plan_exhausted",
+   "duration_s": 820.8,
+   "queries_done": 8,
+   "fetched_ok": 107,
    "quarantined": 0,
-   "new_records": 0
+   "new_records": 647
+  },
+  {
+   "run_id": "20261121-163028-57156",
+   "started_at": "2026-11-21T11:00:28+00:00",
+   "status": "completed",
+   "stop_reason": "harvest_done",
+   "duration_s": 159.2,
+   "queries_done": 0,
+   "fetched_ok": 40,
+   "quarantined": 0,
+   "new_records": -35
+  },
+  {
+   "run_id": "20261121-163437-58004",
+   "started_at": "2026-11-21T11:04:37+00:00",
+   "status": "completed",
+   "stop_reason": "harvest_done",
+   "duration_s": 148.5,
+   "queries_done": 0,
+   "fetched_ok": 36,
+   "quarantined": 4,
+   "new_records": -144
   }
  ],
  "agent_sessions": [
@@ -237,11 +344,12 @@
    "started_at": "2026-11-21T10:43:42.121Z",
    "finish_reason": "running_or_killed",
    "iterations": null,
-   "tool_calls": 7,
+   "tool_calls": 41,
    "tools": {
-    "read_files": 1,
-    "run_commands": 5,
-    "start_background_command": 1
+    "read_files": 2,
+    "run_commands": 35,
+    "start_background_command": 3,
+    "get_background_command": 1
    },
    "input_tokens": null,
    "output_tokens": null
