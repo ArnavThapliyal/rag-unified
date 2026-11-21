@@ -267,7 +267,7 @@ def parse_file(path: Path) -> tuple[list[dict], dict]:
         doc_type = classify(text)
         try:
             tables = pd.read_html(StringIO(html), header=None)
-        except ValueError:
+        except (ValueError, ImportError):  # no tables, or a parser backend missing: fall back to text
             tables = []
         stats["tables_seen"] = len(tables)
         for df in tables:
