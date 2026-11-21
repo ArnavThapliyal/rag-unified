@@ -17,7 +17,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PROMPT_FILE="${1:-prompts/autonomous_collection.md}"
-TIMEOUT="${CLINE_TIMEOUT:-0}"
+TIMEOUT="${CLINE_TIMEOUT:-}"   # empty = no limit (cline rejects --timeout 0)
 MODEL="${CLINE_MODEL:-qwen/qwen3.8-27b}"
 SESSION="agent-$(date +%Y%m%d-%H%M%S)"
 OUT="logs/agent_sessions/$SESSION.jsonl"
@@ -34,13 +34,15 @@ case "$disk" in *'"level": "critical"'*) echo "Not enough free disk space — fr
 
 mkdir -p logs/agent_sessions
 export NSE_AGENT_SESSION="$SESSION"
-"$PY" scripts/common.py log "agent session $SESSION started (model: $MODEL, prompt: $PROMPT_FILE, timeout: ${TIMEOUT}s)" >/dev/null
+"$PY" scripts/common.py log "agent session $SESSION started (model: $MODEL, prompt: $PROMPT_FILE, timeout: ${TIMEOUT:-none})" >/dev/null
 echo "■ $SESSION — raw log: $OUT"
 
 set +e
+TIMEOUT_ARGS=()
+[ -n "$TIMEOUT" ] && TIMEOUT_ARGS=(--timeout "$TIMEOUT")
 # shellcheck disable=SC2086
 npx --no-install cline --json -c "$ROOT" -P lmstudio -k lm-studio -m "$MODEL" \
-  --timeout "$TIMEOUT" --retries 5 ${CLINE_EXTRA_ARGS:-} "$(cat "$PROMPT_FILE")" \
+  "${TIMEOUT_ARGS[@]+"${TIMEOUT_ARGS[@]}"}" --retries 5 ${CLINE_EXTRA_ARGS:-} "$(cat "$PROMPT_FILE")" \
   | tee "$OUT" | "$PY" scripts/agent_progress.py
 status=${PIPESTATUS[0]}
 set -e
