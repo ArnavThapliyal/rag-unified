@@ -73,23 +73,59 @@ git clone --depth 1 https://github.com/cline/cline vendor/cline
 
 ### Option A: let the agent drive (recommended)
 
-1. Make sure SearXNG is up (run the `curl` check above).
-2. Open this folder in VS Code with **Roo Code** (or Cline) and select your local model.
-3. Roo Code loads `.roo/rules/01-nse-research.md` automatically. Give it a starting prompt like:
+Before you start, check that both local services are up:
 
-   > Read `soul.md`. Start with master lists: run the searxng-discovery master-list queries with `--year-tag master`, fetch only nseindia.com / sebi.gov.in / bseindia.com results (limit 10 per cache file), parse, merge, and show me `status_report.py`. Then work through priority year 2017, compulsory delistings first.
+```bash
+curl -s "http://localhost:8082/search?q=test&format=json" | head -c 100   # SearXNG returns JSON
+curl -s http://localhost:1234/v1/models | head -c 200                     # LM Studio lists qwen/qwen3.8-27b
+```
 
-4. Watch progress in `logs/agent_run.log`, which logs a line for every query, fetch, parse and merge. Run `status_report.py` whenever you want the overview.
+There are two ways to launch the agent. Both read the same rules (`.roo/rules/01-nse-research.md`; Cline reaches it through the `.cline/rules/` link) and use the same local model.
 
-**Or from the terminal with Cline CLI.** It loads the same rules through `.cline/rules/` and points at your local LM Studio model:
+#### Method 1: Roo Code in VS Code or Cursor (GUI)
+
+Use this when you want to watch and approve each step in a sidebar.
+
+1. Install the extension (one-time):
+   ```bash
+   code --install-extension RooVeterinaryInc.roo-cline     # or: cursor --install-extension RooVeterinaryInc.roo-cline
+   ```
+2. Open the project:
+   ```bash
+   code /Users/arnav/Projects/Software/nse-delisted-comp
+   ```
+3. Click the Roo Code (kangaroo) icon → ⚙ Settings → **API Provider: LM Studio**:
+   - Base URL: `http://localhost:1234`
+   - Model: `qwen/qwen3.8-27b`
+4. Start a new task and paste the starting prompt below.
+
+The Roo Code CLI (`roo`) **can't** be used here, because it only supports cloud providers (Anthropic, OpenAI, Gemini, OpenRouter, Vercel). For a local model, use the extension or Cline.
+
+#### Method 2: Cline CLI (terminal only)
+
+Use this when you want everything in the terminal with no editor.
+
+Cline is installed per project as a dev dependency (`package.json`, version pinned in `package-lock.json`):
 
 ```bash
 cd /Users/arnav/Projects/Software/nse-delisted-comp
-cline auth lmstudio      # base URL http://localhost:1234, model qwen/qwen3.8-27b (one-time)
-cline -i                 # interactive terminal UI; paste the starting prompt above
+npm install                  # one-time: installs the pinned cline into node_modules/
+npx cline auth lmstudio -b http://localhost:1234/v1 -m qwen/qwen3.8-27b   # one-time
+npx cline -i                 # interactive terminal UI; paste the starting prompt below
 ```
 
-The Roo Code CLI (`roo`) can't use LM Studio, since it only supports cloud providers. Use the Roo Code extension or Cline for local models.
+Other useful forms:
+- `npx cline "<prompt>"` runs a single task in act mode with auto-approve.
+- `npx cline -p "<prompt>"` starts in plan mode, so it proposes steps before acting.
+- `npx cline history` lists past sessions. Resume one with `npx cline --id <session-id>`.
+
+Use `npx cline`, not `cline`: plain `cline` runs the global copy in `/opt/homebrew` (if installed), which can be a different version.
+
+#### Starting prompt (for either method)
+
+> Read `soul.md`. Start with master lists: run the searxng-discovery master-list queries with `--year-tag master`, fetch only nseindia.com / sebi.gov.in / bseindia.com results (limit 10 per cache file), parse, merge, and show me `status_report.py`. Then work through priority year 2017, compulsory delistings first.
+
+Watch progress in `logs/agent_run.log` (`tail -f logs/agent_run.log` in a second terminal), which logs a line for every query, fetch, parse and merge. Run `status_report.py` whenever you want the overview.
 
 Good follow-up prompts:
 - "Fill the gaps listed in the status report for 2024, using the year-specific queries in the discovery skill."
@@ -212,6 +248,7 @@ Don't edit the processed files by hand. Fix the inputs or the parsing rules and 
 | **`.gitignore`** | Keeps out the virtualenv, vendor clones, raw downloads and the run log. The dataset and the manifest are committed. |
 | **Trusted domains** (`scripts/common.py`) | Primary: `nseindia.com`, `sebi.gov.in`, `bseindia.com`. Secondary: Business Standard, ET, Moneycontrol, Mint, BusinessLine, Financial Express, IBBI, NCLT, TaxGuru, Indian Kanoon. Edit `PRIMARY_DOMAINS` / `SECONDARY_DOMAINS` to change them. |
 | **Parser keywords** (`scripts/parse_nse_records.py`) | `HEADER_MAP` (column headers → fields) and `TYPE_KEYWORDS` (text → delisting type). Extend these when a new document format yields 0 rows. |
+| **Cline CLI** | Per-project dev dependency in `package.json` / `package-lock.json`; run with `npx cline`. `node_modules/` is git-ignored. |
 | **Vendor repos** | `vendor/Roo-Code` and `vendor/cline`, shallow clones for reference (e.g. how rules and ignore files are loaded) |
 | **Git** | Local repo on `main`, a single author, one commit per change |
 
@@ -267,9 +304,10 @@ The dataset links every delisting to its date, type, regime, ISIN and source, so
 
 ```text
 .
-├── instructions.md, soul.md, README.md, requirements.txt
+├── instructions.md, soul.md, README.md, requirements.txt, package.json
 ├── nse_delisted_master.csv     # schema reference
-├── .roo/rules/                 # Roo Code workspace rules
+├── .roo/rules/                 # Roo Code workspace rules (source of truth)
+├── .cline/rules/               # symlink → .roo/rules file, for Cline
 ├── skills/                     # agent skill guides
 ├── scripts/                    # pipeline (common.py holds shared paths and helpers)
 ├── data/
