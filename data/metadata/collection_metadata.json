@@ -1,14 +1,14 @@
 {
- "generated_at": "2026-11-21T13:44:10+00:00",
+ "generated_at": "2026-11-21T14:16:59+00:00",
  "indicators": {
   "records_total": 483,
   "priority_year_records": 118,
   "verified_primary_pct": 99.6,
   "needs_review": 2,
   "priority_grid_coverage_pct": 40.0,
-  "query_plan_complete_pct": 14.0,
+  "query_plan_complete_pct": 13.6,
   "queries_done": 15,
-  "queries_total": 107,
+  "queries_total": 110,
   "fetch_success_rate_pct": 97.9,
   "artifacts_downloaded": 415,
   "artifacts_with_rows": 96,
@@ -27,14 +27,14 @@
    "quarantined": 0,
    "new_records": 0
   },
-  "agent_sessions": 7,
+  "agent_sessions": 8,
   "proposed_delisting_leads": 14,
   "bse_only_delistings": 116,
   "audit_errors": 0,
   "audit_warnings": 43,
   "disk": {
    "data_gb": 0.7,
-   "free_gb": 363.5,
+   "free_gb": 352.2,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -93,11 +93,11 @@
     "complete_pct": 0.0
    },
    "agent_added": {
-    "total": 10,
+    "total": 13,
     "done": 0,
     "no_results": 0,
     "failed": 0,
-    "pending": 10,
+    "pending": 13,
     "complete_pct": 0.0
    }
   },
@@ -541,6 +541,19 @@
    },
    "input_tokens": 251680,
    "output_tokens": 1812
+  },
+  {
+   "file": "logs/agent_sessions/agent-20261121-192012.jsonl",
+   "started_at": "2026-11-21T13:50:13.719Z",
+   "finish_reason": "completed",
+   "iterations": 9,
+   "tool_calls": 8,
+   "tools": {
+    "read_files": 2,
+    "run_commands": 6
+   },
+   "input_tokens": 229936,
+   "output_tokens": 1750
   }
  ]
 }
