@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Reference repos (separate git clones; re-clone with the commands in README)
+vendor/
+
+# Downloaded / bulky artifacts — reproducible via the pipeline
+data/search_cache/*
+data/raw/**/*
+data/quarantine/*
+data/processed/parsed/*
+!data/**/.gitkeep
+!data/raw/*/
+
+# Noisy run log (fetch_manifest.jsonl is kept as the provenance record)
+logs/agent_run.log
+
+# OS
+.DS_Store

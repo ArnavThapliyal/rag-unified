@@ -1,0 +1,52 @@
+.
+├── data
+│   ├── processed
+│   │   ├── nse_delisted_master.csv
+│   │   ├── nse_delisted_master.jsonl
+│   │   ├── parsed
+│   │   │   ├── priority_2017__303b226c2a80e29b.jsonl
+│   │   │   └── priority_2017__f82cbab5d68880e1.jsonl
+│   │   └── priority_years_audit.csv
+│   ├── quarantine
+│   ├── raw
+│   │   ├── archive_2006_2026
+│   │   ├── master_lists
+│   │   ├── priority_2007
+│   │   ├── priority_2017
+│   │   │   ├── 303b226c2a80e29b.pdf
+│   │   │   └── f82cbab5d68880e1.pdf
+│   │   ├── priority_2020
+│   │   └── priority_2024
+│   └── search_cache
+│       └── dbfe4c5dc7bcbd54.json
+├── instructions.md
+├── logs
+│   ├── agent_run.log
+│   └── fetch_manifest.jsonl
+├── nse_delisted_master.csv
+├── projectstructure.txt
+├── requirements.txt
+├── scripts
+│   ├── __pycache__
+│   │   ├── common.cpython-311.pyc
+│   │   ├── normalize_and_merge.cpython-311.pyc
+│   │   └── parse_nse_records.cpython-311.pyc
+│   ├── common.py
+│   ├── normalize_and_merge.py
+│   ├── parse_nse_records.py
+│   ├── polite_fetcher.py
+│   ├── searxng_client.py
+│   └── status_report.py
+├── skills
+│   ├── dataset-auditor
+│   │   └── SKILL.md
+│   ├── nse-document-parser
+│   │   └── SKILL.md
+│   └── searxng-discovery
+│       └── SKILL.md
+├── soul.md
+└── vendor
+    ├── Roo-Code
+    └── cline
+
+23 directories, 27 files

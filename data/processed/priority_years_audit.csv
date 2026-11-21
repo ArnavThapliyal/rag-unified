@@ -1,0 +1,1 @@
+record_id,company_name,nse_symbol,isin,delisting_type,order_date,effective_delisting_date,calendar_year,financial_year,is_priority_year,regulatory_regime,exit_or_fair_value_inr,source_url,local_artifact_path,confidence_status,source_count,all_source_urls

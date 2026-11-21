@@ -1,0 +1,150 @@
+"""Cached, rate-limited downloader.
+
+- Never fetches the same URL twice (checked against logs/fetch_manifest.jsonl).
+- Random 2-5s delay between requests; exponential backoff on 429/5xx.
+- Non-200 or empty responses go to data/quarantine/.
+- Every attempt is appended to logs/fetch_manifest.jsonl.
+
+Examples:
+  python scripts/polite_fetcher.py --url "https://www.nseindia.com/..." --year-tag 2017
+  python scripts/polite_fetcher.py --from-cache-file data/search_cache/ab12.json --limit 10 \
+      --domains nseindia.com,sebi.gov.in,bseindia.com
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import mimetypes
+import re
+import sys
+import time
+from pathlib import Path
+from urllib.parse import urlparse
+
+import requests
+
+from common import (
+    MANIFEST, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, emit, log,
+    now_iso, polite_sleep, raw_dir_for_tag, read_jsonl, sha256_bytes, sha256_text,
+)
+
+MAX_RETRIES = 4
+CONTENT_EXT = {
+    "application/pdf": ".pdf",
+    "text/html": ".html",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-excel": ".xls",
+    "text/csv": ".csv",
+    "application/json": ".json",
+    "text/plain": ".txt",
+}
+
+
+def already_fetched() -> dict[str, dict]:
+    """URL -> latest successful manifest entry."""
+    done = {}
+    for e in read_jsonl(MANIFEST):
+        if e.get("http_status") == 200 and not e.get("quarantined"):
+            done[e["url"]] = e
+    return done
+
+
+def pick_ext(url: str, content_type: str) -> str:
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct in CONTENT_EXT:
+        return CONTENT_EXT[ct]
+    suffix = Path(urlparse(url).path).suffix.lower()
+    if re.fullmatch(r"\.[a-z0-9]{1,5}", suffix):
+        return suffix
+    return mimetypes.guess_extension(ct) or ".bin"
+
+
+def fetch_one(session: requests.Session, url: str, year_tag: str | None) -> dict:
+    status, body, ctype, err = None, b"", "", None
+    for attempt in range(MAX_RETRIES):
+        try:
+            r = session.get(url, timeout=45, allow_redirects=True)
+            status, body, ctype = r.status_code, r.content, r.headers.get("Content-Type", "")
+            if status == 429 or status >= 500:
+                wait = int(r.headers.get("Retry-After", 0) or 0) or 2 ** (attempt + 2)
+                time.sleep(min(wait, 120))
+                continue
+            break
+        except requests.RequestException as e:
+            err = str(e)
+            time.sleep(2 ** (attempt + 2))
+
+    digest = sha256_bytes(body) if body else None
+    ok = status == 200 and len(body) > 0
+    base = sha256_text(url)[:16]
+    ext = pick_ext(url, ctype)
+    target_dir = raw_dir_for_tag(year_tag) if ok else QUARANTINE
+    target_dir.mkdir(parents=True, exist_ok=True)
+    path = target_dir / f"{base}{ext}"
+    if body:
+        path.write_bytes(body)
+
+    entry = {
+        "timestamp": now_iso(), "url": url, "http_status": status, "sha256": digest,
+        "local_path": str(path.relative_to(ROOT)) if body else None, "year_tag": year_tag,
+        "content_type": ctype.split(";")[0] if ctype else None, "bytes": len(body),
+        "quarantined": not ok,
+    }
+    if err and status is None:
+        entry["error"] = err
+    append_jsonl(MANIFEST, entry)
+    log(f"{'OK' if ok else 'QUARANTINE'} {status} {url} -> {entry['local_path']}",
+        level="INFO" if ok else "WARN")
+    return entry
+
+
+def urls_from_cache_file(path: Path, domains: list[str] | None) -> tuple[list[str], str | None]:
+    d = json.loads(path.read_text(encoding="utf-8"))
+    urls = [r["url"] for r in d.get("results", []) if r.get("url")]
+    if domains:
+        urls = [u for u in urls if domain_matches(u, domains)]
+    return urls, d.get("year_tag")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--url")
+    src.add_argument("--from-cache-file", type=Path)
+    ap.add_argument("--year-tag", help="overrides the cache file's year_tag")
+    ap.add_argument("--limit", type=int, default=10)
+    ap.add_argument("--domains", help="comma-separated allowlist, e.g. nseindia.com,sebi.gov.in")
+    a = ap.parse_args()
+
+    domains = [x.strip() for x in a.domains.split(",")] if a.domains else None
+    if a.url:
+        urls, tag = [a.url], a.year_tag
+    else:
+        p = a.from_cache_file if a.from_cache_file.is_absolute() else ROOT / a.from_cache_file
+        urls, tag = urls_from_cache_file(p, domains)
+        tag = a.year_tag or tag
+
+    done = already_fetched()
+    todo = [u for u in dict.fromkeys(urls) if u not in done][: a.limit]
+    skipped = len(set(urls)) - len([u for u in dict.fromkeys(urls) if u not in done])
+
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-IN,en;q=0.9"})
+    ok, quarantined, saved = 0, 0, []
+    for i, url in enumerate(todo):
+        if i:
+            polite_sleep()
+        e = fetch_one(session, url, tag)
+        if e["quarantined"]:
+            quarantined += 1
+        else:
+            ok += 1
+            saved.append(e["local_path"])
+
+    emit({"requested": len(urls), "skipped_cached": skipped, "fetched_ok": ok,
+          "quarantined": quarantined, "year_tag": tag, "saved": saved})
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
