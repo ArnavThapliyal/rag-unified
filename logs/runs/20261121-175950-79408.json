@@ -1,0 +1,45 @@
+{
+ "run_id": "20261121-175950-79408",
+ "agent_session": "agent-20261121-173337",
+ "started_at": "2026-11-21T12:29:50+00:00",
+ "finished_at": null,
+ "duration_s": 189.1,
+ "status": "running",
+ "stop_reason": null,
+ "args": {
+  "phase": "all",
+  "max_queries": 8,
+  "fetch_limit": null,
+  "process_every": 5,
+  "retry_failed": false,
+  "harvest_only": false,
+  "max_harvest": null,
+  "dry_run": false
+ },
+ "queries_planned": 8,
+ "queries_done": 5,
+ "queries_failed": 0,
+ "queries_no_results": 0,
+ "phases": {
+  "priority_2017": {
+   "queries": 5,
+   "urls": 193,
+   "fetched_ok": 36,
+   "quarantined": 0
+  }
+ },
+ "urls_found": 193,
+ "fetched_ok": 36,
+ "quarantined": 0,
+ "skipped_cached": 17,
+ "skipped_blocked": 0,
+ "harvested_ok": 0,
+ "harvest_backlog": null,
+ "newly_blocked_domains": [],
+ "parsed_files": 0,
+ "parsed_rows": 0,
+ "parse_errors": 0,
+ "records_before": 697,
+ "records_after": 697,
+ "new_records": 0
+}

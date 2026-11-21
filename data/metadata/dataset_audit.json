@@ -1,12 +1,12 @@
 {
- "generated_at": "2026-11-21T12:20:09+00:00",
- "records": 509,
+ "generated_at": "2026-11-21T12:33:41+00:00",
+ "records": 596,
  "error_count": 0,
- "warning_count": 84,
+ "warning_count": 140,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 48,
+   "count": 102,
    "examples": [
     {
      "record_id": "264894af7125efa0",
@@ -34,6 +34,11 @@
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     },
     {
+     "record_id": "fa44ab885935c7bc",
+     "company_name": "Aditya Info-Soft Ltd",
+     "source_url": "https://beta.bseindia.com/downloads1/TradingNotice_No_20180228_14_Feb_28_2018.pdf"
+    },
+    {
      "record_id": "f8afd8f619d671f3",
      "company_name": "Aditya Polymers Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
@@ -52,16 +57,11 @@
      "record_id": "23336a0ff4ace1f9",
      "company_name": "Alpine Industries Ltd",
      "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
-    },
-    {
-     "record_id": "3a79c9e93cf94093",
-     "company_name": "Alps Infosys Ltd",
-     "source_url": "https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf"
     }
    ]
   },
   "possible_duplicate_event": {
-   "count": 2,
+   "count": 4,
    "examples": [
     {
      "record_id": "574af156693cb5f3",
@@ -72,6 +72,16 @@
      "record_id": "2ef5edf94cf151d1",
      "company_name": "B S Appliances Limited",
      "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
+    },
+    {
+     "record_id": "bfbf6f172c3d5244",
+     "company_name": "Simplex Projects Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
+    },
+    {
+     "record_id": "5510e985f2febe8a",
+     "company_name": "Simplex Projects Limited",
+     "source_url": "https://nsearchives.nseindia.com/web/sites/default/files/inline-files/Simplex_Projects_Limited.pdf"
     }
    ]
   },

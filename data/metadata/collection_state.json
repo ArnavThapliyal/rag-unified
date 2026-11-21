@@ -164,6 +164,106 @@
     "data/search_cache/47fdae8ec14c35c5.json",
     "data/search_cache/0ed9961a359883e6.json"
    ]
+  },
+  "site:nseindia.com voluntary delisting exit offer 2017": {
+   "phase": "priority_2017",
+   "year_tag": "2017",
+   "ts": "2026-11-21T12:29:52+00:00",
+   "run_id": "20261121-175950-79408",
+   "status": "done",
+   "results": 36,
+   "unresponsive_engines": [
+    "brave",
+    "duckduckgo",
+    "startpage"
+   ],
+   "candidate_urls": 36,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/1b9072be6c28d5ee.json",
+    "data/search_cache/94d3cb4407846a52.json"
+   ]
+  },
+  "site:sebi.gov.in delisting order 2017": {
+   "phase": "priority_2017",
+   "year_tag": "2017",
+   "ts": "2026-11-21T12:30:32+00:00",
+   "run_id": "20261121-175950-79408",
+   "status": "done",
+   "results": 38,
+   "unresponsive_engines": [
+    "brave",
+    "duckduckgo",
+    "startpage"
+   ],
+   "candidate_urls": 38,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/a030902508e0eea3.json",
+    "data/search_cache/d9f47b7627247e7f.json"
+   ]
+  },
+  "site:bseindia.com compulsory delisting notice 2017": {
+   "phase": "priority_2017",
+   "year_tag": "2017",
+   "ts": "2026-11-21T12:31:15+00:00",
+   "run_id": "20261121-175950-79408",
+   "status": "done",
+   "results": 40,
+   "unresponsive_engines": [
+    "brave",
+    "duckduckgo",
+    "startpage"
+   ],
+   "candidate_urls": 40,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/b1ffed82db68590b.json",
+    "data/search_cache/874d982178727f0c.json"
+   ]
+  },
+  "NSE voluntary delisting reverse book building 2017 exit price": {
+   "phase": "priority_2017",
+   "year_tag": "2017",
+   "ts": "2026-11-21T12:31:58+00:00",
+   "run_id": "20261121-175950-79408",
+   "status": "done",
+   "results": 39,
+   "unresponsive_engines": [
+    "brave",
+    "duckduckgo",
+    "startpage"
+   ],
+   "candidate_urls": 8,
+   "fetched_ok": 4,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/389c3c676940e430.json",
+    "data/search_cache/a85bd8df03a27947.json"
+   ]
+  },
+  "NCLT resolution plan delisting NSE 2017": {
+   "phase": "priority_2017",
+   "year_tag": "2017",
+   "ts": "2026-11-21T12:32:18+00:00",
+   "run_id": "20261121-175950-79408",
+   "status": "done",
+   "results": 40,
+   "unresponsive_engines": [
+    "brave",
+    "duckduckgo",
+    "startpage"
+   ],
+   "candidate_urls": 23,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/a4699a1022bc3cf6.json",
+    "data/search_cache/c1fbb6af82dc0796.json"
+   ]
   }
  },
  "blocked_domains": [],

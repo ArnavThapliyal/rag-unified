@@ -3,6 +3,7 @@
   python scripts/report_issue.py --kind zero_rows --summary "3 Delisting Committee orders gave 0 rows" \
       --evidence data/raw/master_lists/18fea6d29ab81379.pdf --evidence data/raw/master_lists/2386be42adcabb23.pdf
   python scripts/report_issue.py --list          # open issues (check before reporting, to avoid duplicates)
+  python scripts/report_issue.py --close 3 --note "fixed in <commit>"   # for the user, not the agent
 
 Kinds: zero_rows (relevant documents produced no records), bad_rows (junk or wrong records in the master),
 audit_error, fetch (blocked/failed domains), script_error (a script crashed or misbehaved),
@@ -67,13 +68,29 @@ def _report(kind: str, summary: str, evidence: list[str]) -> dict:
     return {"reported": True, "id": issue["id"]}
 
 
+def close(issue_id: int, note: str) -> dict:
+    with locked():
+        issues = load()
+        for i in issues:
+            if i["id"] == issue_id:
+                i.update(status="closed", closed_at=now_iso(), resolution=note)
+                save(issues)
+                return {"closed": issue_id}
+    return {"closed": None, "reason": f"no issue #{issue_id}"}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--kind", choices=KINDS)
     ap.add_argument("--summary", help="one sentence: what is wrong, with counts")
     ap.add_argument("--evidence", action="append", default=[], help="artifact path, URL or record_id (repeatable)")
     ap.add_argument("--list", action="store_true", help="print open issues")
+    ap.add_argument("--close", type=int, metavar="ID", help="mark an issue resolved (user only)")
+    ap.add_argument("--note", default="", help="resolution note for --close")
     a = ap.parse_args()
+    if a.close:
+        emit(close(a.close, a.note))
+        return 0
     if a.list:
         emit({"open": [{k: i[k] for k in ("id", "kind", "summary", "times_seen")}
                        for i in load() if i["status"] == "open"]})
