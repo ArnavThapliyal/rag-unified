@@ -11,7 +11,7 @@ Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
   (they are in `.clineignore`). Use `scripts/inspect_artifact.py <path>` for structured facts about a file.
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), add_queries.py, common.py (`log`), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut. Anything else (ls, cat, grep on files, python -c, curl, rm, redirects,
   reading scripts/ or data/raw/, edits outside config/) needs the user's approval: it is NOT run, you get
   `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.
@@ -45,7 +45,9 @@ Never read or edit the source of `scripts/`, `tests/`, `skills/`, `prompts/` or 
 need is in the scripts' JSON output: e.g. `collect.py --dry-run` shows `search_cooldown_min_left`), never edit `soul.md`, and never write ad-hoc
 `python -c` probes of the parser or the data. When something looks wrong, report it with
 `report_issue.py` (at most 3 `inspect_artifact.py` looks for evidence) and carry on collecting.
-The only file you may edit is `config/query_plan.json` (append to the `agent_added` phase; append websites to `fetch_domains`).
+To add searches or websites, run `.venv/bin/python scripts/add_queries.py --year-tag <year> --query "..."` (repeat
+`--query`, max 8 per call) or `--add-domain <host>`; it appends to the `agent_added` phase / `fetch_domains`.
+Don't edit `config/query_plan.json` any other way (scripts and heredocs are blocked).
 
 ## Individual steps (reference — the user's debugging tools; you don't need them)
 1. Discover — `scripts/web_search.py --query "<q>" --pages 2 --year-tag 2017` (skill: searxng-discovery)
@@ -69,7 +71,7 @@ The only file you may edit is `config/query_plan.json` (append to the `agent_add
   `max_files_reached` / `max_companies_reached` worked as intended; start the next cycle.
 - Stop reasons: `queries_exhausted` (no searches left), `docket_exhausted` (nothing left to download),
   `sources_exhausted` (downloads left but every one is over its site's budget, blocked or retrying later).
-- To add searches, append to a phase named `agent_added` in `config/query_plan.json`; never delete queries.
+- To add searches, use `scripts/add_queries.py` (appends to the `agent_added` phase); never delete queries.
 - Any website may be a source (`open_web`), not only NSE/BSE/SEBI. Records from other sites are marked
   `NEEDS_REVIEW` (or `CORROBORATED_SECONDARY` for known news sites) — that's expected, not an anomaly.
   Productive new websites (`indicators.new_domains_with_rows`) go into `fetch_domains`; never edit

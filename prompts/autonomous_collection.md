@@ -4,7 +4,8 @@ Read `soul.md` and `.cline/rules/01-nse-research.md` first, then work through th
 YOUR JOB IS COLLECTING, NOT DEBUGGING. You run the pipeline, watch its numbers, and REPORT anomalies with
 `scripts/report_issue.py`; the user fixes them. Never read, edit, rewrite or test files in `scripts/`, `tests/`,
 `skills/`, `prompts/`, `.cline/` or `soul.md`; never write ad-hoc Python (`python -c`) to probe parsers or data.
-The only file you may edit is `config/query_plan.json` (append queries to `agent_added`, append websites to `fetch_domains`).
+Add searches and websites ONLY with `.venv/bin/python scripts/add_queries.py --year-tag <year> --query "..."`
+(repeat `--query`, max 8 per call) and `--add-domain <host>`. Don't edit `config/query_plan.json` any other way.
 
 IMPORTANT: shell commands are killed after 30 seconds. Collection runs take minutes, so ALWAYS run them
 through the job runner: `.venv/bin/python scripts/job.py start <collect.py args>` (returns immediately), then
@@ -38,16 +39,16 @@ files, new companies, documents per company); they are the user's settings, neve
      `.venv/bin/python scripts/report_issue.py --kind zero_rows --summary "<N> <document kind> gave 0 rows" --evidence <path> …`
      Do not open the parser, do not retry, do not try to explain why.
    - Priority-grid gaps (year × type with 0 records) after the plan for that year is done → add 2–4
-     targeted queries to a phase named `agent_added` at the END of `config/query_plan.json`
-     (use the discovery skill templates; set `year_tag`). Never delete existing queries.
+     targeted queries with `scripts/add_queries.py --year-tag <year> --query "..."` (use the discovery
+     skill templates). Never delete existing queries.
    - `data/processed/proposed_delisting_leads.csv` has companies with `already_in_master = False` →
-     add queries like `"<company name>" delisted NSE` to `agent_added` (max 10 per cycle). No `site:` — any
+     add queries like `"<company name>" delisted NSE` with `scripts/add_queries.py` (max 10 per cycle). No `site:` — any
      website that has the story is fine.
    - NEW WEBSITES: finding sources beyond NSE/BSE/SEBI is part of your job (NSE rate-limits hard, so it gets
      only a few requests per run). `indicators.new_domains_with_rows` lists websites outside `fetch_domains`
      whose pages gave rows (details: `data/metadata/domain_registry.json`). For each one not yet in
-     `fetch_domains` (max 5 per cycle): append it to `fetch_domains`, and add 1–2 queries
-     `site:<domain> delisted companies` / `site:<domain> delisting <year>` to `agent_added`.
+     `fetch_domains` (max 5 per cycle): `scripts/add_queries.py --add-domain <domain>`, and add 1–2 queries
+     `site:<domain> delisted companies` / `site:<domain> delisting <year>` the same way.
      Also add 1–2 open-web queries per cycle without `site:` (e.g. `list of companies delisted from NSE 2020`)
      so search keeps finding new websites. At most 8 new queries per cycle in total.
    - `indicators.audit_errors` > 0 → `.venv/bin/python scripts/audit_dataset.py`, then report once with
@@ -75,7 +76,7 @@ files, new companies, documents per company); they are the user's settings, neve
 - Don't open raw files directly; use `inspect_artifact.py` (structured facts only).
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), add_queries.py, common.py (`log`), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut. Anything else (ls, cat, grep on files, python -c, curl, rm, redirects,
   reading scripts/ or data/raw/, edits outside config/) needs the user's approval: it is NOT run, you get
   `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.

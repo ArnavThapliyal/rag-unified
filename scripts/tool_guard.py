@@ -61,7 +61,7 @@ def _common(args):
 SCRIPTS = {
     "collect.py": _collect, "job.py": _job, "status_report.py": None, "report_issue.py": _report,
     "inspect_artifact.py": None, "audit_dataset.py": None, "build_metadata.py": None,
-    "web_search.py": _search, "docket.py": _docket, "common.py": _common,
+    "web_search.py": _search, "docket.py": _docket, "common.py": _common, "add_queries.py": None,
 }
 FILTERS = {"head", "tail", "wc", "grep", "sort", "uniq", "cut"}
 SEPARATORS = {"&&", "||", ";", "|"}
@@ -196,8 +196,8 @@ def blocked_input(tool: str, inp: dict, reason: str) -> dict:
     """A harmless replacement call that tells the agent why the original was not run."""
     msg = f"BLOCKED by tool guard (needs the user's approval): {reason}. Allowed: .venv/bin/python scripts/<agent script>.py, git status."
     if "query_plan" in json.dumps(inp):
-        msg += (" To add queries, edit config/query_plan.json with the editor tool (append to the agent_added"
-                " phase); don't script it.")
+        msg += (' To add queries: .venv/bin/python scripts/add_queries.py --year-tag 2008 --query "..." '
+                '(repeat --query, max 8; --add-domain example.com for a new website).')
     if tool == "run_commands":
         return {"commands": [f"printf '%s\\n' {shlex.quote(msg)}"]}
     if tool == "read_files":

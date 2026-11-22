@@ -76,7 +76,7 @@ def test_docket_is_read_only_for_the_agent():
     assert g.check("run_commands", {"commands": [".venv/bin/python scripts/fetch_worker.py"]})
 
 
-def test_blocked_config_script_points_to_the_editor():
+def test_blocked_config_script_points_to_add_queries():
     inp = {"commands": [".venv/bin/python - <<'PY'\nimport json; open('config/query_plan.json')\nPY"]}
     reason = g.check("run_commands", inp)
-    assert reason and "editor tool" in g.blocked_input("run_commands", inp, reason)["commands"][0]
+    assert reason and "scripts/add_queries.py" in g.blocked_input("run_commands", inp, reason)["commands"][0]
