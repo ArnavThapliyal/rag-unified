@@ -35,12 +35,15 @@ pipeline, so it is not allowed to edit code (`scripts/`, `tests/`, `skills/`, pr
 parser with ad-hoc Python. When something looks wrong (relevant documents with 0 rows, junk names, audit
 errors, a blocked domain, a crash) it files a report with `scripts/report_issue.py` and keeps collecting.
 It stops only if a script crashes twice in a row. Review the reports with:
+
 ```bash
 .venv/bin/python scripts/report_issue.py --list      # open issues; full detail in logs/issues.jsonl
 ```
+
 The only file the agent edits is `config/query_plan.json`, to append searches to an `agent_added` phase.
 
 **Safeguards built in:**
+
 - **Polite fetching.** Waits a random 2–5 s between requests, backs off on 429/5xx, and moves failed downloads to `data/quarantine/`.
 - **Fetch once.** A URL that downloaded successfully, or failed with a definitive 4xx error, is never requested again.
 - **Blocked domains.** A domain that fails 3 times in a row is blocked and the block is saved. There's no WAF bypass.
@@ -55,21 +58,28 @@ The only file the agent edits is `config/query_plan.json`, to append searches to
 ## Setup (one-time)
 
 ```bash
-cd /Users/arnav/Projects/Software/nse-delisted-comp
+git clone https://github.com/ArnavThapliyal/nse-delisted-comp && cd nse-delisted-comp
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python pipeline
 .venv/bin/pip install -r requirements-dev.txt                         # pytest + pyflakes
 npm install                                                           # Cline CLI (pinned 3.0.75)
 brew install tesseract                                                # OCR for scanned PDFs
+
+# SearXNG search (Docker): settings come from searxng/settings.yml, the secret from .env
+cp .env.example .env && sed -i '' "s/^SEARXNG_SECRET=.*/SEARXNG_SECRET=$(openssl rand -hex 32)/" .env
+docker compose up -d
+curl -s "localhost:8082/search?q=test&format=json" | head -c 80          # expect {"query": "test", ...
 
 # Optional reference copy of Cline's source (git-ignored)
 git clone --depth 1 https://github.com/cline/cline vendor/cline
 ```
 
 Requirements:
-- **SearXNG** (Docker) at `http://localhost:8082` with JSON output enabled (`search.formats: [html, json]` in its `settings.yml`).
+
+- **SearXNG** (Docker) at `http://localhost:8082` with JSON output enabled. `docker compose up -d` starts it from `docker-compose.yml` (image pinned, port bound to 127.0.0.1) with `searxng/settings.yml` mounted read-only: JSON output plus the extra engines the rotation in `config/query_plan.json` uses. Edit that file and run `docker compose restart` to change engines; the secret key stays in the git-ignored `.env`.
 - **LM Studio** serving at `http://localhost:1234` with `qwen/qwen3.8-27b` loaded. Give it a large context length, since the agent session gets long.
 
 Check everything (code, tests, configs, data audit, disk, SearXNG, LM Studio, Cline) in one go:
+
 ```bash
 scripts/check.sh            # add --offline to skip the service checks
 ```
@@ -99,6 +109,7 @@ scripts/run_agent.sh
 ```
 
 This launches Cline in unattended mode (`--json`, auto-approve) with [`prompts/autonomous_collection.md`](prompts/autonomous_collection.md). It cycles through:
+
 - **Harvest:** fetch any backlog of linked documents.
 - **Query:** run the next 8 pending queries.
 - **Check:** look at the indicators.
@@ -118,6 +129,7 @@ The terminal shows one line per action:
 ```
 
 Options:
+
 ```bash
 CLINE_TIMEOUT=14400 scripts/run_agent.sh                       # stop after 4 h
 CLINE_MODEL=google/gemma-4-26b-a4b scripts/run_agent.sh        # different LM Studio model
@@ -128,6 +140,7 @@ scripts/run_agent.sh prompts/my_task.md                        # different task 
 > **Note:** Cline kills any shell command after 30 seconds (its `bashTimeoutMs`, which the CLI can't change). The agent therefore starts collections with `scripts/job.py start …` and polls `scripts/job.py wait 1`, `wait 2`, …, so long runs survive the timeout. The counter is there because Cline's loop detection aborts a session after 5 identical tool calls in a row. `run_agent.sh` also restarts a session whose run didn't finish `completed` (aborted, mistake limit), not just one that exited non-zero.
 
 **Without the agent** (deterministic, no LLM), `collect.py` runs the plan by itself:
+
 ```bash
 .venv/bin/python scripts/collect.py --dry-run          # what's pending + harvest backlog
 .venv/bin/python scripts/collect.py --harvest-only --max-harvest 60
@@ -158,16 +171,19 @@ You'll see `!! DISK WARNING: data/ has grown to 5.1 GB …` in the terminal and 
 ### Search engines: rotation and bans
 
 SearXNG forwards queries to public engines, which rate-limit, CAPTCHA or deny a client that searches too much. The collector rotates engines (`scripts/searxng_client.py`, settings in the `search` block of `config/query_plan.json`):
+
 - Each request asks only `engines_per_query` (2) engines, the ones rested longest; if both fail it tries the next pair once.
 - An engine that answers *too many requests* is benched 60 min, *CAPTCHA* 6 h, *access denied* 12 h, other errors 2 h.
 - An engine whose answers contain no official-domain result 3 times in a row (empty, or junk like Bing returning gaming forums) is benched 6 h.
 - Queries are 20–40 s apart.
 - When every engine is benched, `collect.py` stops with `search_engines_suspended` and the query stays pending; `run_agent.sh` waits until the first engine is back (5 min – 12 h, `search_cooldown_min_left` in `collect.py --dry-run`) and starts a fresh session, up to `CLINE_MAX_COOLDOWNS` (12) times. Harvest-only runs keep working.
 
-Engines are enabled in SearXNG's `/etc/searxng/settings.yml` (`engines:` list; backup `settings.yml.bak-before-engines`). Check them:
+Engines are enabled in [`searxng/settings.yml`](searxng/settings.yml) (`engines:` list; `docker compose restart` after editing). Check them:
+
 ```bash
 .venv/bin/python scripts/searxng_client.py --engines     # usable / benched (+ reason, minutes left) / stats
 ```
+
 The bans are per IP: if all engines are banned at once, rotating doesn't help until they expire.
 
 ### Other things to watch
@@ -210,19 +226,19 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 
 ## Configuration
 
-| Item | Where | Notes |
-|---|---|---|
-| Query plan | `config/query_plan.json` | Phases, queries, pages per query, `fetch_domains`, `fetch_limit_per_query`, `harvest_limit_per_page`, `block_domain_after_failures`. The agent adds queries to an `agent_added` phase. |
-| Agent task | `prompts/autonomous_collection.md` | The loop, stop conditions and hard rules for unattended runs |
-| Agent rules | `.cline/rules/01-nse-research.md` | Loaded automatically by Cline for every task |
-| Agent persona | `soul.md` | Accuracy over volume, never invent fields, every row cites a source |
-| Skills | `skills/` (linked as `.cline/skills`) | `searxng-discovery`, `nse-document-parser`, `dataset-auditor` |
-| Hidden from agent | `.clineignore` | `vendor/`, `.venv/`, raw data, caches, quarantine, parsed rows |
-| Trusted domains | `scripts/common.py` | `PRIMARY_DOMAINS` (NSE, SEBI, BSE → `VERIFIED_PRIMARY`), `SECONDARY_DOMAINS` (news and legal sites → `CORROBORATED_SECONDARY`) |
-| Parser rules | `scripts/parse_nse_records.py` | `HEADER_MAP`, `TYPE_KEYWORDS`, `rows_from_order`, `PROPOSED_RE` |
-| LM Studio | `scripts/run_agent.sh` | Cline `lmstudio` provider, `localhost:1234/v1`, model from `CLINE_MODEL` |
-| Cline CLI | `package.json` | Pinned to `3.0.75`, with npm `overrides` for vulnerable dependencies (`npm audit`: 0 critical). **Never run `npm audit fix --force`**, because it downgrades Cline to 3.0.3. |
-| SearXNG | Docker container `searxng` | `search.formats: [html, json]` added. The original config is backed up as `settings.yml.bak`. |
+| Item              | Where                                 | Notes                                                                                                                                                                                  |
+| ----------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Query plan        | `config/query_plan.json`              | Phases, queries, pages per query, `fetch_domains`, `fetch_limit_per_query`, `harvest_limit_per_page`, `block_domain_after_failures`. The agent adds queries to an `agent_added` phase. |
+| Agent task        | `prompts/autonomous_collection.md`    | The loop, stop conditions and hard rules for unattended runs                                                                                                                           |
+| Agent rules       | `.cline/rules/01-nse-research.md`     | Loaded automatically by Cline for every task                                                                                                                                           |
+| Agent persona     | `soul.md`                             | Accuracy over volume, never invent fields, every row cites a source                                                                                                                    |
+| Skills            | `skills/` (linked as `.cline/skills`) | `searxng-discovery`, `nse-document-parser`, `dataset-auditor`                                                                                                                          |
+| Hidden from agent | `.clineignore`                        | `vendor/`, `.venv/`, raw data, caches, quarantine, parsed rows                                                                                                                         |
+| Trusted domains   | `scripts/common.py`                   | `PRIMARY_DOMAINS` (NSE, SEBI, BSE → `VERIFIED_PRIMARY`), `SECONDARY_DOMAINS` (news and legal sites → `CORROBORATED_SECONDARY`)                                                         |
+| Parser rules      | `scripts/parse_nse_records.py`        | `HEADER_MAP`, `TYPE_KEYWORDS`, `rows_from_order`, `PROPOSED_RE`                                                                                                                        |
+| LM Studio         | `scripts/run_agent.sh`                | Cline `lmstudio` provider, `localhost:1234/v1`, model from `CLINE_MODEL`                                                                                                               |
+| Cline CLI         | `package.json`                        | Pinned to `3.0.75`, with npm `overrides` for vulnerable dependencies (`npm audit`: 0 critical). **Never run** `npm audit fix --force`, because it downgrades Cline to 3.0.3.           |
+| SearXNG           | Docker container `searxng`            | `search.formats: [html, json]` added. The original config is backed up as `settings.yml.bak`.                                                                                          |
 
 ---
 
@@ -275,6 +291,7 @@ Don't edit the processed files or the metadata by hand. Fix the inputs or the pa
 None of these is built yet. They are possible next steps.
 
 **Research**
+
 1. **Survivorship-bias-free backtesting.** Join delisted ISINs and symbols back into historical NSE universes so returns aren't overstated. Each `effective_delisting_date` marks where a stock's price series ends.
 2. **Regulatory event studies.**
    - *2007*: the last years of the SEBI 2003 Guidelines.
@@ -297,6 +314,7 @@ None of these is built yet. They are possible next steps.
 ├── instructions.md, soul.md, README.md, AUDIT.md
 ├── nse_delisted_master.csv          # schema reference
 ├── requirements.txt, requirements-dev.txt, package.json   # Python deps; pytest/pyflakes; Cline CLI
+├── docker-compose.yml, searxng/settings.yml, .env.example   # local SearXNG (secret in git-ignored .env)
 ├── tests/                           # pytest suite (offline)
 ├── config/query_plan.json           # what to search, in order
 ├── prompts/autonomous_collection.md # unattended agent task

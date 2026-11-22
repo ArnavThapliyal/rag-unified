@@ -35,3 +35,6 @@ data/metadata/job.json
 .pytest_cache/
 logs/.issues.lock
 data/processed/ocr/
+
+# Local secrets for docker compose (template: .env.example)
+.env
