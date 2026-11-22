@@ -65,3 +65,18 @@ def test_master_count_counts_records_not_lines(tmp_path, monkeypatch):
     (tmp_path / "nse_delisted_master.csv").write_text('company_name,nse_symbol\n"A Ltd","X\nY"\nB Ltd,B\n')
     monkeypatch.setattr(collect, "PROCESSED", tmp_path)
     assert collect.master_count() == 2
+
+
+def test_verify_name_matching_keeps_bracketed_words():
+    import verify_records as v
+    assert v.norm_name("Ponni Sugars (Orissa) Limited") != v.norm_name("Ponni Sugars (Erode) Limited")
+    assert v.norm_name("Vimal Oil & Foods Ltd") == v.norm_name("Vimal Oil and Foods Limited")
+
+
+def test_verify_detects_order_only_split_event():
+    import verify_records as v
+    rows = [{"record_id": "a", "company_name": "Zylog Systems Limited", "order_date": "2020-11-27",
+             "effective_delisting_date": ""},
+            {"record_id": "b", "company_name": "Zylog Systems Ltd", "order_date": "",
+             "effective_delisting_date": "2021-02-24"}]
+    assert v.split_events(rows) == {"a"}
