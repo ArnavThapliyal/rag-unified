@@ -64,6 +64,7 @@
     }
   },
   "fetch_limit_per_query": 8,
+  "fetch_limit_per_run": 60,
   "harvest_limit_per_page": 20,
   "block_domain_after_failures": 3,
   "disk": {

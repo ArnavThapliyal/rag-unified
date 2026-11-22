@@ -41,6 +41,9 @@ Create and maintain this exact folder layout in the host workspace:
 │       └── SKILL.md                 # Cross-checking, deduplication, & confidence scoring rules
 ├── scripts/
 │   ├── web_search.py                # Search via pluggable providers (search_providers/), cache in data/search_cache/
+│   ├── docket.py                    # Persistent queue between discovery and fetching (data/docket.sqlite)
+│   ├── fetch_worker.py              # Downloads docket items at each domain's pace
+│   ├── process_worker.py            # Parses / OCRs downloads, merges records
 │   ├── polite_fetcher.py            # Cached, rate-limited downloader with status/hash logging & quarantine
 │   ├── parse_nse_records.py         # Extract structured records from HTML circulars, PDFs, & XLSX sheets
 │   ├── normalize_and_merge.py       # Deduplicate by ISIN/Symbol/Date, tag priority years, export CSV/JSONL

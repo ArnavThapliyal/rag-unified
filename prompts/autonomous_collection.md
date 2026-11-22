@@ -14,10 +14,12 @@ command 5 times in a row — Cline aborts the session as a loop. Never run `coll
 directly, and never use `&`, `nohup` or /tmp logs.
 
 ## Loop (repeat until a stop condition)
-1. `.venv/bin/python scripts/collect.py --dry-run` — see pending queries and the harvest backlog.
-2. If `harvest_backlog` > 0: `.venv/bin/python scripts/job.py start --harvest-only --max-harvest 40`, then
-   `job.py wait 1`, `wait 2`, … until done (repeat this step until the backlog is 0 or nothing new is fetched).
-3. Else if queries are pending: `.venv/bin/python scripts/job.py start --max-queries 8`, then `job.py wait 1`, `wait 2`, … until done.
+1. `.venv/bin/python scripts/collect.py --dry-run` — see pending queries and the docket backlog (`harvest_backlog`).
+2. If queries are pending and `search_cooldown_min_left` is 0: `.venv/bin/python scripts/job.py start --max-queries 8`,
+   then `job.py wait 1`, `wait 2`, … until done. Downloads and parsing run alongside the searches.
+3. Else if `harvest_backlog` > 0: `.venv/bin/python scripts/job.py start --harvest-only --max-fetch 40`, then
+   `job.py wait 1`, `wait 2`, … until done (repeat until the backlog is 0 or a run fetches nothing new).
+   Failed downloads are retried from the docket automatically; never search again to re-find a URL.
 4. `.venv/bin/python scripts/status_report.py --json` and decide the next action. First run
    `.venv/bin/python scripts/report_issue.py --list` so you don't report the same thing twice.
    - `artifacts_zero_rows` grew → `.venv/bin/python scripts/inspect_artifact.py --zero-rows`; look at AT MOST 3
@@ -63,7 +65,7 @@ directly, and never use `&`, `nohup` or /tmp logs.
 - Don't open raw files directly; use `inspect_artifact.py` (structured facts only).
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, web_search.py (`--engines`, `--check`), common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), common.py (`log`), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut. Anything else (ls, cat, grep on files, python -c, curl, rm, redirects,
   reading scripts/ or data/raw/, edits outside config/) needs the user's approval: it is NOT run, you get
   `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.

@@ -144,8 +144,10 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvest
     target_dir = raw_dir_for_tag(year_tag) if ok else QUARANTINE
     target_dir.mkdir(parents=True, exist_ok=True)
     path = target_dir / f"{base}{ext}"
-    if body:
-        path.write_bytes(body)
+    if body:  # atomic: the process worker may be scanning data/raw/ right now
+        tmp = path.with_name(f".{path.name}.part")
+        tmp.write_bytes(body)
+        tmp.replace(path)
 
     entry = {
         "timestamp": now_iso(), "url": url, "http_status": status, "sha256": digest,

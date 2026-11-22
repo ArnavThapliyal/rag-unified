@@ -11,3 +11,4 @@ data/processed/ocr/
 .env
 .env.*
 !.env.example
+data/docket.sqlite*

@@ -66,3 +66,11 @@ def test_secrets_and_search_settings_are_off_limits():
     assert g.check("editor", {"path": plan, "old_text": '"queries": [', "new_text": '"queries": ["nse delisting 2019",'}) is None
     assert g.check("run_commands", {"commands": [".venv/bin/python scripts/web_search.py --check"]}) is None
     assert g.check("run_commands", {"commands": [".venv/bin/python scripts/web_search.py --query x"]})
+
+
+def test_docket_is_read_only_for_the_agent():
+    assert g.check("run_commands", {"commands": [".venv/bin/python scripts/docket.py --stats"]}) is None
+    assert g.check("run_commands", {"commands": [".venv/bin/python scripts/docket.py --list failed --limit 5"]}) is None
+    for cmd in ["--retry dead", "--unblock nseindia.com", "--promote"]:
+        assert g.check("run_commands", {"commands": [f".venv/bin/python scripts/docket.py {cmd}"]}), cmd
+    assert g.check("run_commands", {"commands": [".venv/bin/python scripts/fetch_worker.py"]})

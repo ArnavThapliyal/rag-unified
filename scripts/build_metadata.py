@@ -55,8 +55,18 @@ def query_stats() -> dict:
                               "complete_pct": pct(total - c["pending"] - c["failed"], total)}
     planned = {(q["q"] if isinstance(q, dict) else q) for ph in plan["phases"] for q in ph["queries"]}
     adhoc = [q for q in state["queries"] if q not in planned]
+    dstats = docket_stats()
     return {"phases": phases, "adhoc_queries": len(adhoc),
-            "blocked_domains": state.get("blocked_domains", [])}
+            "blocked_domains": dstats.get("blocked_domains", state.get("blocked_domains", [])), "docket": dstats}
+
+
+def docket_stats() -> dict:
+    """Queue between discovery and fetching (scripts/docket.py), from its last written summary."""
+    p = METADATA / "docket_stats.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def fetch_stats(manifest: list[dict]) -> dict:
@@ -214,6 +224,9 @@ def build() -> dict:
                                    and not (a["relevance"] or "").startswith("irrelevant")),
         "artifacts_irrelevant": sum(1 for a in parsed if (a["relevance"] or "").startswith("irrelevant")),
         "blocked_domains": len(queries["blocked_domains"]),
+        "docket": {k: queries["docket"].get(k) for k in ("by_status", "fetch_ready_now", "awaiting_parse",
+                                                         "waiting_on_blocked_domain", "evidence_unfetched",
+                                                         "parsed_zero_rows_relevant")} if queries["docket"] else None,
         "isin_completeness_pct": records["field_completeness_pct"]["isin"],
         "last_run": runs[-1] if runs else None,
         "agent_sessions": len(sessions),

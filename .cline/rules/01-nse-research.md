@@ -11,7 +11,7 @@ Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
   (they are in `.clineignore`). Use `scripts/inspect_artifact.py <path>` for structured facts about a file.
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, web_search.py (`--engines`, `--check`), common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), common.py (`log`), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut. Anything else (ls, cat, grep on files, python -c, curl, rm, redirects,
   reading scripts/ or data/raw/, edits outside config/) needs the user's approval: it is NOT run, you get
   `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.
@@ -27,10 +27,12 @@ Run every collection through the job runner (detached, survives the timeout):
 
 ## Main command: autonomous collection
 `scripts/collect.py` runs the whole pipeline from `config/query_plan.json` and is resumable:
-- `.venv/bin/python scripts/collect.py --dry-run` — pending queries per phase + harvest backlog
-- `job.py start --max-queries 8` — next 8 pending queries (search → fetch → harvest linked docs → parse → merge)
+- `.venv/bin/python scripts/collect.py --dry-run` — pending queries per phase + docket backlog (`harvest_backlog`)
+- `job.py start --max-queries 8` — next 8 pending queries; downloading and parsing run alongside the searches
 - `job.py start --phase priority_2017` — one phase
-- `job.py start --harvest-only --max-harvest 40` — fetch documents linked from already-downloaded pages, plus URLs deferred by a domain's per-run budget
+- `job.py start --harvest-only --max-fetch 40` — no searching: download what is waiting in the docket (search results, linked
+  documents, failed downloads due for retry) and parse it
+- `.venv/bin/python scripts/docket.py --stats` — the queue between searching and downloading (ready, retrying, dead, parked)
 - `.venv/bin/python scripts/status_report.py --json` — indicators (incl. `disk`, `audit_errors`) + year × type grid
 - `.venv/bin/python scripts/audit_dataset.py` — data-quality audit of the dataset
 - `.venv/bin/python scripts/report_issue.py --kind <kind> --summary "<what is wrong, with counts>" --evidence <path>` —

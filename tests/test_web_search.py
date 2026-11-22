@@ -245,3 +245,12 @@ def test_tracked_env_file_is_refused(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="tracked by git"):
         credentials.get("X")
     credentials._file_values.cache_clear()
+
+
+def test_all_engines_failing_returns_the_failures_not_an_error():
+    a = fake("free", [Answer(failures=[("e1", "captcha")]), Answer(failures=[("e2", "access denied")])],
+             units=["e1", "e2", "e3"], per_query=1)
+    paid = fake("paid", [], keys=["FAKE_KEY"])  # no key: can't help
+    s = ws.Search(settings(["free", "paid"]), {"free": a, "paid": paid})
+    ans, prov, _ = s.page(None, "q", 1)
+    assert prov == "free" and ans.results == [] and ans.failures  # -> collect.py marks engines_blocked

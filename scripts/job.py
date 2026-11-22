@@ -2,7 +2,7 @@
 (Cline kills shell commands after 30 s) can start it, wait on it in short steps, and read its status.
 
   python scripts/job.py start --max-queries 8            # any collect.py args; returns immediately
-  python scripts/job.py start --harvest-only --max-harvest 40
+  python scripts/job.py start --harvest-only --max-fetch 40
   python scripts/job.py wait 1                           # block up to 25 s, then print status;
                                                          # repeat with the "next" command it prints (wait 2, 3, …)
   python scripts/job.py status                           # running? progress? final summary?

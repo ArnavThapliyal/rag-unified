@@ -259,7 +259,7 @@ class Search:
     # --- searching -------------------------------------------------------------------------------
     def page(self, session: requests.Session, query: str, page: int) -> tuple[Answer, str, list[str]]:
         """One results page from the first provider that can answer it."""
-        waits, errors = [], {}
+        waits, errors, failed_answer = [], {}, None
         for p in self.providers:
             if page > p.max_pages:
                 continue
@@ -290,11 +290,15 @@ class Search:
                     return ans, p.name, units
                 if set(units) - {u for u, _ in ans.failures}:
                     last = (ans, p.name, units)  # someone answered: genuinely no results
+                else:
+                    failed_answer = failed_answer or (ans, p.name, units)
             if last:
                 return last  # a clean empty answer is final: don't spend another provider's credits on it
             b = self.blocker(p)
             if b and b[1]:
                 waits.append(b[1])
+        if failed_answer:  # every unit asked failed and nobody else could answer: caller sees the failures
+            return failed_answer
         if waits:
             raise SearchExhausted(min(waits), errors)
         raise RuntimeError("no search provider available: "

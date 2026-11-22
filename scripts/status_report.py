@@ -69,6 +69,13 @@ def print_indicators(meta: dict) -> None:
         nd = ind["new_domains_with_rows"]
         print(f" Websites: {ind['source_domains']} fetched from, {ind['new_source_domains']} new"
               + (f" — new with rows: {', '.join(nd[:6])}" if nd else "") + " (data/metadata/domain_registry.json)")
+    dk = ind.get("docket")
+    if dk:
+        st = dk["by_status"]
+        print(f" Docket: {dk['fetch_ready_now']} ready to fetch, {st.get('failed', 0)} retrying, "
+              f"{dk['awaiting_parse']} awaiting parse, {st.get('parsed', 0)} parsed, {st.get('dead', 0)} dead, "
+              f"{st.get('parked', 0)} parked ({dk['evidence_unfetched']} with delisting evidence) "
+              f"— scripts/docket.py --stats")
     print(f" Data audit: {ind['audit_errors']} errors, {ind['audit_warnings']} warnings "
           f"(data/metadata/dataset_audit.json)")
     eng = web_search.Search().report()

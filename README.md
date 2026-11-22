@@ -13,21 +13,18 @@ Full specification: [`instructions.md`](instructions.md). Cleanup audit: [`AUDIT
 ```text
 config/query_plan.json  (phases: master → 2017 → 2020 → 2024 → 2007 → archive)
           │
-          ▼  scripts/collect.py  (one resumable run; Cline calls it in a loop)
-  ┌──────────────────────────────────────────────────────────────────────────┐
-  │ 1. search    SearXNG localhost:8082        → data/search_cache/          │
-  │ 2. fetch     official/trusted domains only → data/raw/<bucket>/          │
-  │ 3. harvest   document links on official    → data/raw/<bucket>/          │
-  │              pages (e.g. NSE "orders of delisting" → ~140 order PDFs)    │
-  │ 4. parse     tables, ISIN lines, single-company delisting orders         │
-  │                                            → data/processed/parsed/      │
-  │ 5. merge     dedupe, FY, SEBI regime, confidence                         │
-  │                                            → data/processed/*.csv        │
-  │ 6. metadata  everything done so far        → data/metadata/              │
-  └──────────────────────────────────────────────────────────────────────────┘
-          │  every step → logs/events.jsonl, logs/agent_run.log, logs/runs/<run_id>.json
+          ▼  scripts/collect.py  (one resumable run; Cline calls it in a loop) — three stages side by side
+  ┌─ Discovery (collect.py) ─────┐   ┌─ Fetching (fetch_worker.py) ──┐   ┌─ Processing (process_worker.py) ─┐
+  │ search providers             │   │ best items first, each domain │   │ parse tables / ISIN lines /      │
+  │ → data/search_cache/         │   │ at its own pace (NSE: slow)   │   │ orders, OCR scanned PDFs         │
+  │ file candidate URLs +        │──▶│ → data/raw/<bucket>/          │──▶│ → data/processed/parsed/         │
+  │ evidence (query, rank,       │   │ failures retried w/ backoff;  │   │ merge: dedupe, FY, SEBI regime,  │
+  │ snippet) in the docket       │   │ linked docs on pages filed    │   │ confidence → data/processed/*.csv│
+  └──────────────────────────────┘   └───────────────────────────────┘   └──────────────────────────────────┘
+                 └────────── persistent docket: data/docket.sqlite (scripts/docket.py) ──────────┘
+          │  every step → logs/events.jsonl, logs/agent_run.log, logs/runs/<run_id>.json; metadata → data/metadata/
           ▼
-  Cline reads the summary → harvests backlog / runs more queries / adds gap queries / REPORTS anomalies
+  Cline reads the summary → drains the docket / runs more queries / adds gap queries / REPORTS anomalies
 ```
 
 **The agent collects; you debug.** A 27B local model is good at running the loop but not at repairing the
@@ -47,7 +44,8 @@ The only file the agent edits is `config/query_plan.json`, to append searches to
 - **Polite fetching.** Waits a random 2–5 s between requests, backs off on 429/5xx, and moves failed downloads to `data/quarantine/`.
 - **Fetch once.** A URL that downloaded successfully, or failed with a definitive 4xx error, is never requested again.
 - **Blocked domains.** A domain that fails 3 times in a row is blocked and the block is saved. There's no WAF bypass.
-- **Resumable.** Completed queries are tracked in `data/metadata/collection_state.json`, so you can stop at any time (Ctrl-C) and re-run.
+- **Resumable.** Searched queries are tracked in `data/metadata/collection_state.json` and every candidate URL in the docket (`data/docket.sqlite`), so you can stop at any time (Ctrl-C) and re-run.
+- **Discovery is separate from downloading.** A search files its results in the docket and moves on; the fetch worker downloads them in parallel at each domain's pace, and the process worker parses / OCRs in parallel too. Slow sites or OCR never hold up searching, and a failed download is retried from the docket (30 min, 2 h, 8 h, then `dead`) without searching again. Results beyond the first `fetch_limit_per_query` (8) per query are kept as *parked* evidence (`scripts/docket.py --promote` to fetch them).
 - **Retries after throttling.** Empty search results are not cached, so a query can be retried with `--retry-failed` if SearXNG's upstream engines were throttling it.
 - **Proposed delistings kept out of the dataset.** NSE's "companies proposed to be delisted" lists go to `proposed_delisting_leads.csv` as companies to verify later.
 - **Off-topic documents rejected.** Only documents about delisting produce rows. Pages about trading members, brokers and defaulters, and procedural files (checklists, SOPs, forms), are skipped.
@@ -123,7 +121,7 @@ The terminal shows one line per action:
 ```text
 ■ agent-20261121-160000 — raw log: logs/agent_sessions/agent-20261121-160000.jsonl
   💬 Harvest backlog is 142; draining it first.
-  ▶ [3] run_commands: .venv/bin/python scripts/collect.py --harvest-only --max-harvest 40
+  ▶ [3] run_commands: .venv/bin/python scripts/job.py start --harvest-only --max-fetch 40
   ▶ [4] run_commands: .venv/bin/python scripts/status_report.py --json
 ■ session finished: completed after 61 iterations, 88 tool calls, …
 ```
@@ -142,8 +140,13 @@ scripts/run_agent.sh prompts/my_task.md                        # different task 
 **Without the agent** (deterministic, no LLM), `collect.py` runs the plan by itself:
 
 ```bash
-.venv/bin/python scripts/collect.py --dry-run          # what's pending + harvest backlog
-.venv/bin/python scripts/collect.py --harvest-only --max-harvest 60
+.venv/bin/python scripts/collect.py --dry-run          # what's pending + docket backlog
+.venv/bin/python scripts/collect.py --harvest-only --max-fetch 60   # drain the docket: fetch + parse, no searching
+.venv/bin/python scripts/collect.py --stage discover --max-queries 5  # search only: fill the docket
+.venv/bin/python scripts/docket.py --stats             # queue: ready / retrying / awaiting parse / parsed / dead / parked
+.venv/bin/python scripts/docket.py --list failed       # what failed and why (also: dead, parse_error, parked)
+.venv/bin/python scripts/docket.py --retry dead --domain example.com   # requeue after fixing something
+.venv/bin/python scripts/docket.py --promote --query "2017" --limit 20  # fetch parked results too
 .venv/bin/python scripts/collect.py                    # whole plan, in order (hours)
 .venv/bin/python scripts/collect.py --phase priority_2017 --max-queries 5
 .venv/bin/python scripts/collect.py --retry-failed     # re-run failed / empty queries
@@ -227,7 +230,9 @@ tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio s
 | `data/metadata/collection_metadata.json` | **Metadata of everything done**: indicators, queries per phase, fetches per domain/status/type, artifacts, records by year/type/confidence/regime, field completeness, run history, agent-session stats | Yes |
 | `data/metadata/artifacts.csv` | One row per downloaded file: source URL, domain, type, size, sha256, rows extracted | Yes |
 | `data/metadata/dataset_audit.json` | Data-quality checks on the dataset (errors and warnings, with examples) | Yes |
-| `data/metadata/collection_state.json` | Status of each query (done, no_results or failed) and the blocked domains. This is what makes runs resumable. | Yes |
+| `data/metadata/collection_state.json` | Status of each query (done, no_results or failed). | Yes |
+| `data/docket.sqlite` | The docket: every candidate URL with its evidence (query, provider, rank, snippet), status, attempts, errors, local file, rows parsed; blocked domains. | No (rebuildable: `docket.py` imports the manifest and search cache when it is missing) |
+| `data/metadata/docket_stats.json` | Docket summary after each run | Yes |
 | `logs/runs/<run_id>.json` | Per-run summary: duration, queries, URLs, fetched/quarantined/harvested, records before → after | Yes |
 | `logs/fetch_manifest.jsonl` | Every download attempt: timestamp, url, http_status, sha256, local_path, year_tag | Yes |
 | `logs/events.jsonl` | Every action as JSON (search, fetch, harvest, parse, merge, run_start/end, agent tool calls), tagged with `run_id` and `agent_session` | No (large) |
@@ -266,7 +271,10 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | Script | Purpose |
 |---|---|
 | `scripts/run_agent.sh` | Launch Cline unattended. Checks that SearXNG and LM Studio are up, logs the session, prints the dashboard at the end. |
-| `scripts/collect.py` | The resumable pipeline run (search → fetch → harvest → parse → merge → metadata) |
+| `scripts/collect.py` | The resumable run: Discovery here, with the fetch and process workers alongside (`--stage all\|discover\|fetch\|process\|drain`) |
+| `scripts/docket.py` | The persistent queue between the stages; `--stats`, `--list`, `--promote`, `--retry`, `--unblock` |
+| `scripts/fetch_worker.py` | Downloads docket items, interleaving domains within their budgets and delays; files linked documents |
+| `scripts/process_worker.py` | Parses / OCRs downloads in batches, merges records, marks docket items parsed |
 | `scripts/ocr.py` | OCR for scanned PDFs (tesseract on pages rendered by pypdfium2, first 12 pages, cached). Used automatically by the parser; `python scripts/ocr.py <pdf>` prints the text. Needs `brew install tesseract`. |
 | `scripts/report_issue.py` | Records an anomaly for you to review (`--kind`, `--summary`, `--evidence`; `--list` shows open ones). The agent's only response to problems. |
 | `scripts/job.py` | Runs `collect.py` as a detached background job (`start`, `wait`, `status`, `stop`). The agent uses it because Cline kills shell commands after 30 s. |

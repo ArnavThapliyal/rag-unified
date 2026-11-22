@@ -243,6 +243,15 @@ def check_disk(state: dict) -> dict:
     return d
 
 
+def graceful_sigterm() -> None:
+    """Treat SIGTERM (timeout, kill, job.py stop) like Ctrl-C, so runs save their state and summary."""
+    import signal
+
+    def handler(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, handler)
+
+
 def emit(summary: dict) -> None:
     """Print a compact JSON summary for the agent."""
     print(json.dumps(summary, ensure_ascii=False, default=str))

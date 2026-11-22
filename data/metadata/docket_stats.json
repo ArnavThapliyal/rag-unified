@@ -1,0 +1,36 @@
+{
+ "generated_at": "2026-11-22T18:48:19+00:00",
+ "total": 934,
+ "by_status": {
+  "dead": 9,
+  "failed": 1,
+  "parked": 456,
+  "parsed": 468
+ },
+ "by_kind": {
+  "harvested": 304,
+  "search": 630
+ },
+ "fetch_ready_now": 0,
+ "waiting_on_blocked_domain": 0,
+ "awaiting_parse": 0,
+ "parsed_zero_rows_relevant": 187,
+ "evidence_unfetched": 338,
+ "blocked_domains": [],
+ "top_pending_domains": [
+  {
+   "domain": "static.nseindia.com",
+   "n": 1
+  }
+ ],
+ "dead_reasons": [
+  {
+   "reason": "http 404",
+   "n": 7
+  },
+  {
+   "reason": "downloaded file missing",
+   "n": 2
+  }
+ ]
+}

@@ -15,6 +15,7 @@ data/raw/**/*
 data/quarantine/*
 data/processed/parsed/*
 data/metadata/*.tmp
+data/docket.sqlite*
 !data/**/.gitkeep
 !data/raw/*/
 

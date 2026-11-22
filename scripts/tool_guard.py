@@ -49,6 +49,10 @@ def _search(args):
         "web_search.py only with --engines, --check or --list-cache; searches go through collect.py"
 
 
+def _docket(args):
+    return None if args[:1] and args[0] in ("--stats", "--list") else "docket.py only with --stats or --list"
+
+
 def _common(args):
     return None if args[:1] == ["log"] else "common.py only as: common.py log \"<message>\""
 
@@ -57,7 +61,7 @@ def _common(args):
 SCRIPTS = {
     "collect.py": _collect, "job.py": _job, "status_report.py": None, "report_issue.py": _report,
     "inspect_artifact.py": None, "audit_dataset.py": None, "build_metadata.py": None,
-    "web_search.py": _search, "common.py": _common,
+    "web_search.py": _search, "docket.py": _docket, "common.py": _common,
 }
 FILTERS = {"head", "tail", "wc", "grep", "sort", "uniq", "cut"}
 SEPARATORS = {"&&", "||", ";", "|"}

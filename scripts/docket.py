@@ -1,0 +1,405 @@
+"""The docket: a persistent queue between Discovery and Fetching / Parsing.
+
+Discovery (collect.py --stage discover) searches and *files* candidate URLs here with their evidence
+(query, provider, rank, title, snippet). The fetch worker (fetch_worker.py) downloads them at each
+domain's pace and files the document links it finds on downloaded pages; the process worker
+(process_worker.py) parses / OCRs what was downloaded and merges records. Each stage runs on its own,
+so a search never waits for a slow download or OCR, and a failed download is retried from the docket
+without searching again.
+
+Item status:
+  parked    found, but below the per-query fetch cut (fetch_limit_per_query) - kept as evidence;
+            `--promote` makes it pending
+  pending   waiting for the fetch worker (next_attempt_at may be in the future: retry backoff)
+  fetching  leased by a fetch worker (a crashed worker's lease expires after 15 min)
+  fetched   downloaded, waiting for the process worker
+  parsed    parsed (rows, relevance recorded)
+  failed    download failed; retried with backoff (30 min, 2 h, 8 h) until MAX_ATTEMPTS
+  dead      gave up: missing (404/410/other 4xx), or MAX_ATTEMPTS failures
+  parse_error  the parser raised on the file (reported, not retried until the parser changes)
+Domains that fail repeatedly are blocked here (`domains` table); their items wait, untouched.
+
+Stored in data/docket.sqlite (git-ignored; data/metadata/docket_stats.json is the tracked summary).
+
+  python scripts/docket.py --stats                # counts by status / kind, ready now, top domains, dead reasons
+  python scripts/docket.py --list failed --limit 20
+  python scripts/docket.py --promote [--query TEXT] [--limit N]   # parked -> pending
+  python scripts/docket.py --retry dead|failed|parse_error [--domain D]   # back to pending (user)
+  python scripts/docket.py --unblock DOMAIN       # (user)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sqlite3
+import sys
+import time
+from contextlib import contextmanager
+from pathlib import Path
+
+from common import DATA, METADATA, PARSED, PRIORITY_YEARS, domain_matches, domain_of, emit, log, now_iso, read_jsonl
+
+DB = DATA / "docket.sqlite"
+STATS = METADATA / "docket_stats.json"
+MAX_ATTEMPTS = 4
+BACKOFF_MIN = [30, 120, 480]       # after failure 1, 2, 3
+LEASE_S = 15 * 60
+DOC_RE = re.compile(r"\.(pdf|xlsx?|csv)(\?|#|$)", re.I)
+EVIDENCE_RE = re.compile(r"delist|exit offer|reverse book|compulsor|suspen|liquidat|nclt", re.I)
+STATUSES = ("parked", "pending", "fetching", "fetched", "parsed", "failed", "dead", "parse_error")
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS items (
+  url TEXT PRIMARY KEY, domain TEXT, kind TEXT, status TEXT, priority INTEGER, year_tag TEXT,
+  query TEXT, provider TEXT, rank INTEGER, title TEXT, snippet TEXT, evidence INTEGER DEFAULT 0,
+  harvested_from TEXT, discovered_at REAL, discovered_run TEXT,
+  attempts INTEGER DEFAULT 0, next_attempt_at REAL DEFAULT 0, lease_until REAL DEFAULT 0,
+  http_status INTEGER, last_error TEXT, local_path TEXT, fetched_at REAL,
+  parsed_at REAL, rows INTEGER, relevance TEXT, updated_at REAL);
+CREATE INDEX IF NOT EXISTS items_queue ON items (status, priority DESC, discovered_at);
+CREATE INDEX IF NOT EXISTS items_path ON items (local_path);
+CREATE TABLE IF NOT EXISTS domains (
+  domain TEXT PRIMARY KEY, blocked INTEGER DEFAULT 0, consecutive_fails INTEGER DEFAULT 0,
+  reason TEXT, blocked_at REAL);
+CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
+"""
+
+
+def priority(url: str, kind: str, year_tag: str | None, evidence: bool, known: list[str], rank: int | None) -> int:
+    """Higher = fetched sooner. Documents and official domains first, then evidence in the snippet."""
+    p = 50
+    p += 30 if domain_matches(url, known) else 0
+    p += 20 if DOC_RE.search(url) else 0
+    p += 15 if kind == "harvested" else 0
+    p += 15 if evidence else 0
+    p += 5 if str(year_tag or "").isdigit() and int(year_tag) in PRIORITY_YEARS else 0
+    p -= min(rank or 0, 20)
+    return p
+
+
+class Docket:
+    def __init__(self, path: Path | None = None):
+        self.path = path or DB
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.db = sqlite3.connect(self.path, timeout=60, isolation_level=None)  # autocommit; explicit txns
+        self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA busy_timeout=60000")
+        self.db.executescript(SCHEMA)
+
+    @contextmanager
+    def txn(self):
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            yield self.db
+            self.db.execute("COMMIT")
+        except BaseException:
+            self.db.execute("ROLLBACK")
+            raise
+
+    # --- meta -----------------------------------------------------------------------------------
+    def get_meta(self, k: str, default=None):
+        r = self.db.execute("SELECT v FROM meta WHERE k=?", (k,)).fetchone()
+        return json.loads(r["v"]) if r else default
+
+    def set_meta(self, k: str, v) -> None:
+        self.db.execute("INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+                        (k, json.dumps(v)))
+
+    # --- discovery side -------------------------------------------------------------------------
+    def file(self, items: list[dict], known: list[str], fetched: dict | None = None) -> dict:
+        """Add candidate URLs. Each item: url, kind (search|harvested|deferred), year_tag, and optionally
+        query, provider, rank, title, snippet, harvested_from, parked (bool), run_id.
+        A URL already in the docket keeps its row; a parked one becomes pending if filed as not parked.
+        URLs already in the fetch manifest (`fetched`: url -> entry) are filed as fetched / dead."""
+        now = time.time()
+        out = {"new": 0, "pending": 0, "parked": 0, "already_known": 0, "promoted": 0}
+        with self.txn() as db:
+            for it in items:
+                url = it["url"]
+                row = db.execute("SELECT status FROM items WHERE url=?", (url,)).fetchone()
+                if row:
+                    out["already_known"] += 1
+                    if row["status"] == "parked" and not it.get("parked"):
+                        db.execute("UPDATE items SET status='pending', updated_at=? WHERE url=?", (now, url))
+                        out["promoted"] += 1
+                    continue
+                text = f"{it.get('title') or ''} {it.get('snippet') or ''} {url}"
+                ev = bool(EVIDENCE_RE.search(text))
+                status, http, path = ("parked" if it.get("parked") else "pending"), None, None
+                m = (fetched or {}).get(url)
+                if m:
+                    http, path = m.get("http_status"), m.get("local_path")
+                    status = "fetched" if http == 200 else "dead"
+                db.execute(
+                    "INSERT INTO items (url, domain, kind, status, priority, year_tag, query, provider, rank, title,"
+                    " snippet, evidence, harvested_from, discovered_at, discovered_run, http_status, local_path,"
+                    " last_error, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (url, domain_of(url), it.get("kind", "search"), status,
+                     priority(url, it.get("kind", "search"), it.get("year_tag"), ev, known, it.get("rank")),
+                     it.get("year_tag"), it.get("query"), it.get("provider"), it.get("rank"),
+                     (it.get("title") or "")[:300], (it.get("snippet") or "")[:500], int(ev),
+                     it.get("harvested_from"), now, it.get("run_id"), http, path,
+                     f"http {http}" if status == "dead" else None, now))
+                out["new"] += 1
+                out[status if status in ("pending", "parked") else "already_fetched"] = \
+                    out.get(status if status in ("pending", "parked") else "already_fetched", 0) + 1
+        return out
+
+    # --- fetch side -----------------------------------------------------------------------------
+    def blocked(self) -> set[str]:
+        return {r["domain"] for r in self.db.execute("SELECT domain FROM domains WHERE blocked=1")}
+
+    def candidates(self, limit: int = 300) -> list[sqlite3.Row]:
+        """Items a fetch worker may take now, best first (blocked domains excluded)."""
+        now = time.time()
+        return self.db.execute(
+            "SELECT * FROM items WHERE ((status IN ('pending','failed') AND next_attempt_at<=?)"
+            " OR (status='fetching' AND lease_until<?))"
+            " AND domain NOT IN (SELECT domain FROM domains WHERE blocked=1)"
+            " ORDER BY priority DESC, discovered_at LIMIT ?", (now, now, limit)).fetchall()
+
+    def next_retry_at(self) -> float | None:
+        r = self.db.execute("SELECT MIN(next_attempt_at) t FROM items WHERE status IN ('pending','failed')"
+                            " AND domain NOT IN (SELECT domain FROM domains WHERE blocked=1)").fetchone()
+        return r["t"]
+
+    def lease(self, url: str) -> bool:
+        now = time.time()
+        with self.txn() as db:
+            n = db.execute("UPDATE items SET status='fetching', lease_until=?, updated_at=? WHERE url=? AND"
+                           " ((status IN ('pending','failed') AND next_attempt_at<=?) OR"
+                           " (status='fetching' AND lease_until<?))",
+                           (now + LEASE_S, now, url, now, now)).rowcount
+        return n == 1
+
+    def done_fetch(self, url: str, entry: dict) -> str:
+        """Record a fetch attempt (a fetch_manifest entry). Returns the new status."""
+        now, ok = time.time(), not entry.get("quarantined")
+        st = entry.get("http_status")
+        with self.txn() as db:
+            row = db.execute("SELECT attempts FROM items WHERE url=?", (url,)).fetchone()
+            attempts = (row["attempts"] if row else 0) + 1
+            if ok:
+                status, nxt, err = "fetched", 0, None
+            else:
+                err = entry.get("error") or (f"http {st}" if st else "no response") + \
+                    (" (empty body)" if st == 200 else "")
+                definitive = isinstance(st, int) and 400 <= st < 500 and st != 429
+                if definitive or attempts >= MAX_ATTEMPTS:
+                    status, nxt = "dead", 0
+                else:
+                    status, nxt = "failed", now + 60 * BACKOFF_MIN[min(attempts, len(BACKOFF_MIN)) - 1]
+            db.execute("UPDATE items SET status=?, attempts=?, next_attempt_at=?, lease_until=0, http_status=?,"
+                       " last_error=?, local_path=COALESCE(?, local_path), fetched_at=?, updated_at=? WHERE url=?",
+                       (status, attempts, nxt, st, err, entry.get("local_path") if ok else None,
+                        now if ok else None, now, url))
+        return status
+
+    def domain_result(self, domain: str, ok: bool, http_status, block_after: int) -> bool:
+        """Track consecutive failures per domain (404/410 don't count). True if it just got blocked."""
+        if not ok and http_status in (404, 410):
+            return False
+        with self.txn() as db:
+            db.execute("INSERT OR IGNORE INTO domains (domain) VALUES (?)", (domain,))
+            if ok:
+                db.execute("UPDATE domains SET consecutive_fails=0 WHERE domain=?", (domain,))
+                return False
+            db.execute("UPDATE domains SET consecutive_fails=consecutive_fails+1 WHERE domain=?", (domain,))
+            r = db.execute("SELECT consecutive_fails, blocked FROM domains WHERE domain=?", (domain,)).fetchone()
+            if r["consecutive_fails"] >= block_after and not r["blocked"]:
+                db.execute("UPDATE domains SET blocked=1, reason=?, blocked_at=? WHERE domain=?",
+                           (f"{r['consecutive_fails']} consecutive failures (last: {http_status})", time.time(), domain))
+                return True
+        return False
+
+    def block(self, domain: str, reason: str) -> None:
+        self.db.execute("INSERT INTO domains (domain, blocked, reason, blocked_at) VALUES (?,1,?,?) "
+                        "ON CONFLICT(domain) DO UPDATE SET blocked=1, reason=excluded.reason", (domain, reason, time.time()))
+
+    def unblock(self, domain: str) -> int:
+        return self.db.execute("UPDATE domains SET blocked=0, consecutive_fails=0 WHERE domain=?", (domain,)).rowcount
+
+    # --- process side ---------------------------------------------------------------------------
+    def fetched_count(self) -> int:
+        return self.db.execute("SELECT COUNT(*) n FROM items WHERE status='fetched'").fetchone()["n"]
+
+    def sync_parsed(self, parse_errors: list[dict] | None = None) -> dict:
+        """Mark fetched items whose file has an up-to-date parser output as parsed (rows, relevance)."""
+        errors = {e["file"]: e["error"] for e in parse_errors or []}
+        rel_path = PARSED / "_relevance.json"
+        relevance = json.loads(rel_path.read_text(encoding="utf-8")) if rel_path.exists() else {}
+        root = DATA.parent
+        out = {"parsed": 0, "rows": 0, "parse_error": 0, "waiting": 0}
+        rows = self.db.execute("SELECT url, local_path FROM items WHERE status='fetched'").fetchall()
+        now = time.time()
+        with self.txn() as db:
+            for r in rows:
+                lp = r["local_path"]
+                if not lp or not (root / lp).exists():
+                    db.execute("UPDATE items SET status='dead', last_error='downloaded file missing', updated_at=?"
+                               " WHERE url=?", (now, r["url"]))
+                    continue
+                art = root / lp
+                parsed = PARSED / f"{art.parent.name}__{art.stem}.jsonl"
+                if lp in errors:
+                    db.execute("UPDATE items SET status='parse_error', last_error=?, updated_at=? WHERE url=?",
+                               (errors[lp][:300], now, r["url"]))
+                    out["parse_error"] += 1
+                elif parsed.exists() and parsed.stat().st_mtime >= art.stat().st_mtime:
+                    n = len(read_jsonl(parsed))
+                    db.execute("UPDATE items SET status='parsed', rows=?, relevance=?, parsed_at=?, updated_at=?"
+                               " WHERE url=?", (n, relevance.get(lp), now, now, r["url"]))
+                    out["parsed"] += 1
+                    out["rows"] += n
+                else:
+                    out["waiting"] += 1
+        return out
+
+    # --- reporting / maintenance ----------------------------------------------------------------
+    def stats(self) -> dict:
+        q = self.db.execute
+        by_status = {r["status"]: r["n"] for r in q("SELECT status, COUNT(*) n FROM items GROUP BY status")}
+        now = time.time()
+        ready = q("SELECT COUNT(*) n FROM items WHERE status IN ('pending','failed') AND next_attempt_at<=?"
+                  " AND domain NOT IN (SELECT domain FROM domains WHERE blocked=1)", (now,)).fetchone()["n"]
+        waiting_blocked = q("SELECT COUNT(*) n FROM items WHERE status IN ('pending','failed')"
+                            " AND domain IN (SELECT domain FROM domains WHERE blocked=1)").fetchone()["n"]
+        top = [dict(r) for r in q("SELECT domain, COUNT(*) n FROM items WHERE status IN ('pending','failed')"
+                                  " GROUP BY domain ORDER BY n DESC LIMIT 8")]
+        dead = [dict(r) for r in q("SELECT COALESCE(last_error,'?') reason, COUNT(*) n FROM items WHERE status='dead'"
+                                   " GROUP BY reason ORDER BY n DESC LIMIT 6")]
+        zero = q("SELECT COUNT(*) n FROM items WHERE status='parsed' AND rows=0 AND local_path NOT LIKE '%.htm%'"
+                 " AND COALESCE(relevance,'') NOT LIKE 'irrelevant%'").fetchone()["n"]
+        return {"total": sum(by_status.values()), "by_status": by_status,
+                "by_kind": {r["kind"]: r["n"] for r in q("SELECT kind, COUNT(*) n FROM items GROUP BY kind")},
+                "fetch_ready_now": ready, "waiting_on_blocked_domain": waiting_blocked,
+                "awaiting_parse": by_status.get("fetched", 0), "parsed_zero_rows_relevant": zero,
+                "evidence_unfetched": q("SELECT COUNT(*) n FROM items WHERE evidence=1 AND status IN"
+                                        " ('parked','pending','failed')").fetchone()["n"],
+                "blocked_domains": sorted(self.blocked()), "top_pending_domains": top, "dead_reasons": dead}
+
+    def write_stats(self) -> dict:
+        s = {"generated_at": now_iso(), **self.stats()}
+        METADATA.mkdir(parents=True, exist_ok=True)
+        STATS.write_text(json.dumps(s, indent=1), encoding="utf-8")
+        return s
+
+    def listing(self, status: str, limit: int) -> list[dict]:
+        cols = "url, kind, status, priority, year_tag, attempts, http_status, last_error, local_path, rows, query"
+        return [dict(r) for r in self.db.execute(
+            f"SELECT {cols} FROM items WHERE status=? ORDER BY priority DESC, updated_at DESC LIMIT ?", (status, limit))]
+
+    def promote(self, query: str | None, limit: int) -> int:
+        sql = "UPDATE items SET status='pending', updated_at=? WHERE url IN (SELECT url FROM items WHERE status='parked'"
+        args: list = [time.time()]
+        if query:
+            sql += " AND query LIKE ?"
+            args.append(f"%{query}%")
+        sql += " ORDER BY priority DESC LIMIT ?)"
+        return self.db.execute(sql, (*args, limit)).rowcount
+
+    def retry(self, status: str, domain: str | None) -> int:
+        sql = "UPDATE items SET status=?, attempts=0, next_attempt_at=0, updated_at=? WHERE status=?"
+        args: list = ["fetched" if status == "parse_error" else "pending", time.time(), status]
+        if domain:
+            sql += " AND domain=?"
+            args.append(domain)
+        return self.db.execute(sql, args).rowcount
+
+
+def import_existing(dk: Docket) -> dict | None:
+    """One-time: file what the pipeline knew before the docket existed (fetch manifest, deferred URLs,
+    unfetched document links on downloaded pages, unfetched search results, blocked domains)."""
+    if dk.get_meta("imported_at"):
+        return None
+    import polite_fetcher
+    from common import MANIFEST, SEARCH_CACHE
+    policy = polite_fetcher.fetch_policy()
+    known = policy["known"]
+    done = polite_fetcher.already_fetched()
+    items, out = [], {}
+    # 1. everything ever downloaded (or definitively missing)
+    items += [{"url": u, "kind": "harvested" if e.get("harvested_from") else "search", "year_tag": e.get("year_tag"),
+               "harvested_from": e.get("harvested_from")} for u, e in done.items()]
+    # 2. retryable failures that never succeeded
+    fails: dict[str, dict] = {}
+    for e in read_jsonl(MANIFEST):
+        if e["url"] not in done:
+            fails[e["url"]] = e
+    items += [{"url": u, "kind": "harvested" if e.get("harvested_from") else "search", "year_tag": e.get("year_tag"),
+               "harvested_from": e.get("harvested_from")} for u, e in fails.items() if polite_fetcher.allowed(u, policy)]
+    # 3. URLs a domain budget deferred
+    state_p = METADATA / "collection_state.json"
+    state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {}
+    items += [{"url": d["url"], "kind": "deferred", "year_tag": d.get("year_tag")} for d in state.get("deferred_urls", [])]
+    # 4. document links on downloaded pages
+    root = DATA.parent
+    for e in done.values():
+        lp = e.get("local_path") or ""
+        if lp.endswith((".html", ".htm")) and (root / lp).exists() and polite_fetcher.allowed(e["url"], policy):
+            items += [{"url": u, "kind": "harvested", "year_tag": e.get("year_tag"), "harvested_from": e["url"]}
+                      for u in polite_fetcher.harvest_links(root / lp, e["url"], policy)]
+    # 5. search results never fetched: kept as parked evidence
+    for p in sorted(SEARCH_CACHE.glob("*.json")):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for rank, r in enumerate(d.get("results", []), 1):
+            if r.get("url") and polite_fetcher.allowed(r["url"], policy):
+                items.append({"url": r["url"], "kind": "search", "year_tag": d.get("year_tag"), "query": d.get("query"),
+                              "provider": d.get("provider", "searxng"), "rank": rank, "title": r.get("title"),
+                              "snippet": r.get("content"), "parked": True})
+    out["filed"] = dk.file(items, known, done)
+    # failed URLs keep their attempt count, so they back off instead of being hammered
+    from collections import Counter
+    tries = Counter(x["url"] for x in read_jsonl(MANIFEST))
+    with dk.txn() as db:
+        for u, e in fails.items():
+            n = tries[u]
+            db.execute("UPDATE items SET status='failed', attempts=?, http_status=?, last_error=? WHERE url=? AND status='pending'",
+                       (min(n, MAX_ATTEMPTS - 1), e.get("http_status"), e.get("error") or f"http {e.get('http_status')}", u))
+    for d in state.get("blocked_domains", []):
+        dk.block(d, "blocked before the docket existed")
+    out["blocked_domains"] = len(state.get("blocked_domains", []))
+    out["sync"] = dk.sync_parsed()
+    dk.set_meta("imported_at", now_iso())
+    log(f"docket: imported existing pipeline state {out}", kind="docket_import", **out)
+    return out
+
+
+def open_docket() -> Docket:
+    dk = Docket()
+    import_existing(dk)
+    return dk
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--stats", action="store_true")
+    ap.add_argument("--list", choices=STATUSES)
+    ap.add_argument("--limit", type=int, default=20)
+    ap.add_argument("--promote", action="store_true")
+    ap.add_argument("--query")
+    ap.add_argument("--retry", choices=("dead", "failed", "parse_error"))
+    ap.add_argument("--domain")
+    ap.add_argument("--unblock", metavar="DOMAIN")
+    a = ap.parse_args()
+    dk = open_docket()
+    if a.list:
+        emit({"status": a.list, "items": dk.listing(a.list, a.limit)})
+    elif a.promote:
+        emit({"promoted": dk.promote(a.query, a.limit)})
+    elif a.retry:
+        emit({"requeued": dk.retry(a.retry, a.domain)})
+    elif a.unblock:
+        emit({"unblocked": dk.unblock(a.unblock)})
+    else:
+        emit(dk.write_stats())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
