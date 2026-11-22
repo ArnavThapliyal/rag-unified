@@ -67,9 +67,11 @@ def run(batch: int, follow: int | None) -> dict:
                 out["records_after"] = r["records_after"]
                 print(f"    ↳ processed {r['parsed_files']} files, +{r['parsed_rows']} rows → records "
                       f"{r['records_after']}", flush=True)
-                if r["docket"]["waiting"] >= waiting:  # nothing could be marked: don't spin
-                    out["stop_reason"] = "unparseable_waiting"
-                    break
+                if not (r["docket"]["parsed"] or r["docket"]["parse_error"]):  # nothing could be marked
+                    if not upstream:
+                        out["stop_reason"] = "unparseable_waiting"
+                        break
+                    time.sleep(POLL_S)  # downloads may still be landing: don't spin, don't quit
                 continue
             if not upstream:
                 out["stop_reason"] = "idle"

@@ -190,3 +190,20 @@ def test_worker_does_not_wait_for_a_dead_discovery(dk, worker, tmp_path):
     marker = tmp_path / ".run.discovering"
     marker.touch()  # left behind by a crashed parent
     assert fetch_worker.run(max_fetch=10, follow=marker, follow_pid=2 ** 22 + 12345)["stop_reason"] == "idle"
+
+
+def test_process_worker_keeps_going_while_downloads_arrive(dk, monkeypatch):
+    import process_worker as pw
+    waiting = iter([5, 9, 0])          # 4 new downloads landed during the first batch
+    alive = iter([True, True, False])
+    batches = []
+    monkeypatch.setattr(pw.docket, "open_docket", lambda: dk)
+    monkeypatch.setattr(dk, "fetched_count", lambda: next(waiting))
+    monkeypatch.setattr(pw, "alive", lambda pid: next(alive))
+    monkeypatch.setattr(pw, "log", lambda *a, **k: None)
+    monkeypatch.setattr(pw.time, "sleep", lambda s: None)
+    monkeypatch.setattr(pw, "process_once", lambda d: batches.append(1) or {
+        "parsed_files": 5, "parsed_rows": 1, "parse_errors": 0, "records_after": 1,
+        "docket": {"parsed": 5, "parse_error": 0, "waiting": 9}})
+    out = pw.run(batch=5, follow=123)
+    assert len(batches) == 2 and out["stop_reason"] == "idle"
