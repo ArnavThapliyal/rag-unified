@@ -19,7 +19,11 @@ def test_clean_row_passes():
     assert r["error_count"] == 0 and r["warning_count"] == 0
 
 
-def test_bad_rows_are_flagged():
+def test_bad_rows_are_flagged(tmp_path, monkeypatch):
+    (tmp_path / "data" / "raw").mkdir(parents=True)  # a checkout with downloads, so a missing one is an error
+    (tmp_path / "data" / "raw" / "present.pdf").write_bytes(b"x")
+    (tmp_path / "README.md").write_text("x")
+    monkeypatch.setattr(audit_dataset, "ROOT", tmp_path)
     rows = [
         _row(record_id="dup"), _row(record_id="dup", company_name="Other Ltd", isin=""),
         _row(record_id="b", isin="INE123", company_name="Bad Isin Ltd"),

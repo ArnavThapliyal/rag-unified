@@ -11,7 +11,9 @@
     "moneycontrol.com",
     "livemint.com",
     "thehindubusinessline.com",
-    "financialexpress.com"
+    "financialexpress.com",
+    "web.archive.org",
+    "archive.org"
   ],
   "_comment_sources": "open_web: fetch search results from ANY website (not only fetch_domains), except deny_domains. fetch_domains are the known sources: their links are harvested from any page, and records from them rank higher. The agent may append productive new websites (data/metadata/domain_registry.json, new=true, rows>0) to fetch_domains. domain_limits: requests per collect run and pause (seconds) before each request; URLs over budget are deferred to later --harvest-only runs. NSE rate-limits hard, so it gets few requests and long pauses.",
   "open_web": true,
@@ -61,10 +63,30 @@
         2,
         5
       ]
+    },
+    "archive.org": {
+      "max_per_run": 20,
+      "delay_s": [
+        3,
+        6
+      ]
     }
   },
   "fetch_limit_per_query": 8,
-  "fetch_limit_per_run": 60,
+  "_comment_run_limits": "Caps per run (scripts/run_limits.py). mode: capped | unlimited | ask (asks on a terminal only; unattended runs use the caps). 0, null or \"all\" = no limit. collect.py flags override: --max-files, --max-companies, --max-docs-per-company, --unlimited.",
+  "run_limits": {
+    "mode": "capped",
+    "max_files": 60,
+    "max_companies": 25,
+    "max_docs_per_company": 5
+  },
+  "_comment_focus": "Historical focus (scripts/historical.py): companies delisted this many years ago. Proof from official/archive records first, then supporting documents per company; official and archive sources rank ahead of news.",
+  "focus": {
+    "years_ago": [
+      15,
+      20
+    ]
+  },
   "harvest_limit_per_page": 20,
   "block_domain_after_failures": 3,
   "disk": {

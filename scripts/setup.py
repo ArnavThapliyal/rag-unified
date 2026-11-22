@@ -1,6 +1,6 @@
 """Guided first-time setup for nse-delisted-comp. Launched by ./install.sh.
 
-Arrow through 8 screens; the first option on every screen is the recommended one (Enter accepts it).
+Arrow through 9 screens; the first option on every screen is the recommended one (Enter accepts it).
 The panel under the options shows what the highlighted option will do and what is already in place.
 Nothing is changed until you confirm the summary; files are backed up (.bak, .bak1, ...) before they are
 written, existing secrets are never replaced, and API keys are typed hidden and never printed.
@@ -14,6 +14,7 @@ Standard library only: it runs before .venv exists.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import secrets
@@ -28,6 +29,8 @@ ROOT = Path(__file__).resolve().parent.parent
 VENV_PY = ROOT / ".venv" / "bin" / "python"
 ENV = ROOT / ".env"
 ENV_EXAMPLE = ROOT / ".env.example"
+PLAN = ROOT / "config" / "query_plan.json"
+LIMIT_DEFAULTS = {"max_files": 60, "max_companies": 25, "max_docs_per_company": 5}
 KEYS_FILE = Path.home() / ".config" / "nse-delisted-comp" / "keys.env"
 SEARXNG_URL = "http://localhost:8082/search?q=test&format=json"
 LMSTUDIO_URL = "http://localhost:1234/v1/models"
@@ -66,6 +69,22 @@ def read_env(path: Path) -> dict[str, str]:
     return out
 
 
+def run_mode() -> str | None:
+    try:
+        return (json.loads(PLAN.read_text(encoding="utf-8")).get("run_limits") or {}).get("mode")
+    except (OSError, ValueError):
+        return None
+
+
+def set_run_mode(mode: str) -> None:
+    """Write run_limits.mode (and default caps if missing) into config/query_plan.json, after a backup."""
+    cfg = json.loads(PLAN.read_text(encoding="utf-8"))
+    rl = cfg.get("run_limits") or {}
+    cfg["run_limits"] = {"mode": mode, **{k: rl.get(k, v) for k, v in LIMIT_DEFAULTS.items()}}
+    backup(PLAN)
+    PLAN.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def tracked_by_git(path: Path) -> bool:
     ok, _ = _run_ok(["git", "-C", str(ROOT), "ls-files", "--error-unmatch", str(path)])
     return ok
@@ -93,6 +112,7 @@ def detect() -> dict:
         "cline": (ROOT / "node_modules" / ".bin" / "cline").exists(),
         "lmstudio": _url_ok(LMSTUDIO_URL),
         "model": env.get("CLINE_MODEL") or None,
+        "run_mode": run_mode(),
     }
     return st
 
@@ -140,6 +160,11 @@ def screens(st: dict) -> list[Screen]:
         Screen("model", "Agent model (LM Studio)", "Saved as CLINE_MODEL in .env; scripts/run_agent.sh uses it.",
                [(MODELS[0], f"{MODELS[0]} (recommended)"), (MODELS[1], MODELS[1]),
                 ("keep", f"Keep current ({cur_model})" if cur_model else "Don't set (run_agent.sh default)")]),
+        Screen("limits", "Run limits", "Caps per collection run (run_limits in config/query_plan.json; "
+               "collect.py flags override them).",
+               [("capped", "Capped: 60 files, 25 companies, 5 documents per company per run (recommended)"),
+                ("unlimited", "Unlimited: keep going until the queries, the docket or the sources are used up"),
+                ("ask", "Ask at the start of each run in a terminal (unattended runs use the caps)")]),
         Screen("finish", "Finish", "Verify everything in one go.",
                [("check", "Run scripts/check.sh (recommended)"), ("skip", "Skip")]),
     ]
@@ -275,6 +300,12 @@ def plan(choice: dict[str, str], st: dict, keys: dict[str, str] | None = None) -
         out["model"] = [Action(f"CLINE_MODEL={m} already in .env", note=True)] if st["model"] == m else \
             [Action(f"set CLINE_MODEL={m} in .env",
                     fn=lambda: merge_env(ENV, {"CLINE_MODEL": m}, overwrite={"CLINE_MODEL"}, template=ENV_EXAMPLE))]
+
+    lm = choice.get("limits")
+    if lm:
+        out["limits"] = [Action(f"run limits already '{lm}'", note=True)] if st.get("run_mode") == lm else \
+            [Action(f"set run_limits.mode = {lm} in config/query_plan.json (backup first)",
+                    fn=lambda: set_run_mode(lm))]
 
     if choice["finish"] == "check":
         out["finish"] = [Action("scripts/check.sh", ["bash", "scripts/check.sh"])]

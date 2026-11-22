@@ -9,6 +9,13 @@ workers as child processes that keep draining the docket while Discovery searche
 waits for a download or OCR, and a failed download is retried from the docket (with backoff), never
 by searching again. --stage picks one stage; --harvest-only (= --stage drain) fetches + processes only.
 
+- Historical focus first (historical.py): companies delisted 15-20 years ago ("focus" in the config). Proof
+  queries (official / archive records) run before every other phase, then supporting-document queries per
+  proven company; official and archive results are downloaded before news.
+- Caps and run modes (run_limits.py): max_files, max_companies, max_docs_per_company from "run_limits" in the
+  config or --max-files / --max-companies / --max-docs-per-company / --unlimited; mode "ask" asks on a
+  terminal only. Stop reasons: max_files_reached, max_companies_reached, max_queries_reached,
+  queries_exhausted, docket_exhausted, sources_exhausted (plus search/disk/interrupt ones).
 - Resumable: searched queries are tracked in data/metadata/collection_state.json; the docket is
   data/docket.sqlite (scripts/docket.py --stats).
 - Search results beyond fetch_limit_per_query are filed as "parked" evidence, not downloaded.
@@ -21,8 +28,10 @@ Examples:
   python scripts/collect.py --dry-run                   # pending queries per phase, docket backlog
   python scripts/collect.py --max-queries 10            # next 10 queries; downloads + parsing alongside
   python scripts/collect.py --stage discover --max-queries 10   # search only (fill the docket)
-  python scripts/collect.py --harvest-only --max-fetch 60       # drain the docket only (no searching)
+  python scripts/collect.py --harvest-only --max-files 60       # drain the docket only (no searching)
   python scripts/collect.py --retry-failed --phase priority_2017
+  python scripts/collect.py --unlimited                         # no caps: until everything is used up
+  python scripts/collect.py --max-files 200 --max-companies all --phase historical_proof
 """
 from __future__ import annotations
 
@@ -40,7 +49,9 @@ from pathlib import Path
 import build_metadata
 import common
 import docket
+import historical
 import polite_fetcher
+import run_limits
 import web_search
 from common import (
     CONFIG, METADATA, PROCESSED, ROOT, RUNS, agent_session, check_disk,
@@ -132,7 +143,8 @@ def docket_backlog(dk: docket.Docket | None = None) -> int:
     return (dk or docket.open_docket()).stats()["fetch_ready_now"]
 
 
-def discover(todo: list[dict], state: dict, step: dict, plan: dict, rid: str, args) -> None:
+def discover(todo: list[dict], state: dict, step: dict, plan: dict, rid: str, args,
+             stop: run_limits.StopFile | None = None) -> None:
     """Search each query and file its results in the docket. No downloading here."""
     dk = docket.open_docket()
     policy = polite_fetcher.fetch_policy()
@@ -140,9 +152,13 @@ def discover(todo: list[dict], state: dict, step: dict, plan: dict, rid: str, ar
     query_delay = web_search.search_settings()["query_delay_s"]
     search = web_search.Search()
     errors_in_row = blocks_in_row = 0
+    stop = stop or run_limits.StopFile(None)
     for i, it in enumerate(todo, 1):
         if check_disk(state)["level"] == "critical":
             raise LowDisk()
+        if stop.reason():  # another stage reached a cap
+            step["stop_reason"] = stop.reason()
+            return
         q, tag, phase = it["query"], it["year_tag"], it["phase"]
         ph = step["phases"].setdefault(phase, {"queries": 0, "urls": 0, "filed": 0})
         if i > 1:
@@ -170,16 +186,17 @@ def discover(todo: list[dict], state: dict, step: dict, plan: dict, rid: str, ar
                 return
             continue
 
-        items, rank = [], 0
+        found = []
         for cf in s["cache_files"]:
             d = json.loads((ROOT / cf).read_text(encoding="utf-8"))
-            for r in d.get("results", []):
-                if not r.get("url") or not polite_fetcher.allowed(r["url"], policy):
-                    continue
-                rank += 1
-                items.append({"url": r["url"], "kind": "search", "year_tag": tag, "query": q, "rank": rank,
-                              "provider": d.get("provider"), "title": r.get("title"), "snippet": r.get("content"),
-                              "parked": rank > fetch_cut, "run_id": rid})
+            found += [(r, d.get("provider")) for r in d.get("results", [])
+                      if r.get("url") and polite_fetcher.allowed(r["url"], policy)]
+        # official / archive records before other sites, news last (stable: keeps the engine's order within a tier)
+        found.sort(key=lambda x: historical.tier(x[0]["url"]))
+        items = [{"url": r["url"], "kind": "search", "year_tag": tag, "query": q, "rank": rank, "provider": prov,
+                  "title": r.get("title"), "snippet": r.get("content"), "parked": rank > fetch_cut, "run_id": rid,
+                  "company": it.get("company"), "company_name": it.get("company_name")}
+                 for rank, (r, prov) in enumerate(found, 1)]
         filed = dk.file(items, policy["known"], polite_fetcher.already_fetched())
 
         engines_blocked = not s["result_count"] and bool(s.get("unresponsive_engines"))
@@ -232,12 +249,17 @@ def main() -> int:
     ap.add_argument("--phase", default="all", help="phase name from config/query_plan.json, or 'all'")
     ap.add_argument("--max-queries", type=int, default=0, help="stop after N queries (0 = no limit)")
     ap.add_argument("--fetch-limit", type=int, help="override fetch_limit_per_query (results filed to fetch)")
-    ap.add_argument("--max-fetch", type=int, help="download attempts this run (default fetch_limit_per_run)")
+    ap.add_argument("--max-files", help="files downloaded OK this run (N, 0 or all = no cap)")
+    ap.add_argument("--max-companies", help="new records in the master this run (N, 0 or all)")
+    ap.add_argument("--max-docs-per-company", help="documents fetched per company, all runs (N, 0 or all)")
+    ap.add_argument("--unlimited", action="store_true", help="no caps: run until queries, docket or sources run out")
+    ap.add_argument("--capped", action="store_true", help="use the caps from the config even if its mode is ask")
+    ap.add_argument("--max-fetch", dest="max_files", help=argparse.SUPPRESS)  # old name of --max-files
     ap.add_argument("--process-every", type=int, default=5, help="parse+merge once N downloads are waiting")
     ap.add_argument("--retry-failed", action="store_true",
                     help="re-run queries that failed or returned no results (e.g. engines were throttled)")
     ap.add_argument("--harvest-only", action="store_true", help="same as --stage drain: fetch + process, no search")
-    ap.add_argument("--max-harvest", type=int, help=argparse.SUPPRESS)  # old name of --max-fetch
+    ap.add_argument("--max-harvest", dest="max_files", help=argparse.SUPPRESS)  # old name of --max-files
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     stage = "drain" if a.harvest_only else a.stage
@@ -245,7 +267,10 @@ def main() -> int:
 
     plan = json.loads(PLAN.read_text(encoding="utf-8"))
     state = load_state()
-    items = plan_items(plan, a.phase)
+    # historical focus first: window-year proof, company proof, company support; then the plan's phases
+    hist = [it for it in historical.items(state) if a.phase in ("all", it["phase"])]
+    planned = {it["query"] for it in hist}
+    items = hist + [it for it in plan_items(plan, a.phase) if it["query"] not in planned]
     if not items:
         emit({"error": f"unknown or empty phase: {a.phase}", "phases": [p["name"] for p in plan["phases"]]})
         return 2
@@ -256,9 +281,10 @@ def main() -> int:
         return st in (None, "engines_blocked") or (a.retry_failed and st in ("failed", "no_results"))
 
     todo = [it for it in items if pending(it)] if stage in ("all", "discover") else []
+    pending_total = len(todo)
     if a.max_queries:
         todo = todo[: a.max_queries]
-    max_fetch = a.max_fetch or a.max_harvest or plan.get("fetch_limit_per_run", 60)
+    limits = run_limits.resolve(a, interactive=sys.stdin.isatty() and sys.stdout.isatty() and not a.dry_run)
 
     if a.dry_run:
         dk = docket.open_docket()
@@ -268,7 +294,8 @@ def main() -> int:
             d = by_phase.setdefault(it["phase"], {"total": 0, "pending": 0})
             d["total"] += 1
             d["pending"] += pending(it)
-        emit({"dry_run": True, "stage": stage, "would_run": len(todo), "phases": by_phase,
+        emit({"dry_run": True, "stage": stage, "would_run": len(todo), "limits": limits,
+              "focus_window": list(historical.window()), "historical": ds.get("historical"), "phases": by_phase,
               "harvest_backlog": ds["fetch_ready_now"],
               "docket": {k: ds[k] for k in ("by_status", "fetch_ready_now", "awaiting_parse",
                                             "waiting_on_blocked_domain", "evidence_unfetched")},
@@ -286,6 +313,7 @@ def main() -> int:
     step = {
         "run_id": rid, "agent_session": agent_session(), "started_at": now_iso(), "finished_at": None,
         "duration_s": None, "status": "running", "stop_reason": None, "stage": stage, "args": vars(a),
+        "limits": limits, "discovery_stop_reason": None,
         "queries_planned": len(todo), "queries_done": 0, "queries_failed": 0, "queries_no_results": 0,
         "phases": {}, "urls_found": 0, "filed_new": 0,
         "fetched_ok": 0, "fetch_failed": 0, "fetch_dead": 0, "quarantined": 0, "harvested_ok": 0,
@@ -301,8 +329,9 @@ def main() -> int:
             step["new_records"] = step["records_after"] - step["records_before"]
         summary_path.write_text(json.dumps(step, indent=1), encoding="utf-8")
 
-    log(f"run start: stage={stage}, {len(todo)} queries, phase={a.phase}", kind="run_start",
-        queries_planned=len(todo), phase=a.phase, stage=stage)
+    log(f"run start: stage={stage}, {len(todo)} queries, phase={a.phase}, {limits['mode']}: "
+        f"{run_limits.describe(limits)}", kind="run_start", queries_planned=len(todo), phase=a.phase, stage=stage,
+        limits=limits)
     write_summary()
 
     # can't search now? still drain the docket instead of doing nothing
@@ -325,6 +354,8 @@ def main() -> int:
 
     fetch_out, proc_out = RUNS / f".{rid}.fetch.json", RUNS / f".{rid}.process.json"
     marker = RUNS / f".{rid}.discovering"  # exists while Discovery runs: the fetch worker waits for new items
+    stop = run_limits.StopFile(RUNS / f".{rid}.stop")  # the first stage to reach a cap writes the reason here
+    cap = {k: str(limits[k] or "all") for k in run_limits.CAPS}
     children: list[subprocess.Popen] = []
     try:
         if stage in ("all", "drain", "fetch"):
@@ -332,23 +363,28 @@ def main() -> int:
             if stage == "all" and todo:
                 marker.touch()
                 follow = ["--follow", str(marker), "--follow-pid", str(os.getpid())]
-            fw = spawn("fetch_worker.py", "--max-fetch", str(max_fetch), *follow, out=fetch_out)
+            fw = spawn("fetch_worker.py", "--max-files", cap["max_files"], "--max-docs-per-company",
+                       cap["max_docs_per_company"], "--stop-file", str(stop.path), *follow, out=fetch_out)
             children.append(fw)
             if stage != "fetch":
-                children.append(spawn("process_worker.py", "--batch", str(a.process_every),
-                                      "--follow", str(fw.pid), out=proc_out))
+                children.append(spawn("process_worker.py", "--batch", str(a.process_every), "--follow", str(fw.pid),
+                                      "--max-companies", cap["max_companies"], "--records-before",
+                                      str(step["records_before"]), "--stop-file", str(stop.path), out=proc_out))
         elif stage == "process":
-            children.append(spawn("process_worker.py", "--batch", "1", out=proc_out))
+            children.append(spawn("process_worker.py", "--batch", "1", "--max-companies", cap["max_companies"],
+                                  "--records-before", str(step["records_before"]), "--stop-file", str(stop.path),
+                                  out=proc_out))
         if todo:
             try:
-                discover(todo, state, step, plan, rid, a)
+                discover(todo, state, step, plan, rid, a, stop)
             finally:
                 marker.unlink(missing_ok=True)  # the fetch worker drains what is left, then stops
             write_summary()
         for c in children:
             c.wait()
         step["status"] = "completed"
-        step["stop_reason"] = step["stop_reason"] or ("plan_exhausted" if todo else f"{stage}_done")
+        step["discovery_stop_reason"] = step["stop_reason"] or (
+            None if not todo else "max_queries_reached" if pending_total > len(todo) else "queries_exhausted")
     except LowDisk:
         step.update(status="stopped", stop_reason="low_disk_space")
     except KeyboardInterrupt:
@@ -363,7 +399,8 @@ def main() -> int:
             except subprocess.TimeoutExpired:
                 c.terminate()
         f, pr = child_summary(fetch_out), child_summary(proc_out)
-        for p in (fetch_out, proc_out, marker):
+        capped = stop.reason()
+        for p in (fetch_out, proc_out, marker, stop.path):
             p.unlink(missing_ok=True)
         step.update(fetched_ok=f.get("fetched_ok", 0), fetch_failed=f.get("failed", 0), fetch_dead=f.get("dead", 0),
                     quarantined=f.get("failed", 0) + f.get("dead", 0), harvested_ok=f.get("harvested_new", 0),
@@ -372,6 +409,10 @@ def main() -> int:
                     parse_errors=pr.get("parse_errors", 0), process_stop_reason=pr.get("stop_reason"))
         if f.get("stop_reason") == "low_disk_space":
             step.update(status="stopped", stop_reason="low_disk_space")
+        elif step["status"] == "completed":
+            # one reason for the run: a cap reached, else discovery's own stop, else how the docket ended
+            step["stop_reason"] = capped or step["discovery_stop_reason"] or f.get("stop_reason") \
+                or pr.get("stop_reason") or f"{stage}_done"
         step["finished_at"] = now_iso()
         save_state(state)
         step["records_after"] = master_count()
@@ -388,7 +429,8 @@ def main() -> int:
             **{k: step[k] for k in ("status", "stop_reason", "stage", "queries_done", "fetched_ok", "quarantined",
                                     "new_records", "duration_s")})
 
-    emit({k: step[k] for k in ("run_id", "status", "stop_reason", "stage", "queries_done", "queries_failed",
+    emit({k: step[k] for k in ("run_id", "status", "stop_reason", "discovery_stop_reason", "stage", "limits",
+                               "queries_done", "queries_failed",
                                "urls_found", "filed_new", "fetched_ok", "fetch_failed", "fetch_dead", "harvested_ok",
                                "harvest_backlog", "fetch_stop_reason", "parsed_rows", "records_before",
                                "records_after", "new_records", "duration_s", "newly_blocked_domains")}

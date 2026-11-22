@@ -62,7 +62,7 @@ cd nse-delisted-comp && ./install.sh
 
 `install.sh` checks the prerequisites (Python 3.9+, and warns about missing git, Docker, npm, Homebrew or
 LM Studio), then starts a guided setup (`scripts/setup.py`, Python standard library only). Move through
-8 screens with the arrow keys; **the first option on every screen is the recommended one**, so Enter all
+9 screens with the arrow keys; **the first option on every screen is the recommended one**, so Enter all
 the way through gives a working setup. The panel under the options shows exactly what the highlighted
 option will do and what is already in place.
 
@@ -75,7 +75,8 @@ option will do and what is already in place.
 | 5 · OCR | install tesseract | skip |
 | 6 · Agent | `npm install` (Cline pinned to 3.0.75) | skip |
 | 7 · Agent model | `qwen/qwen3.8-27b` (saved as `CLINE_MODEL` in `.env`) | `google/gemma-4-26b-a4b` · keep current |
-| 8 · Finish | run `scripts/check.sh` | skip |
+| 8 · Run limits | capped: 60 files, 25 companies, 5 docs/company per run | unlimited · ask at the start of each run |
+| 9 · Finish | run `scripts/check.sh` | skip |
 
 Nothing changes until you confirm the summary. Steps already done are skipped, `.env` and the key file are
 backed up (`.bak`, `.bak1`, …) before they're written, an existing `SEARXNG_SECRET` is never replaced, and
@@ -158,7 +159,7 @@ The terminal shows one line per action:
 ```text
 ■ agent-20261121-160000 — raw log: logs/agent_sessions/agent-20261121-160000.jsonl
   💬 Harvest backlog is 142; draining it first.
-  ▶ [3] run_commands: .venv/bin/python scripts/job.py start --harvest-only --max-fetch 40
+  ▶ [3] run_commands: .venv/bin/python scripts/job.py start --harvest-only --max-files 40
   ▶ [4] run_commands: .venv/bin/python scripts/status_report.py --json
 ■ session finished: completed after 61 iterations, 88 tool calls, …
 ```
@@ -178,7 +179,7 @@ scripts/run_agent.sh prompts/my_task.md                        # different task 
 
 ```bash
 .venv/bin/python scripts/collect.py --dry-run          # what's pending + docket backlog
-.venv/bin/python scripts/collect.py --harvest-only --max-fetch 60   # drain the docket: fetch + parse, no searching
+.venv/bin/python scripts/collect.py --harvest-only --max-files 60   # drain the docket: fetch + parse, no searching
 .venv/bin/python scripts/collect.py --stage discover --max-queries 5  # search only: fill the docket
 .venv/bin/python scripts/docket.py --stats             # queue: ready / retrying / awaiting parse / parsed / dead / parked
 .venv/bin/python scripts/docket.py --list failed       # what failed and why (also: dead, parse_error, parked)
@@ -203,6 +204,53 @@ scripts/run_agent.sh prompts/my_task.md                        # different task 
  ISIN completeness  ██░░░░░░░░░░░░░░░░░░  10.0%  rows with an ISIN
  Records: 140 (priority years: 37) | files with rows: 120, zero-row: 43 | blocked domains: 1 | proposed leads: 14
 ```
+
+### Run limits and modes
+
+Each run has three caps, set in `run_limits` in `config/query_plan.json` (the setup wizard's "Run limits" screen)
+or per run with flags. `0`, `null` or `all` means no limit for that cap.
+
+| Cap | Counts | Stop reason |
+|---|---|---|
+| `max_files` (60) | files downloaded OK in this run | `max_files_reached` |
+| `max_companies` (25) | new records in the master in this run | `max_companies_reached` |
+| `max_docs_per_company` (5) | documents fetched per company, all runs; extra ones stay *parked* in the docket | — |
+
+`mode` is `capped` (use the caps), `unlimited` (no caps: run until the queries, the docket or the sources are used
+up) or `ask` (asks "capped or unlimited?" at the start of a run, but only in a terminal; the agent, `job.py` and
+cron runs use the caps, so unattended runs never block).
+
+```bash
+.venv/bin/python scripts/collect.py --unlimited                       # no caps this run
+.venv/bin/python scripts/collect.py --max-files 200 --max-companies all
+.venv/bin/python scripts/collect.py --capped                          # the config's caps, even in ask mode
+```
+
+Every run ends with one `stop_reason`: a cap (`max_files_reached`, `max_companies_reached`,
+`max_queries_reached`), or how it ran out: `queries_exhausted` (no searches left), `docket_exhausted` (nothing
+left to download), `sources_exhausted` (downloads left, but each is over its site's per-run budget, on a blocked
+site or waiting to retry); or `search_engines_suspended`, `low_disk_space`, `keyboard_interrupt`. The run summary
+also keeps each stage's own reason (`discovery_stop_reason`, `fetch_stop_reason`, `process_stop_reason`).
+
+### Historical focus: delisted 15–20 years ago
+
+`focus.years_ago` ([15, 20]) sets the target: today that is companies delisted in 2006–2011
+(`scripts/historical.py`). Those come before everything else in the plan, in two steps:
+
+1. **Proof first.** `historical_proof`: for each window year, NSE / BSE / SEBI delisting orders, notices and
+   lists. `historical_company_proof`: for each company in the window whose records have no official or archive
+   source yet, `"<name>" delisted <year>` on NSE, BSE, SEBI, and its ISIN.
+2. **Then supporting data.** `historical_company_support`, for proven companies: the delisting public
+   announcement / exit offer, the reason-specific document (compulsory delisting order, amalgamation scheme,
+   liquidation order) and the last annual report before delisting. These documents are tagged with the company
+   in the docket and capped by `max_docs_per_company`.
+
+Company queries are generated from the master on every run, so newly found companies get their own proof and
+support queries. Search results are re-ranked before the per-query cut, and the docket fetches in this order:
+official and archive records, then other sites, news last; documents and window years get a boost. Official URLs
+from the window that are gone (404 / 410) are looked up in the Wayback Machine and the archived copy is fetched
+instead. The dashboard's "Historical focus" line shows companies in the window, proven / unproven, and how many
+have supporting documents.
 
 ### Disk-space warnings
 
@@ -310,6 +358,8 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | `scripts/run_agent.sh` | Launch Cline unattended. Checks that SearXNG and LM Studio are up, logs the session, prints the dashboard at the end. |
 | `install.sh`, `scripts/setup.py` | Guided first-time setup (recommended option first on every screen; `--defaults`, `--dry-run`) |
 | `scripts/collect.py` | The resumable run: Discovery here, with the fetch and process workers alongside (`--stage all\|discover\|fetch\|process\|drain`) |
+| `scripts/run_limits.py` | Caps and run modes (`run_limits` in the config, collect.py flags), the shared stop file |
+| `scripts/historical.py` | Focus window, proof / supporting queries per company, Wayback lookups |
 | `scripts/docket.py` | The persistent queue between the stages; `--stats`, `--list`, `--promote`, `--retry`, `--unblock` |
 | `scripts/fetch_worker.py` | Downloads docket items, interleaving domains within their budgets and delays; files linked documents |
 | `scripts/process_worker.py` | Parses / OCRs downloads in batches, merges records, marks docket items parsed |

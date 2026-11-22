@@ -3,7 +3,7 @@ import stat
 import setup as su
 
 FRESH = {"python": "3.11", "venv": False, "venv_deps": False, "dev_deps": False, "docker": True, "searxng": False,
-         "env_file": False, "env_secret": False, "env_tracked": False, "keys": {k: None for k in su.API_KEYS},
+         "env_file": False, "env_secret": False, "env_tracked": False, "run_mode": None, "keys": {k: None for k in su.API_KEYS},
          "brew": True, "apt": False, "tesseract": None, "npm": True, "cline": False, "lmstudio": True, "model": None}
 
 
@@ -19,12 +19,13 @@ def test_fresh_machine_plan_with_defaults():
     todo = [a.what for v in acts.values() for a in v if not a.note]
     assert todo == ["create .venv", "pip install -r requirements.txt", "pip install -r requirements-dev.txt",
                     "write a random SEARXNG_SECRET into .env", "docker compose up -d", "brew install tesseract",
-                    "npm install", f"set CLINE_MODEL={su.MODELS[0]} in .env", "scripts/check.sh"]
+                    "npm install", f"set CLINE_MODEL={su.MODELS[0]} in .env",
+                    "set run_limits.mode = capped in config/query_plan.json (backup first)", "scripts/check.sh"]
 
 
 def test_set_up_machine_needs_nothing_but_the_check():
     done = dict(FRESH, venv=True, venv_deps=True, dev_deps=True, searxng=True, env_file=True, env_secret=True,
-                tesseract="tesseract 5.5.4", cline=True, model=su.MODELS[0])
+                tesseract="tesseract 5.5.4", cline=True, model=su.MODELS[0], run_mode="capped")
     todo = [a.what for v in su.plan(su.defaults(done), done).values() for a in v if not a.note]
     assert todo == ["scripts/check.sh"]
 
@@ -76,6 +77,18 @@ def test_only_missing_keys_are_asked_for():
 
 def test_numbered_prompts_blank_means_recommended():
     choice = su.defaults(FRESH)
-    answers = iter(["", "2", "", "", "", "", "", ""])
+    answers = iter(["", "2", "", "", "", "", "", "", ""])
     assert su.run_prompts(choice, FRESH, ask=lambda p: next(answers))
     assert choice["dev"] == "skip" and choice["python"] == "create" and choice["model"] == su.MODELS[0]
+
+
+def test_run_limits_screen_writes_the_mode_with_a_backup(tmp_path, monkeypatch):
+    import json
+    plan = tmp_path / "query_plan.json"
+    plan.write_text(json.dumps({"phases": [], "run_limits": {"mode": "capped", "max_files": 99}}))
+    monkeypatch.setattr(su, "PLAN", plan)
+    acts = su.plan(dict(su.defaults(FRESH), limits="unlimited"), dict(FRESH, run_mode="capped"))
+    next(a for a in acts["limits"] if a.fn).fn()
+    rl = json.loads(plan.read_text())["run_limits"]
+    assert rl == {"mode": "unlimited", "max_files": 99, "max_companies": 25, "max_docs_per_company": 5}
+    assert json.loads((tmp_path / "query_plan.json.bak").read_text())["run_limits"]["mode"] == "capped"

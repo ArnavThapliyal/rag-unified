@@ -126,19 +126,19 @@ def test_worker_interleaves_domains_and_respects_budgets(dk, worker, monkeypatch
     monkeypatch.setattr(fetch_worker.time, "sleep", sleep)
     dk.file([item(f"https://www.nseindia.com/{i}.pdf") for i in range(4)]
             + [item(f"https://other.in/{i}.pdf") for i in range(3)], KNOWN)
-    out = fetch_worker.run(max_fetch=50)
+    out = fetch_worker.run(max_files=50)
     nse = [u for u in worker if "nseindia" in u]
     assert len(nse) == 2 and len(worker) == 5          # NSE budget 2; the rest of NSE stays pending
     assert worker.index(nse[1]) > worker.index(nse[0]) + 1  # other.in fetched while NSE waited out its delay
-    assert out["stop_reason"] == "budget_exhausted"
+    assert out["stop_reason"] == "sources_exhausted"   # NSE items left, but over budget
     assert dk.stats()["by_status"]["pending"] == 2
 
 
 def test_failed_downloads_stay_in_the_docket_for_retry(dk, worker, monkeypatch):
     monkeypatch.setattr(fetch_worker.time, "sleep", lambda s: None)
     dk.file([item("https://a.in/fail.pdf"), item("https://a.in/ok.pdf")], KNOWN)
-    out = fetch_worker.run(max_fetch=10)
-    assert out["fetched_ok"] == 1 and out["failed"] == 1 and out["stop_reason"] == "idle"
+    out = fetch_worker.run(max_files=10)
+    assert out["fetched_ok"] == 1 and out["failed"] == 1 and out["stop_reason"] == "sources_exhausted"  # backoff
     assert dk.stats()["by_status"] == {"fetched": 1, "failed": 1}
 
 
@@ -182,14 +182,14 @@ def test_worker_waits_for_discovery_then_stops_when_it_is_done(dk, worker, tmp_p
         else:
             marker.unlink(missing_ok=True)
     monkeypatch.setattr(fetch_worker.time, "sleep", sleep)
-    out = fetch_worker.run(max_fetch=10, follow=marker, follow_pid=__import__("os").getpid())
-    assert worker == ["https://a.in/late.pdf"] and out["stop_reason"] == "idle"
+    out = fetch_worker.run(max_files=10, follow=marker, follow_pid=__import__("os").getpid())
+    assert worker == ["https://a.in/late.pdf"] and out["stop_reason"] == "docket_exhausted"
 
 
 def test_worker_does_not_wait_for_a_dead_discovery(dk, worker, tmp_path):
     marker = tmp_path / ".run.discovering"
     marker.touch()  # left behind by a crashed parent
-    assert fetch_worker.run(max_fetch=10, follow=marker, follow_pid=2 ** 22 + 12345)["stop_reason"] == "idle"
+    assert fetch_worker.run(max_files=10, follow=marker, follow_pid=2 ** 22 + 12345)["stop_reason"] == "docket_exhausted"
 
 
 def test_process_worker_keeps_going_while_downloads_arrive(dk, monkeypatch):

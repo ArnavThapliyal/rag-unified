@@ -13,11 +13,20 @@ through the job runner: `.venv/bin/python scripts/job.py start <collect.py args>
 command 5 times in a row — Cline aborts the session as a loop. Never run `collect.py` without `--dry-run`
 directly, and never use `&`, `nohup` or /tmp logs.
 
+## Focus: companies delisted 15–20 years ago
+The plan runs historical phases first (the window is in `collect.py --dry-run` as `focus_window`):
+`historical_proof` (official delisting orders, notices and lists for each window year), then
+`historical_company_proof` (one company at a time: find official or archive proof of its delisting), then
+`historical_company_support` (for proven companies: exit offer / announcement, the order, the last annual report).
+Official and archive (web.archive.org) records are fetched before news. When you add gap queries, prefer
+the window years and official / archive wording over recent news. Each run has caps (`limits` in the output:
+files, new companies, documents per company); they are the user's settings, never change them.
+
 ## Loop (repeat until a stop condition)
 1. `.venv/bin/python scripts/collect.py --dry-run` — see pending queries and the docket backlog (`harvest_backlog`).
 2. If queries are pending and `search_cooldown_min_left` is 0: `.venv/bin/python scripts/job.py start --max-queries 8`,
    then `job.py wait 1`, `wait 2`, … until done. Downloads and parsing run alongside the searches.
-3. Else if `harvest_backlog` > 0: `.venv/bin/python scripts/job.py start --harvest-only --max-fetch 40`, then
+3. Else if `harvest_backlog` > 0: `.venv/bin/python scripts/job.py start --harvest-only --max-files 40`, then
    `job.py wait 1`, `wait 2`, … until done (repeat until the backlog is 0 or a run fetches nothing new).
    Failed downloads are retried from the docket automatically; never search again to re-find a URL.
 4. `.venv/bin/python scripts/status_report.py --json` and decide the next action. First run
@@ -49,7 +58,8 @@ directly, and never use `&`, `nohup` or /tmp logs.
 5. Log a one-line milestone: `.venv/bin/python scripts/common.py log "cycle N: <what you did>, records X"`.
 
 ## Stop conditions (then write a final summary log line and finish)
-- All plan phases complete, harvest backlog 0, and the last two cycles added 0 new records; or
+- `stop_reason: queries_exhausted` and `harvest_backlog` 0 (or a run ends `docket_exhausted` / `sources_exhausted`),
+  and the last two cycles added 0 new records; or
 - Search unavailable (collect.py returns `search_unavailable` / `search_errors`) twice in a row; or
 - collect.py returns `stop_reason: low_disk_space` (the user must free disk space — stop immediately); or
 - collect.py returns `stop_reason: search_engines_suspended` (every search provider is rate-limited, benched or out of its daily limit). If the

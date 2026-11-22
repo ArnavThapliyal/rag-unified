@@ -38,6 +38,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+import historical
 from common import DATA, METADATA, PARSED, PRIORITY_YEARS, domain_matches, domain_of, emit, log, now_iso, read_jsonl
 
 DB = DATA / "docket.sqlite"
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS items (
   harvested_from TEXT, discovered_at REAL, discovered_run TEXT,
   attempts INTEGER DEFAULT 0, next_attempt_at REAL DEFAULT 0, lease_until REAL DEFAULT 0,
   http_status INTEGER, last_error TEXT, local_path TEXT, fetched_at REAL,
-  parsed_at REAL, rows INTEGER, relevance TEXT, updated_at REAL);
+  parsed_at REAL, rows INTEGER, relevance TEXT, updated_at REAL, company TEXT, company_name TEXT);
 CREATE INDEX IF NOT EXISTS items_queue ON items (status, priority DESC, discovered_at);
 CREATE INDEX IF NOT EXISTS items_path ON items (local_path);
 CREATE TABLE IF NOT EXISTS domains (
@@ -66,13 +67,19 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 """
 
 
-def priority(url: str, kind: str, year_tag: str | None, evidence: bool, known: list[str], rank: int | None) -> int:
-    """Higher = fetched sooner. Documents and official domains first, then evidence in the snippet."""
+def priority(url: str, kind: str, year_tag: str | None, evidence: bool, known: list[str], rank: int | None,
+             focus: tuple[int, int] | None = None) -> int:
+    """Higher = fetched sooner. Historical records first: official and archive sources, documents, years in
+    the focus window (15-20 years ago) and delisting evidence; recent news last."""
     p = 50
-    p += 30 if domain_matches(url, known) else 0
+    t = historical.tier(url)
+    p += 25 if t == 0 else 0                       # official (NSE/BSE/SEBI/...) or archive (Wayback)
+    p -= 15 if t == 2 else 0                       # news sites
+    p += 5 if t == 1 and domain_matches(url, known) else 0
     p += 20 if DOC_RE.search(url) else 0
-    p += 15 if kind == "harvested" else 0
+    p += 15 if kind in ("harvested", "archive") else 0
     p += 15 if evidence else 0
+    p += 15 if focus and historical.in_window(year_tag, focus) else 0
     p += 5 if str(year_tag or "").isdigit() and int(year_tag) in PRIORITY_YEARS else 0
     p -= min(rank or 0, 20)
     return p
@@ -87,6 +94,12 @@ class Docket:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout=60000")
         self.db.executescript(SCHEMA)
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(items)")}
+        for col in ("company", "company_name"):  # dockets created before the historical focus
+            if col not in cols:
+                self.db.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
+        self.db.execute("CREATE INDEX IF NOT EXISTS items_company ON items (company)")
+        self.focus = historical.window()
 
     @contextmanager
     def txn(self):
@@ -110,7 +123,7 @@ class Docket:
     # --- discovery side -------------------------------------------------------------------------
     def file(self, items: list[dict], known: list[str], fetched: dict | None = None) -> dict:
         """Add candidate URLs. Each item: url, kind (search|harvested|deferred), year_tag, and optionally
-        query, provider, rank, title, snippet, harvested_from, parked (bool), run_id.
+        query, provider, rank, title, snippet, harvested_from, parked (bool), run_id, company, company_name.
         A URL already in the docket keeps its row; a parked one becomes pending if filed as not parked.
         URLs already in the fetch manifest (`fetched`: url -> entry) are filed as fetched / dead."""
         now = time.time()
@@ -135,13 +148,13 @@ class Docket:
                 db.execute(
                     "INSERT INTO items (url, domain, kind, status, priority, year_tag, query, provider, rank, title,"
                     " snippet, evidence, harvested_from, discovered_at, discovered_run, http_status, local_path,"
-                    " last_error, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " last_error, updated_at, company, company_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (url, domain_of(url), it.get("kind", "search"), status,
-                     priority(url, it.get("kind", "search"), it.get("year_tag"), ev, known, it.get("rank")),
+                     priority(url, it.get("kind", "search"), it.get("year_tag"), ev, known, it.get("rank"), self.focus),
                      it.get("year_tag"), it.get("query"), it.get("provider"), it.get("rank"),
                      (it.get("title") or "")[:300], (it.get("snippet") or "")[:500], int(ev),
                      it.get("harvested_from"), now, it.get("run_id"), http, path,
-                     f"http {http}" if status == "dead" else None, now))
+                     f"http {http}" if status == "dead" else None, now, it.get("company"), it.get("company_name")))
                 out["new"] += 1
                 out[status if status in ("pending", "parked") else "already_fetched"] = \
                     out.get(status if status in ("pending", "parked") else "already_fetched", 0) + 1
@@ -221,6 +234,24 @@ class Docket:
     def unblock(self, domain: str) -> int:
         return self.db.execute("UPDATE domains SET blocked=0, consecutive_fails=0 WHERE domain=?", (domain,)).rowcount
 
+    def park(self, url: str, reason: str) -> None:
+        self.db.execute("UPDATE items SET status='parked', lease_until=0, last_error=?, updated_at=? WHERE url=?",
+                        (reason, time.time(), url))
+
+    def company_docs(self, company: str) -> int:
+        """Documents fetched (or being fetched) for a company, all runs."""
+        return self.db.execute("SELECT COUNT(*) n FROM items WHERE company=? AND status IN ('fetching','fetched','parsed')",
+                               (company,)).fetchone()["n"]
+
+    def docs_by_company(self) -> dict[str, int]:
+        return {r["company"]: r["n"] for r in self.db.execute(
+            "SELECT company, COUNT(*) n FROM items WHERE company IS NOT NULL AND status IN ('fetched','parsed')"
+            " GROUP BY company")}
+
+    def remaining(self) -> int:
+        """Items still to download some day: pending or retrying, incl. blocked domains and backoff."""
+        return self.db.execute("SELECT COUNT(*) n FROM items WHERE status IN ('pending','failed')").fetchone()["n"]
+
     # --- process side ---------------------------------------------------------------------------
     def fetched_count(self) -> int:
         return self.db.execute("SELECT COUNT(*) n FROM items WHERE status='fetched'").fetchone()["n"]
@@ -278,7 +309,8 @@ class Docket:
                 "awaiting_parse": by_status.get("fetched", 0), "parsed_zero_rows_relevant": zero,
                 "evidence_unfetched": q("SELECT COUNT(*) n FROM items WHERE evidence=1 AND status IN"
                                         " ('parked','pending','failed')").fetchone()["n"],
-                "blocked_domains": sorted(self.blocked()), "top_pending_domains": top, "dead_reasons": dead}
+                "blocked_domains": sorted(self.blocked()), "top_pending_domains": top, "dead_reasons": dead,
+                "historical": historical.coverage(self.focus, self.docs_by_company())}
 
     def write_stats(self) -> dict:
         s = {"generated_at": now_iso(), **self.stats()}

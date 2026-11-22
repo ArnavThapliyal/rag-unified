@@ -141,7 +141,8 @@ def patch_paths(patch: str) -> list[str]:
 
 # Search settings are the user's: providers, paid-API limits, URLs, cooldowns.
 SEARCH_KEYS_RE = re.compile(r'"(search|providers|provider_settings|daily_limit|monthly_limit|url|engines'
-                            r'|engines_per_query|cooldown_min|query_delay_s)"\s*:')
+                            r'|engines_per_query|cooldown_min|query_delay_s'
+                            r'|run_limits|mode|max_files|max_companies|max_docs_per_company|focus|years_ago)"\s*:')
 
 
 def edit_ok(path: str, text: str = "") -> str | None:
@@ -149,7 +150,8 @@ def edit_ok(path: str, text: str = "") -> str | None:
     if not (r and r.startswith("config/")):
         return f"edits are only allowed in config/ (not {path})"
     if SEARCH_KEYS_RE.search(text):
-        return "the search settings (providers, API limits, engines) in config/query_plan.json are the user's to change"
+        return ("the search settings, run limits and historical focus in config/query_plan.json are the user's "
+                "to change")
     return None
 
 

@@ -226,7 +226,8 @@ def build() -> dict:
         "blocked_domains": len(queries["blocked_domains"]),
         "docket": {k: queries["docket"].get(k) for k in ("by_status", "fetch_ready_now", "awaiting_parse",
                                                          "waiting_on_blocked_domain", "evidence_unfetched",
-                                                         "parsed_zero_rows_relevant")} if queries["docket"] else None,
+                                                         "parsed_zero_rows_relevant", "historical")}
+        if queries["docket"] else None,
         "isin_completeness_pct": records["field_completeness_pct"]["isin"],
         "last_run": runs[-1] if runs else None,
         "agent_sessions": len(sessions),

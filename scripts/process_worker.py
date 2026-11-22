@@ -20,6 +20,7 @@ from pathlib import Path
 
 import common
 import docket
+import run_limits
 from common import ROOT, emit, log
 
 POLL_S = 10
@@ -51,7 +52,10 @@ def process_once(dk: docket.Docket) -> dict:
             "parse_errors": len(parsed.get("errors", [])), "records_after": merged.get("records_out"), "docket": sync}
 
 
-def run(batch: int, follow: int | None) -> dict:
+def run(batch: int, follow: int | None, max_companies: int | None = None, records_before: int | None = None,
+        stop: run_limits.StopFile | None = None) -> dict:
+    """max_companies: stop the run (stop file) once the master has grown by that many records."""
+    stop = stop or run_limits.StopFile(None)
     dk = docket.open_docket()
     out = {"batches": 0, "parsed_files": 0, "parsed_rows": 0, "parse_errors": 0, "records_after": None,
            "stop_reason": None}
@@ -65,6 +69,10 @@ def run(batch: int, follow: int | None) -> dict:
                 for k in ("parsed_files", "parsed_rows", "parse_errors"):
                     out[k] += r[k]
                 out["records_after"] = r["records_after"]
+                if max_companies and records_before is not None and r["records_after"] is not None \
+                        and r["records_after"] - records_before >= max_companies:
+                    stop.stop("max_companies_reached")
+                    out["max_companies_reached"] = True
                 print(f"    ↳ processed {r['parsed_files']} files, +{r['parsed_rows']} rows → records "
                       f"{r['records_after']}", flush=True)
                 if not (r["docket"]["parsed"] or r["docket"]["parse_error"]):  # nothing could be marked
@@ -92,10 +100,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--batch", type=int, default=5, help="parse once this many downloads are waiting")
     ap.add_argument("--follow", type=int, metavar="PID")
+    ap.add_argument("--max-companies", default="all", help="new master records this run; 0 or all = no cap")
+    ap.add_argument("--records-before", type=int, help="master size when the run started")
+    ap.add_argument("--stop-file", type=Path)
     ap.add_argument("--summary-out", type=Path)
     a = ap.parse_args()
     common.graceful_sigterm()
-    out = run(a.batch, a.follow)
+    out = run(a.batch, a.follow, run_limits.parse_cap(a.max_companies), a.records_before,
+              run_limits.StopFile(a.stop_file))
     if a.summary_out:
         a.summary_out.write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
     emit(out)

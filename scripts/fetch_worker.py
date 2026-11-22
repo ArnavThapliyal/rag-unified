@@ -8,11 +8,17 @@
   times in a row are blocked; their items wait.
 - Downloaded HTML pages are scanned for linked documents, which are filed in the docket ("harvested";
   the first harvest_limit_per_page per page pending, the rest parked).
+- Caps (run_limits.py): --max-files (files downloaded OK; "all" = no cap) and --max-docs-per-company
+  (company-tagged documents beyond it are parked). A cap reached, or another stage's stop file, ends the run.
+- Stop reasons: max_files_reached, docket_exhausted (nothing left to download), sources_exhausted (items left,
+  but each is over its domain's per-run budget, on a blocked domain or waiting out a retry backoff).
+- Official URLs from the focus window (15-20 years ago) that are gone (404/410) are looked up in the Wayback
+  Machine; a snapshot found is filed as an "archive" item.
 - --follow FILE: keep waiting for new items while FILE exists (Discovery creates it and deletes it when
   done; --follow-pid stops the wait if that process dies without deleting it). Otherwise stop when
   nothing is ready.
 
-  python scripts/fetch_worker.py --max-fetch 40
+  python scripts/fetch_worker.py --max-files 40 --max-docs-per-company 5
   python scripts/fetch_worker.py --follow logs/runs/.x.discovering --follow-pid 12345
 """
 from __future__ import annotations
@@ -29,8 +35,10 @@ import requests
 
 import common
 import docket
+import historical
 import polite_fetcher
-from common import CONFIG, ROOT, USER_AGENT, check_disk, domain_of, emit, log
+import run_limits
+from common import CONFIG, ROOT, USER_AGENT, check_disk, domain_matches, domain_of, emit, log
 
 IDLE_POLL_S = 5
 DISK_CHECK_S = 60
@@ -64,8 +72,26 @@ def harvest(dk: docket.Docket, entry: dict, policy: dict, per_page: int, run_id:
     return dk.file(items, policy["known"], polite_fetcher.already_fetched()) if items else {"new": 0}
 
 
-def run(max_fetch: int, follow: Path | None = None, follow_pid: int | None = None,
-        max_seconds: float | None = None) -> dict:
+def archive_fallback(dk: docket.Docket, session, c, policy: dict, used) -> bool:
+    """File the Wayback copy of a gone official document from the focus window. True if one was filed."""
+    if not (domain_matches(c["url"], historical.OFFICIAL_DOMAINS) and historical.in_window(c["year_tag"], dk.focus)):
+        return False
+    key = polite_fetcher.limit_key("https://archive.org/", policy)
+    if used[key] >= polite_fetcher.limits_for(key, policy)["max_per_run"]:
+        return False
+    used[key] += 1
+    snap = historical.archive_copy(session, c["url"], c["year_tag"])
+    if not snap:
+        return False
+    dk.file([{"url": snap, "kind": "archive", "year_tag": c["year_tag"], "harvested_from": c["url"],
+              "company": c["company"], "company_name": c["company_name"], "title": c["title"]}], policy["known"])
+    log(f"archive copy filed for gone {c['url']}: {snap}", kind="archive_copy", url=c["url"], snapshot=snap)
+    return True
+
+
+def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int | None = None,
+        max_seconds: float | None = None, max_docs_per_company: int | None = None,
+        stop: run_limits.StopFile | None = None) -> dict:
     dk = docket.open_docket()
     p = plan()
     policy = polite_fetcher.fetch_policy()
@@ -77,13 +103,18 @@ def run(max_fetch: int, follow: Path | None = None, follow_pid: int | None = Non
     next_ok: dict[str, float] = {}           # domain_limits key -> earliest next request
     used = polite_fetcher.RUN_COUNTS          # requests per key in this run
     disk_state = dk.get_meta("disk_state", {})
-    out = {"fetched_ok": 0, "failed": 0, "dead": 0, "harvested_new": 0, "newly_blocked_domains": [],
-           "over_budget_domains": [], "stop_reason": None}
+    stop = stop or run_limits.StopFile(None)
+    out = {"fetched_ok": 0, "failed": 0, "dead": 0, "harvested_new": 0, "archive_filed": 0,
+           "parked_company_cap": 0, "newly_blocked_domains": [], "over_budget_domains": [], "stop_reason": None}
     t0, last_disk = time.time(), 0.0
     try:
         while True:
-            if out["fetched_ok"] + out["failed"] + out["dead"] >= max_fetch:
-                out["stop_reason"] = "max_fetch"
+            if max_files and out["fetched_ok"] >= max_files:
+                out["stop_reason"] = "max_files_reached"
+                stop.stop("max_files_reached")
+                break
+            if stop.reason():
+                out["stop_reason"] = stop.reason()
                 break
             if max_seconds and time.time() - t0 > max_seconds:
                 out["stop_reason"] = "time_limit"
@@ -105,6 +136,10 @@ def run(max_fetch: int, follow: Path | None = None, follow_pid: int | None = Non
                 if next_ok.get(key, 0) > now:
                     soonest = min(soonest or next_ok[key], next_ok[key])
                     continue
+                if max_docs_per_company and c["company"] and dk.company_docs(c["company"]) >= max_docs_per_company:
+                    dk.park(c["url"], f"max_docs_per_company ({max_docs_per_company}) reached")
+                    out["parked_company_cap"] += 1
+                    continue
                 if not polite_fetcher.allowed(c["url"], policy):  # policy changed since it was filed
                     dk.done_fetch(c["url"], {"http_status": None, "quarantined": True,
                                              "error": "not allowed by fetch policy (deny_domains/open_web)"})
@@ -119,7 +154,7 @@ def run(max_fetch: int, follow: Path | None = None, follow_pid: int | None = Non
                 if discovering(follow, follow_pid):  # Discovery is still filing: wait for more
                     time.sleep(IDLE_POLL_S)
                     continue
-                out["stop_reason"] = "budget_exhausted" if over else "idle"
+                out["stop_reason"] = "docket_exhausted" if not dk.remaining() else "sources_exhausted"
                 break
             c, key, lim = pick
             if not dk.lease(c["url"]):            # another worker took it
@@ -134,6 +169,8 @@ def run(max_fetch: int, follow: Path | None = None, follow_pid: int | None = Non
                 out["newly_blocked_domains"].append(domain_of(c["url"]))
                 log(f"domain blocked after {block_after} consecutive failures: {domain_of(c['url'])}",
                     level="WARN", kind="domain_blocked", domain=domain_of(c["url"]))
+            if status == "dead" and e.get("http_status") in (404, 410):
+                out["archive_filed"] += archive_fallback(dk, session, c, policy, used)
             if ok and (e.get("local_path") or "").endswith((".html", ".htm")):
                 out["harvested_new"] += harvest(dk, e, policy, per_page, run_id).get("new", 0)
             print(f"  ⇣ {status:<8} {e.get('http_status')} {c['url'][:90]}", flush=True)
@@ -144,21 +181,27 @@ def run(max_fetch: int, follow: Path | None = None, follow_pid: int | None = Non
         out["docket"] = dk.write_stats()
         out["duration_s"] = round(time.time() - t0, 1)
         log(f"fetch worker: {out['fetched_ok']} ok, {out['failed']} failed (will retry), {out['dead']} dead, "
-            f"+{out['harvested_new']} linked docs filed; stop: {out['stop_reason']}", kind="fetch_worker",
-            **{k: out[k] for k in ("fetched_ok", "failed", "dead", "harvested_new", "stop_reason")})
+            f"+{out['harvested_new']} linked docs, +{out['archive_filed']} archive copies filed; "
+            f"stop: {out['stop_reason']}", kind="fetch_worker",
+            **{k: out[k] for k in ("fetched_ok", "failed", "dead", "harvested_new", "archive_filed",
+                                   "parked_company_cap", "stop_reason")})
     return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--max-fetch", type=int, default=60, help="download attempts this run")
+    ap.add_argument("--max-files", default="60", help="files downloaded OK this run; 0 or all = no cap")
+    ap.add_argument("--max-fetch", dest="max_files", help=argparse.SUPPRESS)  # old name
+    ap.add_argument("--max-docs-per-company", default="all", help="per company, all runs; 0 or all = no cap")
+    ap.add_argument("--stop-file", type=Path, help="run-wide stop signal shared with the other stages")
     ap.add_argument("--follow", type=Path, metavar="FILE", help="keep waiting for new items while FILE exists")
     ap.add_argument("--follow-pid", type=int, metavar="PID", help="...and while this process is alive")
     ap.add_argument("--max-seconds", type=float)
     ap.add_argument("--summary-out", type=Path)
     a = ap.parse_args()
     common.graceful_sigterm()
-    out = run(a.max_fetch, a.follow, a.follow_pid, a.max_seconds)
+    out = run(run_limits.parse_cap(a.max_files), a.follow, a.follow_pid, a.max_seconds,
+              run_limits.parse_cap(a.max_docs_per_company), run_limits.StopFile(a.stop_file))
     if a.summary_out:
         a.summary_out.write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
     emit({k: v for k, v in out.items() if k != "docket"} | {"docket_ready": out["docket"]["fetch_ready_now"]})

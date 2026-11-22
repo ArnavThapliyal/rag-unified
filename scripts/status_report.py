@@ -69,6 +69,11 @@ def print_indicators(meta: dict) -> None:
         nd = ind["new_domains_with_rows"]
         print(f" Websites: {ind['source_domains']} fetched from, {ind['new_source_domains']} new"
               + (f" — new with rows: {', '.join(nd[:6])}" if nd else "") + " (data/metadata/domain_registry.json)")
+    hist = (ind.get("docket") or {}).get("historical")
+    if hist:
+        print(f" Historical focus {hist['window'][0]}–{hist['window'][1]}: {hist['companies']} companies, "
+              f"{hist['proven']} with official/archive proof, {hist['unproven']} unproven, "
+              f"{hist['with_supporting_docs']} with supporting documents")
     dk = ind.get("docket")
     if dk:
         st = dk["by_status"]
