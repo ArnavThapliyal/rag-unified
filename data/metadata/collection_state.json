@@ -595,6 +595,158 @@
     "data/search_cache/5192083b24b521d7.json",
     "data/search_cache/c8c520ae660bb672.json"
    ]
+  },
+  "NSE delisted companies list 2006": {
+   "phase": "historical_proof",
+   "year_tag": "2006",
+   "ts": "2026-11-22T19:33:12+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 37,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 38,
+   "filed_new": 24,
+   "filed_pending": 3,
+   "cache_files": [
+    "data/search_cache/d8806345ba0f9d99.json",
+    "data/search_cache/9fc6314d8cc14cb8.json"
+   ]
+  },
+  "compulsory delisting order 2006 site:nseindia.com": {
+   "phase": "historical_proof",
+   "year_tag": "2006",
+   "ts": "2026-11-22T19:33:52+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 40,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 27,
+   "filed_pending": 1,
+   "cache_files": [
+    "data/search_cache/980812da869a09ff.json",
+    "data/search_cache/ab1a52c0e2bbf0b1.json"
+   ]
+  },
+  "BSE delisting notice 2006 site:bseindia.com": {
+   "phase": "historical_proof",
+   "year_tag": "2006",
+   "ts": "2026-11-22T19:34:31+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 38,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 30,
+   "filed_pending": 6,
+   "cache_files": [
+    "data/search_cache/d18b3dd5dbb2a027.json",
+    "data/search_cache/effadabfb807172e.json"
+   ]
+  },
+  "SEBI order delisting 2006": {
+   "phase": "historical_proof",
+   "year_tag": "2006",
+   "ts": "2026-11-22T19:35:16+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 40,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 30,
+   "filed_pending": 6,
+   "cache_files": [
+    "data/search_cache/6c8261cfb7b1fd31.json",
+    "data/search_cache/5a7abf4e2635ae8d.json"
+   ]
+  },
+  "voluntary delisting exit offer public announcement 2006": {
+   "phase": "historical_proof",
+   "year_tag": "2006",
+   "ts": "2026-11-22T19:35:56+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 39,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 26,
+   "filed_pending": 3,
+   "cache_files": [
+    "data/search_cache/26f2b08988c783e1.json",
+    "data/search_cache/d4a763f762e1a1df.json"
+   ]
+  },
+  "NSE delisted companies list 2007": {
+   "phase": "historical_proof",
+   "year_tag": "2007",
+   "ts": "2026-11-22T19:36:36+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 37,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 35,
+   "filed_new": 13,
+   "filed_pending": 2,
+   "cache_files": [
+    "data/search_cache/bbd0c4934b32c08b.json",
+    "data/search_cache/995dec2a7d192732.json"
+   ]
+  },
+  "compulsory delisting order 2007 site:nseindia.com": {
+   "phase": "historical_proof",
+   "year_tag": "2007",
+   "ts": "2026-11-22T19:37:13+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 38,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 21,
+   "filed_pending": 3,
+   "cache_files": [
+    "data/search_cache/5c1ebe9d2a760a0f.json",
+    "data/search_cache/39e865e389c92680.json"
+   ]
+  },
+  "BSE delisting notice 2007 site:bseindia.com": {
+   "phase": "historical_proof",
+   "year_tag": "2007",
+   "ts": "2026-11-22T19:37:54+00:00",
+   "run_id": "20261123-010310-27510",
+   "status": "done",
+   "results": 35,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 21,
+   "filed_pending": 2,
+   "cache_files": [
+    "data/search_cache/55fbb4ff3ceccc65.json",
+    "data/search_cache/aaad80a246d5f676.json"
+   ]
   }
  },
  "blocked_domains": [],

@@ -1,14 +1,14 @@
 {
  "nsearchives.nseindia.com": {
-  "files": 325,
-  "files_with_rows": 81,
-  "rows": 513,
-  "records": 449,
+  "files": 332,
+  "files_with_rows": 83,
+  "rows": 516,
+  "records": 453,
   "first_fetched": "2026-11-21T10:46:17+00:00",
   "new": false
  },
  "archives.nseindia.com": {
-  "files": 22,
+  "files": 23,
   "files_with_rows": 5,
   "rows": 241,
   "records": 188,
@@ -16,7 +16,7 @@
   "new": false
  },
  "beta.bseindia.com": {
-  "files": 46,
+  "files": 49,
   "files_with_rows": 15,
   "rows": 91,
   "records": 11,
@@ -24,7 +24,7 @@
   "new": false
  },
  "bseindia.com": {
-  "files": 22,
+  "files": 37,
   "files_with_rows": 3,
   "rows": 43,
   "records": 2,
@@ -40,14 +40,14 @@
   "new": false
  },
  "sebi.gov.in": {
-  "files": 35,
+  "files": 45,
   "files_with_rows": 0,
   "rows": 0,
   "first_fetched": "2026-11-21T10:57:20+00:00",
   "new": false
  },
  "nseindia.com": {
-  "files": 28,
+  "files": 29,
   "files_with_rows": 0,
   "rows": 0,
   "first_fetched": "2026-11-21T10:44:38+00:00",

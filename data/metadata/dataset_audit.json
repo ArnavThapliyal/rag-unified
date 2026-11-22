@@ -1,13 +1,23 @@
 {
- "generated_at": "2026-11-22T19:11:43+00:00",
- "records": 487,
+ "generated_at": "2026-11-22T19:49:03+00:00",
+ "records": 491,
  "error_count": 0,
- "warning_count": 46,
+ "warning_count": 50,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 8,
+   "count": 12,
    "examples": [
+    {
+     "record_id": "3e43eae57ba7bec0",
+     "company_name": "Bhalchandram Clothing Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML70787.pdf"
+    },
+    {
+     "record_id": "6eebf9982451608e",
+     "company_name": "Celestial Biolabs Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML64548.pdf"
+    },
     {
      "record_id": "7f93d056cb11c9d0",
      "company_name": "Future Supply Chain Solutions Limited",
@@ -19,9 +29,19 @@
      "source_url": "https://beta.bseindia.com/xml-data/corpfiling/AttachHis/82de7b02-bad9-4e71-8708-c226525b14ff.pdf"
     },
     {
+     "record_id": "98e10e28871490ce",
+     "company_name": "ISIN",
+     "source_url": "https://nsearchives.nseindia.com/corporate/HITECHCORP_09062026195258_Board_Meeting__Hitech_Outcome.pdf"
+    },
+    {
      "record_id": "c0a64e851ae82af1",
      "company_name": "ISIN of BHAGYANAGAR PROPERTIES LIMITED",
      "source_url": "https://nsearchives.nseindia.com/corporate/BHAGYAPROP_01122022164452_BPL_ExitOfferLetterSubmission.pdf"
+    },
+    {
+     "record_id": "37eac81d94916155",
+     "company_name": "JIK Industries Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML64548.pdf"
     },
     {
      "record_id": "7abed1eab72f9118",
@@ -37,16 +57,6 @@
      "record_id": "ba5c92d5cf22ea3b",
      "company_name": "Suumaya Industries Limited",
      "source_url": "https://nsearchives.nseindia.com/web/mediaattachment/2026-10/Delisting_Order-_SUULD_20261009185359.pdf"
-    },
-    {
-     "record_id": "c5ece3c56e31941d",
-     "company_name": "Symbol: IFBIND | ISIN",
-     "source_url": "https://nsearchives.nseindia.com/corporate/IFBIND_18032025131822_Delisting_Intimation_to_SE.pdf"
-    },
-    {
-     "record_id": "b3763d7806b7ef5f",
-     "company_name": "faites4 fra ISIN",
-     "source_url": "https://nsearchives.nseindia.com/corporate/DFMFOODS_12012023185127_PostOfferPublicAnnouncement.pdf"
     }
    ]
   },
