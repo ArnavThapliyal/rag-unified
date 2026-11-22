@@ -6,3 +6,8 @@ data/search_cache/
 data/quarantine/
 data/processed/parsed/
 data/processed/ocr/
+
+# Secrets (search API keys)
+.env
+.env.*
+!.env.example

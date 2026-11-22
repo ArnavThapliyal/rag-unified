@@ -168,23 +168,42 @@ scripts/run_agent.sh prompts/my_task.md                        # different task 
 
 You'll see `!! DISK WARNING: data/ has grown to 5.1 GB …` in the terminal and get a macOS notification. When that happens, free up space, or raise `disk.warn_data_gb` in `config/query_plan.json` to keep going. If free space drops below `disk.min_free_gb` (20 GB), the run stops with `stop_reason: low_disk_space`, the agent finishes, and `run_agent.sh` won't start again until there's room. The dashboard always shows a `Disk:` line. The biggest folder is `data/raw/`, which you can delete once records are extracted (the dataset keeps `source_url` for every row).
 
-### Search engines: rotation and bans
+### Search providers, rotation and bans
 
-SearXNG forwards queries to public engines, which rate-limit, CAPTCHA or deny a client that searches too much. The collector rotates engines (`scripts/searxng_client.py`, settings in the `search` block of `config/query_plan.json`):
+Searches go through pluggable providers ([`scripts/search_providers/`](scripts/search_providers/)), used in the order of `search.providers` in `config/query_plan.json`:
 
-- Each request asks only `engines_per_query` (2) engines, the ones rested longest; if both fail it tries the next pair once.
-- An engine that answers *too many requests* is benched 60 min, *CAPTCHA* 6 h, *access denied* 12 h, other errors 2 h.
-- An engine whose answers contain no official-domain result 3 times in a row (empty, or junk like Bing returning gaming forums) is benched 6 h.
-- Queries are 20–40 s apart.
-- When every engine is benched, `collect.py` stops with `search_engines_suspended` and the query stays pending; `run_agent.sh` waits until the first engine is back (5 min – 12 h, `search_cooldown_min_left` in `collect.py --dry-run`) and starts a fresh session, up to `CLINE_MAX_COOLDOWNS` (12) times. Harvest-only runs keep working.
+| Provider | What it is | Key | Default limit |
+|---|---|---|---|
+| `searxng` | Local SearXNG (`docker compose up -d`); rotates its upstream engines | none | none |
+| `serper` | [Serper.dev](https://serper.dev) Google results API | `SERPER_API_KEY` | 50 queries/day |
+| `brave` | [Brave Search API](https://api-dashboard.search.brave.com) | `BRAVE_API_KEY` | 50/day, 1900/month |
 
-Engines are enabled in [`searxng/settings.yml`](searxng/settings.yml) (`engines:` list; `docker compose restart` after editing). Check them:
+The next provider is used only when the previous one is used up: all its units benched, its daily or monthly limit reached (`provider_settings.<name>.daily_limit` / `monthly_limit`), no key, or down. A clean "no results" answer is final, so paid APIs are not spent on it. A provider without a key is skipped, so the repo works with SearXNG alone.
+
+**API keys** are never in code or config. `scripts/credentials.py` looks them up in this order: the environment, the file named by `NSE_KEYS_FILE`, `~/.config/nse-delisted-comp/keys.env` (outside the repo, recommended), then the git-ignored `.env` (template: `.env.example`). A `.env` that is tracked by git is refused. `run_agent.sh` strips `*API_KEY*` variables from the agent's environment, so for agent runs put keys in one of the files: the pipeline reads them, the agent can't (the tool guard blocks reading them and editing the `search` settings).
 
 ```bash
-.venv/bin/python scripts/searxng_client.py --engines     # usable / benched (+ reason, minutes left) / stats
+mkdir -p ~/.config/nse-delisted-comp && chmod 700 ~/.config/nse-delisted-comp
+printf 'SERPER_API_KEY=...\nBRAVE_API_KEY=...\n' > ~/.config/nse-delisted-comp/keys.env
+chmod 600 ~/.config/nse-delisted-comp/keys.env
+.venv/bin/python scripts/web_search.py --check    # each provider: ready or why not; where its key was found (never the key)
 ```
 
-The bans are per IP: if all engines are banned at once, rotating doesn't help until they expire.
+**Rotation.** Each provider has *units* that are benched independently: SearXNG's are its engines, an API is one unit.
+
+- Each SearXNG request asks only `engines_per_query` (2) engines, the ones rested longest; if they return nothing it tries the next pair once.
+- A unit that answers *too many requests* is benched 60 min, *CAPTCHA* 6 h, *access denied* (or a rejected API key) 12 h, *quota* exhausted 24 h, other errors 2 h (`search.cooldown_min`).
+- A unit whose answers contain no relevant result 3 times in a row (empty, or junk like Bing returning gaming forums) is benched 6 h.
+- Queries are 20–40 s apart.
+- When every provider is used up, `collect.py` stops with `search_engines_suspended` and the query stays pending; `run_agent.sh` waits until the first one is back (`search_cooldown_min_left` in `collect.py --dry-run`) and starts a fresh session, up to `CLINE_MAX_COOLDOWNS` (12) times. Harvest-only runs keep working.
+
+SearXNG engines are enabled in [`searxng/settings.yml`](searxng/settings.yml) (`engines:` list; `docker compose restart` after editing). Their bans are per IP: if all engines are banned at once, only an API provider or waiting helps.
+
+```bash
+.venv/bin/python scripts/web_search.py --engines   # per provider: usable / benched units (+ reason, minutes left), usage today / this month
+```
+
+**Adding a provider** is one file in `scripts/search_providers/` that subclasses `SearchProvider`, sets `name` and `key_names`, implements `search()` and is decorated with `@register`. Then add its name to `search.providers` and its key to your key file. The module docstring of [`search_providers/__init__.py`](scripts/search_providers/__init__.py) has a complete example; `SearchProvider.http_failure()` maps 429 / 401 / quota responses to the reasons above.
 
 ### Other things to watch
 
@@ -253,7 +272,9 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | `scripts/job.py` | Runs `collect.py` as a detached background job (`start`, `wait`, `status`, `stop`). The agent uses it because Cline kills shell commands after 30 s. |
 | `scripts/status_report.py` | Dashboard: indicator bars, year × type grid, gaps. Supports `--watch N`, `--json`, `--year`, `--needs-review`. |
 | `scripts/build_metadata.py` | Rebuilds `data/metadata/` (runs automatically) |
-| `scripts/searxng_client.py` | One search, cached. Falls back to HTML if JSON is disabled. |
+| `scripts/web_search.py` | One search through the providers, cached; `--engines` / `--check` show provider state. |
+| `scripts/search_providers/` | Provider registry: `searxng`, `serper`, `brave`, plus any module you add. |
+| `scripts/credentials.py` | Reads API keys from the environment or a key file (never from the repo). |
 | `scripts/polite_fetcher.py` | Download URLs, a search cache file, or links harvested from a page (`--harvest`) |
 | `scripts/parse_nse_records.py` | Extract candidate rows from HTML, PDF, XLSX and CSV files |
 | `scripts/normalize_and_merge.py` | Normalize, dedupe, write the master, priority-audit and leads CSVs |

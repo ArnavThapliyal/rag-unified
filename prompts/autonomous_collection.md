@@ -48,9 +48,9 @@ directly, and never use `&`, `nohup` or /tmp logs.
 
 ## Stop conditions (then write a final summary log line and finish)
 - All plan phases complete, harvest backlog 0, and the last two cycles added 0 new records; or
-- SearXNG unavailable (collect.py returns `searxng_unavailable` / `searxng_errors`) twice in a row; or
+- Search unavailable (collect.py returns `search_unavailable` / `search_errors`) twice in a row; or
 - collect.py returns `stop_reason: low_disk_space` (the user must free disk space — stop immediately); or
-- collect.py returns `stop_reason: search_engines_suspended` (the search engines rate-limited SearXNG). If the
+- collect.py returns `stop_reason: search_engines_suspended` (every search provider is rate-limited, benched or out of its daily limit). If the
   harvest backlog is > 0, finish it with `--harvest-only` first; then log it and stop. Don't retry searches —
   `run_agent.sh` waits out the cooldown and starts a fresh session; or
 - A script crashes (traceback / non-JSON output) or a job ends `status: failed` twice in a row → report it
@@ -63,7 +63,7 @@ directly, and never use `&`, `nohup` or /tmp logs.
 - Don't open raw files directly; use `inspect_artifact.py` (structured facts only).
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, searxng_client.py (`--engines`), common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), common.py (`log`), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut. Anything else (ls, cat, grep on files, python -c, curl, rm, redirects,
   reading scripts/ or data/raw/, edits outside config/) needs the user's approval: it is NOT run, you get
   `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.

@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 
 import build_metadata
 import report_issue
-import searxng_client
+import web_search
 from common import PRIORITY_YEARS, PROCESSED
 
 TYPES = ["COMPULSORY", "VOLUNTARY_EXIT_OFFER", "VOLUNTARY_NO_EXIT", "AMALGAMATION_MERGER", "IBC_NCLT", "OTHER"]
@@ -71,11 +71,12 @@ def print_indicators(meta: dict) -> None:
               + (f" — new with rows: {', '.join(nd[:6])}" if nd else "") + " (data/metadata/domain_registry.json)")
     print(f" Data audit: {ind['audit_errors']} errors, {ind['audit_warnings']} warnings "
           f"(data/metadata/dataset_audit.json)")
-    eng = searxng_client.Rotation().report()
+    eng = web_search.Search().report()
     nxt = min((v["minutes_left"] for v in eng["benched"].values()), default=0)
-    print(f" Search engines: {len(eng['usable'])} usable, {len(eng['benched'])} benched"
+    provs = ", ".join(f"{n} {'✓' if v['ready'] else '✗'}" for n, v in eng["providers"].items())
+    print(f" Search: {provs} | units {len(eng['usable'])} usable, {len(eng['benched'])} benched"
           + (f" (next back in {nxt} min)" if not eng["usable"] and eng["benched"] else "")
-          + " — details: scripts/searxng_client.py --engines")
+          + " — details: scripts/web_search.py --engines")
     open_issues = [i for i in report_issue.load() if i["status"] == "open"]
     print(f" Reported issues: {len(open_issues)} open (logs/issues.jsonl)"
           + (f" — latest: #{open_issues[-1]['id']} {open_issues[-1]['summary'][:70]}" if open_issues else ""))

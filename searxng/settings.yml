@@ -10,7 +10,7 @@ server:
   image_proxy: true
 
 search:
-  formats:   # json is required: scripts/searxng_client.py calls /search?format=json
+  formats:   # json is required: scripts/search_providers/searxng.py calls /search?format=json
     - html
     - json
 

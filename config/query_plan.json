@@ -72,28 +72,53 @@
     "min_free_gb": 20
   },
   "search": {
-    "_comment": "Engine rotation (searxng_client.py): each query asks engines_per_query engines, longest-rested first; failing or junk-returning engines are benched for cooldown_min[reason] minutes. Engines must be enabled in SearXNG's settings.yml.",
-    "engines": [
-      "google cse",
-      "brave",
-      "duckduckgo",
-      "startpage",
-      "bing",
-      "mojeek",
-      "yahoo",
-      "qwant",
-      "dogpile",
-      "presearch",
-      "yep"
+    "_comment": "Search providers (scripts/web_search.py, scripts/search_providers/): used in 'providers' order, the next one only when the previous is used up (units benched, daily/monthly limit, no API key, down). SearXNG's units are its engines (enable them in searxng/settings.yml); each API is one unit. Failing or junk-returning units are benched cooldown_min[reason] minutes. API keys go in .env or ~/.config/nse-delisted-comp/keys.env, never here.",
+    "providers": [
+      "searxng",
+      "serper",
+      "brave"
     ],
-    "engines_per_query": 2,
+    "provider_settings": {
+      "searxng": {
+        "url": "http://localhost:8082",
+        "engines": [
+          "google cse",
+          "brave",
+          "duckduckgo",
+          "startpage",
+          "bing",
+          "mojeek",
+          "yahoo",
+          "qwant",
+          "dogpile",
+          "presearch",
+          "yep"
+        ],
+        "engines_per_query": 2
+      },
+      "serper": {
+        "gl": "in",
+        "hl": "en",
+        "num": 10,
+        "daily_limit": 50,
+        "monthly_limit": null
+      },
+      "brave": {
+        "country": "IN",
+        "search_lang": "en",
+        "count": 20,
+        "daily_limit": 50,
+        "monthly_limit": 1900
+      }
+    },
     "cooldown_min": {
       "too many requests": 60,
       "suspended": 60,
       "captcha": 360,
       "access denied": 720,
       "irrelevant": 360,
-      "default": 120
+      "default": 120,
+      "quota": 1440
     },
     "irrelevant_after": 3,
     "query_delay_s": [

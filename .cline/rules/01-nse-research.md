@@ -4,12 +4,14 @@ Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
 
 ## Environment
 - Python: always use `.venv/bin/python` (run from the workspace root).
-- Search: SearXNG at `http://localhost:8082` (JSON enabled). Only reach it through the scripts.
+- Search: pluggable providers (local SearXNG first, then Serper.dev / Brave API if their keys are set).
+  Only reach them through collect.py. Never edit the `search` block of `config/query_plan.json`
+  (providers, limits, URLs): that is the user's, and paid APIs cost money.
 - Never open files under `data/raw/`, `data/search_cache/`, `data/quarantine/`, or `vendor/` directly
   (they are in `.clineignore`). Use `scripts/inspect_artifact.py <path>` for structured facts about a file.
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, searxng_client.py (`--engines`), common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), common.py (`log`), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut. Anything else (ls, cat, grep on files, python -c, curl, rm, redirects,
   reading scripts/ or data/raw/, edits outside config/) needs the user's approval: it is NOT run, you get
   `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.
@@ -44,7 +46,7 @@ need is in the scripts' JSON output: e.g. `collect.py --dry-run` shows `search_c
 The only file you may edit is `config/query_plan.json` (append to the `agent_added` phase; append websites to `fetch_domains`).
 
 ## Individual steps (reference — the user's debugging tools; you don't need them)
-1. Discover — `scripts/searxng_client.py --query "<q>" --pages 2 --year-tag 2017` (skill: searxng-discovery)
+1. Discover — `scripts/web_search.py --query "<q>" --pages 2 --year-tag 2017` (skill: searxng-discovery)
 2. Fetch — `scripts/polite_fetcher.py --from-cache-file <file> --limit 10 --domains nseindia.com,sebi.gov.in,bseindia.com`, `--url <url>`, or `--harvest <downloaded html>`
 3. Parse — `scripts/parse_nse_records.py` (`--force` to reparse; skill: nse-document-parser)
 4. Merge — `scripts/normalize_and_merge.py` (skill: dataset-auditor)
@@ -64,7 +66,7 @@ The only file you may edit is `config/query_plan.json` (append to the `agent_add
   Productive new websites (`indicators.new_domains_with_rows`) go into `fetch_domains`; never edit
   `deny_domains` or `domain_limits`.
 - If collect.py stops with `low_disk_space`, stop working and log it — the user has to free space.
-- If collect.py stops with `search_engines_suspended`, don't retry searches (it extends the ban): finish any
+- If collect.py stops with `search_engines_suspended` (every search provider used up or benched), don't retry searches (it extends the ban): finish any
   harvest backlog with `--harvest-only`, log it, and stop. `run_agent.sh` restarts after the cooldown.
 - Log milestones: `.venv/bin/python scripts/common.py log "<what happened>"`.
 - If a script fails twice with the same error, report it (`--kind script_error`) and stop if collection can't continue.

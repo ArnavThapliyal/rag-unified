@@ -30,13 +30,12 @@ import sys
 import time
 import traceback
 
-import requests
 
 import build_metadata
 import polite_fetcher
-import searxng_client
+import web_search
 from common import (
-    CONFIG, MANIFEST, METADATA, PROCESSED, ROOT, RUNS, SEARXNG_URL, agent_session, check_disk,
+    CONFIG, MANIFEST, METADATA, PROCESSED, ROOT, RUNS, agent_session, check_disk,
     emit, log, now_iso, polite_sleep, read_jsonl, run_id,
 )
 
@@ -83,9 +82,7 @@ SEARCH_COOLDOWN_MIN = 30  # after search engines suspend SearXNG, no queries for
 def search_cooldown_min_left(state: dict) -> int:
     """Minutes until searching is allowed: the global cooldown, or until the first benched engine is back."""
     until = state.get("engines_suspended_until", 0)
-    rot = searxng_client.Rotation()
-    if not rot.usable():
-        until = max(until, min(rot.state[e]["benched_until"] for e in rot.s["engines"]))
+    until = max(until, web_search.Search().cooldown_until())
     return max(0, round((until - time.time()) / 60))
 
 
@@ -106,12 +103,9 @@ def run_script(name: str) -> dict:
     return json.loads(lines[-1])
 
 
-def searxng_ok() -> bool:
-    try:
-        r = requests.get(f"{SEARXNG_URL}/search", params={"q": "nse", "format": "json"}, timeout=15)
-        return r.status_code == 200
-    except requests.RequestException:
-        return False
+def search_ready() -> dict:
+    """Search provider -> None if usable (SearXNG reachable, API key present), else why not."""
+    return {p.name: p.health() for p in web_search.Search().providers}
 
 
 def mark_stale_runs(current: str) -> None:
@@ -265,7 +259,7 @@ def main() -> int:
         emit({"dry_run": True, "would_run": len(todo), "phases": by_phase,
               "harvest_backlog": harvest_backlog(), "blocked_domains": state["blocked_domains"],
               "search_cooldown_min_left": search_cooldown_min_left(state),
-              "search_engines_usable": searxng_client.Rotation().usable(),
+              "search_engines_usable": web_search.Search().usable(),
               "next": [t["query"] for t in todo[:5]]})
         return 0
 
@@ -348,16 +342,18 @@ def main() -> int:
               "retry_after_min": round(wait_s / 60), "hint": "harvest-only still works; otherwise wait"})
         return 1
 
-    if not searxng_ok():
-        step.update(status="error", stop_reason="searxng_unavailable", finished_at=now_iso())
+    ready = search_ready()
+    if not any(v is None for v in ready.values()):
+        step.update(status="error", stop_reason="search_unavailable", finished_at=now_iso())
         write_summary()
-        log("SearXNG not reachable or JSON disabled at " + SEARXNG_URL, level="ERROR", kind="run_error")
-        emit({"run_id": rid, "status": "error", "stop_reason": "searxng_unavailable"})
+        log(f"no search provider usable: {ready}", level="ERROR", kind="run_error")
+        emit({"run_id": rid, "status": "error", "stop_reason": "search_unavailable", "providers": ready})
         return 1
 
     consecutive_search_errors = consecutive_engine_blocks = 0
-    query_delay = searxng_client.search_settings()["query_delay_s"]
+    query_delay = web_search.search_settings()["query_delay_s"]
     since_process = 0
+    search = web_search.Search()
     try:
         for i, it in enumerate(todo, 1):
             if check_disk(state)["level"] == "critical":
@@ -368,9 +364,9 @@ def main() -> int:
                 polite_sleep(*query_delay)  # long pause between queries: engines ban fast clients
             entry = {"phase": phase, "year_tag": tag, "ts": now_iso(), "run_id": rid}
             try:
-                s = searxng_client.run(q, it["pages"], tag)
+                s = web_search.run(q, it["pages"], tag, search)
                 consecutive_search_errors = 0
-            except searxng_client.EnginesExhausted as e:  # every engine benched: stop, query stays pending
+            except web_search.SearchExhausted as e:  # every provider used up: stop, query stays pending
                 state["engines_suspended_until"] = e.until
                 save_state(state)
                 step["stop_reason"] = "search_engines_suspended"
@@ -386,7 +382,7 @@ def main() -> int:
                 log(f"search failed ({consecutive_search_errors} in a row): {q}: {e}", level="ERROR",
                     kind="search_error", query=q)
                 if consecutive_search_errors >= 3:
-                    step["stop_reason"] = "searxng_errors"
+                    step["stop_reason"] = "search_errors"
                     break
                 continue
 

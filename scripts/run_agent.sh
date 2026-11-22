@@ -15,7 +15,7 @@
 # restarted: "session not found") or a run that did not finish "completed" (e.g. Cline's loop
 # detection aborts after 5 identical tool calls, which still exits 0).
 # A completed run, Ctrl-C, low disk, or SearXNG/LM Studio being down stops the loop. If the session stopped
-# because every search engine is benched (search_engines_suspended), it waits until the first engine is
+# because every search provider is used up (search_engines_suspended), it waits until the first engine is
 # usable again (5 min – 12 h) and starts a new session (up to CLINE_MAX_COOLDOWNS times).
 #
 # Raw Cline events  -> logs/agent_sessions/<session>.jsonl
@@ -43,8 +43,8 @@ done
 pkill -f -- "--cline-hub-daemon --cwd $ROOT" 2>/dev/null || true
 
 preflight() {
-  curl -sf -m 10 "http://localhost:8082/search?q=nse&format=json" >/dev/null \
-    || { echo "SearXNG not reachable with JSON at localhost:8082" >&2; return 1; }
+  "$PY" scripts/web_search.py --check >/dev/null \
+    || { echo "No search provider usable (SearXNG down at localhost:8082 and no Serper/Brave key): scripts/web_search.py --check" >&2; return 1; }
   curl -sf -m 5 "http://localhost:1234/v1/models" >/dev/null \
     || { echo "LM Studio not reachable at localhost:1234 (load the model first)" >&2; return 1; }
   local disk

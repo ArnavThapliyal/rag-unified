@@ -1,17 +1,17 @@
 ---
 name: searxng-discovery
-description: Query patterns and pagination rules for finding NSE delisting sources via the local SearXNG at http://localhost:8082.
+description: Query patterns and pagination rules for finding NSE delisting sources through the search providers (local SearXNG, then Serper.dev / Brave API when configured).
 ---
 
 # SearXNG Discovery
 
 ## Command
 ```bash
-.venv/bin/python scripts/searxng_client.py --query "<query>" --pages 2 --year-tag <2007|2017|2020|2024|master|YYYY>
+.venv/bin/python scripts/web_search.py --query "<query>" --pages 2 --year-tag <2007|2017|2020|2024|master|YYYY>
 ```
 - Output: one JSON summary line with `cache_files`, `result_count`, `new_urls`, and the top URLs.
 - Results are cached in `data/search_cache/`. Re-running the same query+page is free (no network).
-- `--pages N` walks SearXNG `pageno=1..N`. Use 1–3 pages. Stop paging when a page adds 0 new URLs.
+- `--pages N` walks results pages 1..N (`providers` in the output says which provider answered). Use 1–3 pages. Stop paging when a page adds 0 new URLs.
 - `--list-cache` prints the cached queries so you don't repeat them.
 
 ## Query templates

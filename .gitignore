@@ -36,5 +36,7 @@ data/metadata/job.json
 logs/.issues.lock
 data/processed/ocr/
 
-# Local secrets for docker compose (template: .env.example)
+# Local secrets: SearXNG secret, search API keys (template: .env.example)
 .env
+.env.*
+!.env.example

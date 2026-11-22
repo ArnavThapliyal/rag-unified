@@ -40,8 +40,9 @@ hits=$(grep -rIil "roo code\|\.roo/\|rooignore" --exclude-dir={vendor,node_modul
 [ -z "$hits" ] && ok || bad "$hits"
 
 if [ "${1:-}" != "--offline" ]; then
-  step "SearXNG json"
-  curl -sf -m 10 "http://localhost:8082/search?q=test&format=json" >/dev/null && ok || bad "localhost:8082"
+  step "search providers"
+  v=$(.venv/bin/python scripts/web_search.py --check 2>/dev/null | .venv/bin/python -c "import json,sys; d=json.load(sys.stdin)['providers']; print(', '.join(k + (' ok' if v['ready'] else ' -') for k, v in d.items()))") \
+    && case "$v" in *" ok"*) ok "$v";; *) bad "$v";; esac || bad "scripts/web_search.py --check failed"
   step "LM Studio"
   curl -sf -m 5 http://localhost:1234/v1/models >/dev/null && ok || bad "localhost:1234"
   step "cline cli"

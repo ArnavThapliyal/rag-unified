@@ -44,9 +44,9 @@ def _report(args):
     return "closing issues is for the user" if "--close" in args else None
 
 
-def _searxng(args):
-    return None if args and set(args) <= {"--engines", "--list-cache"} else \
-        "searxng_client.py only with --engines or --list-cache; searches go through collect.py"
+def _search(args):
+    return None if args and set(args) <= {"--engines", "--providers", "--check", "--list-cache"} else \
+        "web_search.py only with --engines, --check or --list-cache; searches go through collect.py"
 
 
 def _common(args):
@@ -57,7 +57,7 @@ def _common(args):
 SCRIPTS = {
     "collect.py": _collect, "job.py": _job, "status_report.py": None, "report_issue.py": _report,
     "inspect_artifact.py": None, "audit_dataset.py": None, "build_metadata.py": None,
-    "searxng_client.py": _searxng, "common.py": _common,
+    "web_search.py": _search, "common.py": _common,
 }
 FILTERS = {"head", "tail", "wc", "grep", "sort", "uniq", "cut"}
 SEPARATORS = {"&&", "||", ";", "|"}
@@ -135,9 +135,18 @@ def patch_paths(patch: str) -> list[str]:
     return [m.strip() for m in re.findall(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", patch, re.M)]
 
 
-def edit_ok(path: str) -> str | None:
+# Search settings are the user's: providers, paid-API limits, URLs, cooldowns.
+SEARCH_KEYS_RE = re.compile(r'"(search|providers|provider_settings|daily_limit|monthly_limit|url|engines'
+                            r'|engines_per_query|cooldown_min|query_delay_s)"\s*:')
+
+
+def edit_ok(path: str, text: str = "") -> str | None:
     r = rel(path)
-    return None if r and r.startswith("config/") else f"edits are only allowed in config/ (not {path})"
+    if not (r and r.startswith("config/")):
+        return f"edits are only allowed in config/ (not {path})"
+    if SEARCH_KEYS_RE.search(text):
+        return "the search settings (providers, API limits, engines) in config/query_plan.json are the user's to change"
+    return None
 
 
 def check(tool: str, inp: dict) -> str | None:
@@ -159,16 +168,16 @@ def check(tool: str, inp: dict) -> str | None:
         for f in files if isinstance(files, list) else [files]:
             path = f.get("path", "") if isinstance(f, dict) else str(f)
             r = rel(path)
-            if r is None or r.startswith(NO_READ) or r == ".env":
+            if r is None or r.startswith(NO_READ) or (Path(r).name.startswith(".env") and r != ".env.example"):
                 return f"reading {path} is not allowed (use the scripts' JSON output or inspect_artifact.py)"
         return None
     if tool == "editor":
-        return edit_ok(str(inp.get("path", "")))
+        return edit_ok(str(inp.get("path", "")), f"{inp.get('old_text') or ''}\n{inp.get('new_text') or ''}")
     if tool == "apply_patch":
         paths = patch_paths(str(inp.get("input", "")))
         if not paths:
             return "patch names no files"
-        return next((w for w in map(edit_ok, paths) if w), None)
+        return next((w for w in (edit_ok(x, str(inp.get("input", ""))) for x in paths) if w), None)
     if tool in ("get_skill", "list_skills", "skills", "save_handoff", "list_agent_presets", "submit_and_exit",
                 "get_background_command"):
         return None
