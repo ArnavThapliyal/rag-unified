@@ -16,7 +16,7 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-from common import METADATA, PROCESSED, ROOT, emit, isin_valid, now_iso
+from common import METADATA, PROCESSED, ROOT, emit, isin_equity, isin_valid, now_iso
 
 TYPES = {"COMPULSORY", "VOLUNTARY_EXIT_OFFER", "VOLUNTARY_NO_EXIT", "AMALGAMATION_MERGER", "IBC_NCLT", "OTHER"}
 CONFIDENCE = {"VERIFIED_PRIMARY", "CORROBORATED_SECONDARY", "NEEDS_REVIEW"}
@@ -40,6 +40,8 @@ def audit(rows: list[dict]) -> dict:
             flag(errors, "duplicate_record_id", r)
         if r.get("isin") and not isin_valid(r["isin"]):
             flag(errors, "malformed_isin", r)
+        elif r.get("isin") and not isin_equity(r["isin"]):
+            flag(errors, "debt_security_isin", r)
         if r.get("delisting_type") not in TYPES:
             flag(errors, "invalid_delisting_type", r)
         if r.get("confidence_status") not in CONFIDENCE:

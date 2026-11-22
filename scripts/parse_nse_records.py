@@ -24,7 +24,7 @@ import pandas as pd
 import ocr
 
 from common import (
-    MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, isin_valid, log, read_jsonl,
+    MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, isin_equity, isin_valid, log, read_jsonl,
 )
 
 warnings.filterwarnings("ignore")
@@ -74,6 +74,9 @@ COMPANY_RE = re.compile(r"\b(ltd|limited|corporation|corpn?|industries|company|c
 LEGAL_TEXT_RE = re.compile(r"\bu/s\b|\bAct,?\s+\d{4}|\bSection\s+\d|\bRegulation\s+\d", re.I)
 
 
+FRAGMENT_END_RE = re.compile(r"\s(is|are|was|were|has|have|had|the|of|and|to|for|by|in|on|with|from|that)$", re.I)
+
+
 def name_ok(name: str, has_id: bool) -> bool:
     """Plausible company name. Without a symbol/ISIN the name must look like a company (filters
     sentences, people and OCR noise)."""
@@ -82,6 +85,8 @@ def name_ok(name: str, has_id: bool) -> bool:
     if not re.search(r"[A-Za-z]{3}", name):
         return False
     if LEGAL_TEXT_RE.search(name):  # "Financial Institutions u/s. 4A of Companies Act, 1956"
+        return False
+    if FRAGMENT_END_RE.search(name):  # "Company is", "shares of the": a cut-off sentence
         return False
     return has_id or bool(COMPANY_RE.search(name))
 
@@ -478,6 +483,8 @@ def main() -> int:
             conf = "NEEDS_REVIEW"
         # Lists of companies *proposed* to be delisted are leads, not delistings.
         record_status = "PROPOSED" if PROPOSED_RE.search(src or rel) else "DELISTED"
+        # debt securities (NCDs, bonds, CP) are suspended/redeemed, not delisted companies
+        rows = [r for r in rows if not r.get("isin") or isin_equity(r["isin"])]
         with out.open("w", encoding="utf-8") as f:
             for r in rows:
                 r.update({"source_url": src, "local_artifact_path": rel, "year_tag": m.get("year_tag"),

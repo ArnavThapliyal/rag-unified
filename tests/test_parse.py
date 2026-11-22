@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import common
 import parse_nse_records as p
 
 ORDER_TEXT = """Before the Delisting Committee ("Committee")
@@ -227,3 +228,11 @@ def test_ocr_is_cached_and_skipped_without_tesseract(tmp_path, monkeypatch):
 
 def test_order_title_that_is_not_a_company_is_skipped():
     assert p.rows_from_order("Before the Whole Time Member\\nIn the matter of Non- Obtaining of SCORES Authentication\\n") == []
+
+
+def test_debt_isins_and_sentence_fragments_are_not_companies():
+    assert common.isin_equity("INE002A01018")
+    assert not common.isin_equity("INE202B08389")  # DHFL NCD
+    assert not p.name_ok("Company is", True)
+    assert p.name_ok("Dewan Housing Finance Corporation Limited", True)
+    assert common.NON_LISTING_RE.search("Suspension_of_trading_of_NCD_dt_27072021.pdf")

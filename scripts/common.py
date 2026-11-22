@@ -55,7 +55,7 @@ PROCEDURAL_RE = re.compile(r"checklist|\bsop\b|sop_for|annexure|format|faq|guida
 
 # NSE/BSE pages about trading members, brokers, arbitration etc. list firms, not delisted companies.
 NON_LISTING_RE = re.compile(r"member|broker|defaulter|expelled|arbitrat|complaint|debarred|mcsgfc|"
-                            r"authori[sz]ed.?person|sub.?broker|depositor", re.I)
+                            r"authori[sz]ed.?person|sub.?broker|depositor|(?<![a-z])ncds?(?![a-z])|debenture", re.I)
 
 SCHEMA_FIELDS = [
     "record_id", "company_name", "nse_symbol", "isin", "delisting_type",
@@ -117,6 +117,15 @@ def isin_valid(code: str) -> bool:
         n = int(d) * (2 if i % 2 else 1)
         total += n - 9 if n > 9 else n
     return total % 10 == 0
+
+
+# ISIN characters 8-9 are the security type: 07/08 debentures and bonds, 14 commercial paper,
+# 16 certificates of deposit. Those are debt, not the company's shares being delisted.
+DEBT_SECURITY_TYPES = {"07", "08", "14", "16"}
+
+
+def isin_equity(code: str) -> bool:
+    return isin_valid(code) and code[7:9] not in DEBT_SECURITY_TYPES
 
 
 def sha256_text(s: str) -> str:
