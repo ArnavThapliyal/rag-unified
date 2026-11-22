@@ -309,41 +309,137 @@
   "exchanges delist companies 2017 compulsory": {
    "phase": "priority_2017",
    "year_tag": "2017",
-   "ts": "2026-11-21T13:25:15+00:00",
-   "run_id": "20261121-185431-90039",
-   "status": "engines_blocked",
-   "results": 0,
+   "ts": "2026-11-22T00:45:16+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 20,
    "unresponsive_engines": [
     "brave",
     "duckduckgo",
-    "google cse",
+    "mojeek",
     "startpage"
    ],
-   "candidate_urls": 0,
-   "fetched_ok": 0,
+   "candidate_urls": 5,
+   "fetched_ok": 1,
    "quarantined": 0,
    "cache_files": [
-    "data/search_cache/308a4feea0d9ee77.json"
+    "data/search_cache/308a4feea0d9ee77.json",
+    "data/search_cache/743079aef4db6141.json"
    ]
   },
   "site:nseindia.com delisting circular 2020": {
    "phase": "priority_2020",
    "year_tag": "2020",
-   "ts": "2026-11-21T13:26:43+00:00",
-   "run_id": "20261121-185431-90039",
-   "status": "engines_blocked",
-   "results": 0,
+   "ts": "2026-11-22T00:45:58+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 47,
    "unresponsive_engines": [
-    "brave",
-    "duckduckgo",
-    "google cse",
-    "startpage"
+    "yahoo",
+    "yep"
    ],
-   "candidate_urls": 0,
-   "fetched_ok": 0,
+   "candidate_urls": 37,
+   "fetched_ok": 8,
    "quarantined": 0,
    "cache_files": [
-    "data/search_cache/b1cbc3564be07912.json"
+    "data/search_cache/b1cbc3564be07912.json",
+    "data/search_cache/72a45ba8d495632b.json"
+   ]
+  },
+  "site:nseindia.com compulsory delisting 2020": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T00:47:10+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 39,
+   "unresponsive_engines": [],
+   "candidate_urls": 39,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/6e2c2580992f2056.json",
+    "data/search_cache/29907190bd795675.json"
+   ]
+  },
+  "site:nseindia.com voluntary delisting exit offer 2020": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T00:48:30+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 40,
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/ead6da3215b66ddf.json",
+    "data/search_cache/f71e02524f7e23c9.json"
+   ]
+  },
+  "site:sebi.gov.in delisting order 2020": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T00:49:41+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 38,
+   "unresponsive_engines": [],
+   "candidate_urls": 38,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/701e594a03ad62de.json",
+    "data/search_cache/081884ba567050e8.json"
+   ]
+  },
+  "site:bseindia.com compulsory delisting notice 2020": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T00:50:46+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 39,
+   "unresponsive_engines": [],
+   "candidate_urls": 39,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/f8ab49a06655ab73.json",
+    "data/search_cache/85d62c5959ba4288.json"
+   ]
+  },
+  "NSE voluntary delisting reverse book building 2020 exit price": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T00:54:38+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 36,
+   "unresponsive_engines": [],
+   "candidate_urls": 5,
+   "fetched_ok": 1,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/6ea27233a52c762c.json",
+    "data/search_cache/4906164f0fada982.json"
+   ]
+  },
+  "NCLT resolution plan delisting NSE 2020": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T00:55:19+00:00",
+   "run_id": "20261122-061515-6664",
+   "status": "done",
+   "results": 40,
+   "unresponsive_engines": [],
+   "candidate_urls": 16,
+   "fetched_ok": 8,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/7320c399548cf0e2.json",
+    "data/search_cache/c9b98993bc2a678c.json"
    ]
   }
  },

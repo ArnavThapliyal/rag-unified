@@ -1,13 +1,18 @@
 {
- "generated_at": "2026-11-21T14:16:59+00:00",
- "records": 483,
+ "generated_at": "2026-11-22T01:16:24+00:00",
+ "records": 485,
  "error_count": 0,
- "warning_count": 43,
+ "warning_count": 44,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 5,
+   "count": 6,
    "examples": [
+    {
+     "record_id": "9b535790f95f90f8",
+     "company_name": "ISIN",
+     "source_url": "https://beta.bseindia.com/xml-data/corpfiling/AttachHis/82de7b02-bad9-4e71-8708-c226525b14ff.pdf"
+    },
     {
      "record_id": "c0a64e851ae82af1",
      "company_name": "ISIN of BHAGYANAGAR PROPERTIES LIMITED",
@@ -19,14 +24,14 @@
      "source_url": "https://nsearchives.nseindia.com/content/circulars/INVG64241.pdf"
     },
     {
+     "record_id": "b268834cfc96635f",
+     "company_name": "Supreme Hydro Engineering Private Limited",
+     "source_url": "https://nclt.gov.in/gen_pdf.php?filepath=/Efile_Document/ncltdoc/casedoc/2709138048162018/04/Order-Challenge/04_order-Challange_004_172423499684929542366c5bcf4ca803.pdf"
+    },
+    {
      "record_id": "ba5c92d5cf22ea3b",
      "company_name": "Suumaya Industries Limited",
      "source_url": "https://nsearchives.nseindia.com/web/mediaattachment/2026-10/Delisting_Order-_SUULD_20261009185359.pdf"
-    },
-    {
-     "record_id": "9b535790f95f90f8",
-     "company_name": "allotted to the Company\u2019s Equity shares is",
-     "source_url": "https://nsearchives.nseindia.com/corporate/XLENERGY_08092026172438_IntimationNoticeof39thAGM.pdf"
     },
     {
      "record_id": "b3763d7806b7ef5f",

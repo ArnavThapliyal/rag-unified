@@ -1,40 +1,43 @@
 {
- "generated_at": "2026-11-21T14:16:59+00:00",
+ "generated_at": "2026-11-22T01:16:24+00:00",
  "indicators": {
-  "records_total": 483,
+  "records_total": 485,
   "priority_year_records": 118,
-  "verified_primary_pct": 99.6,
-  "needs_review": 2,
+  "verified_primary_pct": 99.4,
+  "needs_review": 3,
   "priority_grid_coverage_pct": 40.0,
-  "query_plan_complete_pct": 13.6,
-  "queries_done": 15,
+  "query_plan_complete_pct": 20.9,
+  "queries_done": 23,
   "queries_total": 110,
-  "fetch_success_rate_pct": 97.9,
-  "artifacts_downloaded": 415,
-  "artifacts_with_rows": 96,
-  "artifacts_zero_rows": 180,
-  "artifacts_irrelevant": 139,
+  "fetch_success_rate_pct": 98.1,
+  "artifacts_downloaded": 465,
+  "artifacts_with_rows": 102,
+  "artifacts_zero_rows": 201,
+  "artifacts_irrelevant": 162,
   "blocked_domains": 0,
   "isin_completeness_pct": 0.6,
   "last_run": {
-   "run_id": "20261121-185431-90039",
-   "started_at": "2026-11-21T13:24:31+00:00",
+   "run_id": "20261122-061515-6664",
+   "started_at": "2026-11-22T00:45:15+00:00",
    "status": "completed",
-   "stop_reason": "search_engines_suspended",
-   "duration_s": 134.6,
-   "queries_done": 2,
-   "fetched_ok": 8,
+   "stop_reason": "plan_exhausted",
+   "duration_s": 697.1,
+   "queries_done": 8,
+   "fetched_ok": 50,
    "quarantined": 0,
-   "new_records": 0
+   "new_records": 107
   },
-  "agent_sessions": 8,
+  "agent_sessions": 9,
   "proposed_delisting_leads": 14,
-  "bse_only_delistings": 116,
+  "bse_only_delistings": 115,
+  "source_domains": 10,
+  "new_source_domains": 0,
+  "new_domains_with_rows": [],
   "audit_errors": 0,
-  "audit_warnings": 43,
+  "audit_warnings": 44,
   "disk": {
-   "data_gb": 0.7,
-   "free_gb": 352.2,
+   "data_gb": 0.83,
+   "free_gb": 353.9,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -54,19 +57,19 @@
    },
    "priority_2017": {
     "total": 10,
-    "done": 9,
+    "done": 10,
     "no_results": 0,
     "failed": 0,
-    "pending": 1,
-    "complete_pct": 90.0
+    "pending": 0,
+    "complete_pct": 100.0
    },
    "priority_2020": {
     "total": 10,
-    "done": 0,
+    "done": 7,
     "no_results": 0,
     "failed": 0,
-    "pending": 10,
-    "complete_pct": 0.0
+    "pending": 3,
+    "complete_pct": 70.0
    },
    "priority_2024": {
     "total": 10,
@@ -105,45 +108,53 @@
   "blocked_domains": []
  },
  "fetch": {
-  "attempts": 424,
-  "ok": 415,
+  "attempts": 474,
+  "ok": 465,
   "quarantined": 9,
-  "success_rate_pct": 97.9,
-  "total_mb": 701.53,
+  "success_rate_pct": 98.1,
+  "total_mb": 823.31,
   "by_domain": {
    "nsearchives.nseindia.com": {
-    "ok": 294,
-    "bytes": 440748367,
+    "ok": 316,
+    "bytes": 532130097,
     "quarantined": 6
    },
    "beta.bseindia.com": {
-    "ok": 45,
-    "bytes": 117692995,
+    "ok": 46,
+    "bytes": 119380099,
     "quarantined": 1
    },
    "archives.nseindia.com": {
-    "ok": 19,
-    "bytes": 89760030
+    "ok": 22,
+    "bytes": 96980113
    },
    "bseindia.com": {
-    "ok": 11,
-    "bytes": 25610472
+    "ok": 19,
+    "bytes": 29923019
+   },
+   "sebi.gov.in": {
+    "ok": 28,
+    "bytes": 20073683
    },
    "bsmedia.business-standard.com": {
     "ok": 1,
     "bytes": 11126364
    },
    "nseindia.com": {
-    "ok": 24,
-    "bytes": 8633208
-   },
-   "sebi.gov.in": {
-    "ok": 18,
-    "bytes": 5245827
+    "ok": 26,
+    "bytes": 9337552
    },
    "nclt.gov.in": {
-    "ok": 3,
-    "bytes": 2714319
+    "ok": 5,
+    "bytes": 3739666
+   },
+   "efiling.nclt.gov.in": {
+    "ok": 1,
+    "bytes": 317125
+   },
+   "realty.economictimes.indiatimes.com": {
+    "ok": 1,
+    "bytes": 299502
    },
    "static.nseindia.com": {
     "quarantined": 2,
@@ -151,30 +162,31 @@
    }
   },
   "by_http_status": {
-   "200": 415,
+   "200": 465,
    "404": 7,
    "None": 2
   },
   "by_content_type": {
-   "text/html": 52,
-   "application/pdf": 344,
-   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 5,
+   "text/html": 62,
+   "application/pdf": 383,
+   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 6,
    "application/x-zip-compressed": 20,
    "unknown": 2,
    "application/vnd.ms-excel": 1
   }
  },
  "artifacts": {
-  "total": 415,
+  "total": 465,
   "by_bucket": {
    "master_lists": 351,
-   "priority_2017": 64
+   "priority_2017": 65,
+   "priority_2020": 49
   },
-  "parsed": 415,
-  "rows_extracted": 879
+  "parsed": 465,
+  "rows_extracted": 886
  },
  "records": {
-  "total": 483,
+  "total": 485,
   "by_year": {
    "2002": 4,
    "2003": 7,
@@ -200,26 +212,26 @@
    "2023": 10,
    "2024": 2,
    "2025": 2,
-   "2026": 3,
-   "unknown": 5
+   "2026": 4,
+   "unknown": 6
   },
   "by_type": {
+   "IBC_NCLT": 121,
    "VOLUNTARY_EXIT_OFFER": 4,
    "OTHER": 42,
-   "COMPULSORY": 190,
-   "IBC_NCLT": 120,
+   "COMPULSORY": 191,
    "VOLUNTARY_NO_EXIT": 127
   },
   "by_confidence": {
-   "VERIFIED_PRIMARY": 481,
-   "NEEDS_REVIEW": 2
+   "VERIFIED_PRIMARY": 482,
+   "NEEDS_REVIEW": 3
   },
   "by_regime": {
-   "unknown": 5,
+   "unknown": 6,
    "SEBI_2003_Guidelines": 48,
    "SEBI_2009_Regs": 355,
    "SEBI_2021_Regs": 69,
-   "SEBI_2024_Amendment": 6
+   "SEBI_2024_Amendment": 7
   },
   "priority_year_records": 118,
   "priority_grid": {
@@ -256,9 +268,9 @@
   "priority_grid_cells_total": 20,
   "field_completeness_pct": {
    "isin": 0.6,
-   "nse_symbol": 91.5,
-   "effective_delisting_date": 94.8,
-   "order_date": 13.0,
+   "nse_symbol": 91.8,
+   "effective_delisting_date": 94.4,
+   "order_date": 13.6,
    "exit_or_fair_value_inr": 0.2
   },
   "years_covered": [
@@ -292,7 +304,7 @@
  "audit": {
   "errors": {},
   "warnings": {
-   "no_date": 5,
+   "no_date": 6,
    "possible_duplicate_event": 4,
    "year_out_of_range": 34
   }
@@ -440,6 +452,17 @@
    "fetched_ok": 8,
    "quarantined": 0,
    "new_records": 0
+  },
+  {
+   "run_id": "20261122-061515-6664",
+   "started_at": "2026-11-22T00:45:15+00:00",
+   "status": "completed",
+   "stop_reason": "plan_exhausted",
+   "duration_s": 697.1,
+   "queries_done": 8,
+   "fetched_ok": 50,
+   "quarantined": 0,
+   "new_records": 107
   }
  ],
  "agent_sessions": [
@@ -554,6 +577,19 @@
    },
    "input_tokens": 229936,
    "output_tokens": 1750
+  },
+  {
+   "file": "logs/agent_sessions/agent-20261122-061121.jsonl",
+   "started_at": "2026-11-22T00:41:23.237Z",
+   "finish_reason": "running_or_killed",
+   "iterations": null,
+   "tool_calls": 31,
+   "tools": {
+    "read_files": 5,
+    "run_commands": 26
+   },
+   "input_tokens": null,
+   "output_tokens": null
   }
  ]
 }

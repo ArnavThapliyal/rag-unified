@@ -1,0 +1,77 @@
+{
+ "nsearchives.nseindia.com": {
+  "files": 316,
+  "files_with_rows": 78,
+  "rows": 510,
+  "records": 447,
+  "first_fetched": "2026-11-21T10:46:17+00:00",
+  "new": false
+ },
+ "archives.nseindia.com": {
+  "files": 22,
+  "files_with_rows": 5,
+  "rows": 241,
+  "records": 188,
+  "first_fetched": "2026-11-21T10:47:36+00:00",
+  "new": false
+ },
+ "beta.bseindia.com": {
+  "files": 46,
+  "files_with_rows": 15,
+  "rows": 91,
+  "records": 11,
+  "first_fetched": "2026-11-21T10:50:53+00:00",
+  "new": false
+ },
+ "bseindia.com": {
+  "files": 19,
+  "files_with_rows": 3,
+  "rows": 43,
+  "records": 2,
+  "first_fetched": "2026-11-21T10:49:21+00:00",
+  "new": false
+ },
+ "nclt.gov.in": {
+  "files": 5,
+  "files_with_rows": 1,
+  "rows": 1,
+  "records": 1,
+  "first_fetched": "2026-11-21T12:32:25+00:00",
+  "new": false
+ },
+ "sebi.gov.in": {
+  "files": 28,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-21T10:57:20+00:00",
+  "new": false
+ },
+ "nseindia.com": {
+  "files": 26,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-21T10:44:38+00:00",
+  "new": false
+ },
+ "bsmedia.business-standard.com": {
+  "files": 1,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-21T12:32:55+00:00",
+  "new": false
+ },
+ "efiling.nclt.gov.in": {
+  "files": 1,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-22T00:55:37+00:00",
+  "new": false
+ },
+ "realty.economictimes.indiatimes.com": {
+  "files": 1,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-22T00:55:55+00:00",
+  "new": false
+ }
+}
