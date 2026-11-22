@@ -22,6 +22,7 @@ data/metadata/*.tmp
 # logs/runs/*.json (per-run summaries), data/metadata/ (cumulative metadata).
 logs/agent_run.log
 logs/events.jsonl
+logs/tool_guard.jsonl
 logs/agent_sessions/*
 !logs/agent_sessions/.gitkeep
 logs/jobs/

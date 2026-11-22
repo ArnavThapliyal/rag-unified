@@ -12,6 +12,7 @@ it is rewritten into a harmless one that tells the agent it was blocked, and is 
 (`tool_denied` event) and filed in logs/issues.jsonl for the user to review.
 
 A Cline hook may not simply cancel a call (cancel ends the whole run), hence the rewrite.
+Every checked call is appended to logs/tool_guard.jsonl (time, tool, allowed or the reason).
 
   echo '{"tool_call": {"name": "run_commands", "input": {"commands": ["curl x"]}}}' | python scripts/tool_guard.py
 """
@@ -27,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 NOTICE = ROOT / ".cline" / "BLOCKED_READ.txt"
+AUDIT = ROOT / "logs" / "tool_guard.jsonl"
 PYTHONS = {".venv/bin/python", str(ROOT / ".venv/bin/python")}
 
 
@@ -199,6 +201,17 @@ def record(tool: str, inp: dict, reason: str) -> None:
         pass
 
 
+def audit(tool: str, inp, reason: str | None) -> None:
+    try:
+        from datetime import datetime, timezone
+        with AUDIT.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tool": tool,
+                                "allowed": reason is None, "reason": reason,
+                                "input": json.dumps(inp)[:300]}) + "\n")
+    except Exception:
+        pass
+
+
 def main() -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
@@ -210,6 +223,7 @@ def main() -> int:
         reason = check(tool, inp)
     except Exception as e:  # fail closed
         tool, inp, reason = "unknown", {}, f"tool guard error: {type(e).__name__}: {e}"
+    audit(tool, inp, reason)
     if reason is None:
         print(json.dumps({}))
         return 0

