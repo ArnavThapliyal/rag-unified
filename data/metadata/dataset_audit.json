@@ -1,13 +1,18 @@
 {
- "generated_at": "2026-11-22T16:36:52+00:00",
- "records": 485,
+ "generated_at": "2026-11-22T18:48:29+00:00",
+ "records": 487,
  "error_count": 0,
- "warning_count": 44,
+ "warning_count": 46,
  "errors": {},
  "warnings": {
   "no_date": {
-   "count": 6,
+   "count": 8,
    "examples": [
+    {
+     "record_id": "7f93d056cb11c9d0",
+     "company_name": "Future Supply Chain Solutions Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML73316.pdf"
+    },
     {
      "record_id": "9b535790f95f90f8",
      "company_name": "ISIN",
@@ -32,6 +37,11 @@
      "record_id": "ba5c92d5cf22ea3b",
      "company_name": "Suumaya Industries Limited",
      "source_url": "https://nsearchives.nseindia.com/web/mediaattachment/2026-10/Delisting_Order-_SUULD_20261009185359.pdf"
+    },
+    {
+     "record_id": "c5ece3c56e31941d",
+     "company_name": "Symbol: IFBIND | ISIN",
+     "source_url": "https://nsearchives.nseindia.com/corporate/IFBIND_18032025131822_Delisting_Intimation_to_SE.pdf"
     },
     {
      "record_id": "b3763d7806b7ef5f",

@@ -1,40 +1,56 @@
 {
- "generated_at": "2026-11-22T16:36:52+00:00",
+ "generated_at": "2026-11-22T18:48:19+00:00",
  "indicators": {
-  "records_total": 485,
+  "records_total": 487,
   "priority_year_records": 118,
-  "verified_primary_pct": 99.4,
-  "needs_review": 3,
+  "verified_primary_pct": 99.2,
+  "needs_review": 4,
   "priority_grid_coverage_pct": 40.0,
-  "query_plan_complete_pct": 20.9,
-  "queries_done": 23,
+  "query_plan_complete_pct": 21.8,
+  "queries_done": 24,
   "queries_total": 110,
-  "fetch_success_rate_pct": 98.1,
-  "artifacts_downloaded": 465,
-  "artifacts_with_rows": 102,
-  "artifacts_zero_rows": 201,
+  "fetch_success_rate_pct": 97.9,
+  "artifacts_downloaded": 468,
+  "artifacts_with_rows": 104,
+  "artifacts_zero_rows": 202,
   "artifacts_irrelevant": 162,
   "blocked_domains": 0,
-  "isin_completeness_pct": 0.6,
+  "docket": {
+   "by_status": {
+    "dead": 9,
+    "failed": 1,
+    "parked": 456,
+    "parsed": 468
+   },
+   "fetch_ready_now": 0,
+   "awaiting_parse": 0,
+   "waiting_on_blocked_domain": 0,
+   "evidence_unfetched": 338,
+   "parsed_zero_rows_relevant": 187
+  },
+  "isin_completeness_pct": 0.8,
   "last_run": {
-   "run_id": "20261122-075435-24273",
-   "started_at": "2026-11-22T02:24:35+00:00",
+   "run_id": "20261123-001728-14578",
+   "started_at": "2026-11-22T18:47:28+00:00",
    "status": "completed",
-   "stop_reason": "search_engines_suspended",
-   "duration_s": 6.1,
-   "queries_done": 0,
-   "fetched_ok": 0,
+   "stop_reason": "plan_exhausted",
+   "duration_s": 50.4,
+   "queries_done": 1,
+   "fetched_ok": 3,
    "quarantined": 0,
-   "new_records": 0
+   "new_records": 2
   },
   "agent_sessions": 11,
   "proposed_delisting_leads": 14,
   "bse_only_delistings": 115,
+  "source_domains": 10,
+  "new_source_domains": 0,
+  "new_domains_with_rows": [],
   "audit_errors": 0,
-  "audit_warnings": 44,
+  "audit_warnings": 46,
   "disk": {
    "data_gb": 0.83,
-   "free_gb": 353.7,
+   "free_gb": 358.0,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -62,11 +78,11 @@
    },
    "priority_2020": {
     "total": 10,
-    "done": 7,
+    "done": 8,
     "no_results": 0,
     "failed": 0,
-    "pending": 3,
-    "complete_pct": 70.0
+    "pending": 2,
+    "complete_pct": 80.0
    },
    "priority_2024": {
     "total": 10,
@@ -102,18 +118,54 @@
    }
   },
   "adhoc_queries": 0,
-  "blocked_domains": []
+  "blocked_domains": [],
+  "docket": {
+   "generated_at": "2026-11-22T18:48:19+00:00",
+   "total": 934,
+   "by_status": {
+    "dead": 9,
+    "failed": 1,
+    "parked": 456,
+    "parsed": 468
+   },
+   "by_kind": {
+    "harvested": 304,
+    "search": 630
+   },
+   "fetch_ready_now": 0,
+   "waiting_on_blocked_domain": 0,
+   "awaiting_parse": 0,
+   "parsed_zero_rows_relevant": 187,
+   "evidence_unfetched": 338,
+   "blocked_domains": [],
+   "top_pending_domains": [
+    {
+     "domain": "static.nseindia.com",
+     "n": 1
+    }
+   ],
+   "dead_reasons": [
+    {
+     "reason": "http 404",
+     "n": 7
+    },
+    {
+     "reason": "downloaded file missing",
+     "n": 2
+    }
+   ]
+  }
  },
  "fetch": {
-  "attempts": 476,
-  "ok": 467,
-  "quarantined": 9,
-  "success_rate_pct": 98.1,
-  "total_mb": 823.53,
+  "attempts": 480,
+  "ok": 470,
+  "quarantined": 10,
+  "success_rate_pct": 97.9,
+  "total_mb": 824.8,
   "by_domain": {
    "nsearchives.nseindia.com": {
-    "ok": 318,
-    "bytes": 532356417,
+    "ok": 321,
+    "bytes": 533620727,
     "quarantined": 6
    },
    "beta.bseindia.com": {
@@ -154,37 +206,37 @@
     "bytes": 299502
    },
    "static.nseindia.com": {
-    "quarantined": 2,
+    "quarantined": 3,
     "bytes": 0
    }
   },
   "by_http_status": {
-   "200": 467,
+   "200": 470,
    "404": 7,
-   "None": 2
+   "None": 3
   },
   "by_content_type": {
    "text/html": 62,
-   "application/pdf": 383,
+   "application/pdf": 386,
    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 6,
    "application/x-zip-compressed": 20,
-   "unknown": 2,
+   "unknown": 3,
    "application/vnd.ms-excel": 1,
    "text/csv": 2
   }
  },
  "artifacts": {
-  "total": 465,
+  "total": 468,
   "by_bucket": {
-   "master_lists": 351,
+   "master_lists": 354,
    "priority_2017": 65,
    "priority_2020": 49
   },
-  "parsed": 465,
-  "rows_extracted": 886
+  "parsed": 468,
+  "rows_extracted": 888
  },
  "records": {
-  "total": 485,
+  "total": 487,
   "by_year": {
    "2002": 4,
    "2003": 7,
@@ -211,21 +263,21 @@
    "2024": 2,
    "2025": 2,
    "2026": 4,
-   "unknown": 6
+   "unknown": 8
   },
   "by_type": {
-   "IBC_NCLT": 121,
+   "IBC_NCLT": 122,
    "VOLUNTARY_EXIT_OFFER": 4,
    "OTHER": 42,
    "COMPULSORY": 191,
-   "VOLUNTARY_NO_EXIT": 127
+   "VOLUNTARY_NO_EXIT": 128
   },
   "by_confidence": {
-   "VERIFIED_PRIMARY": 482,
-   "NEEDS_REVIEW": 3
+   "NEEDS_REVIEW": 4,
+   "VERIFIED_PRIMARY": 483
   },
   "by_regime": {
-   "unknown": 6,
+   "unknown": 8,
    "SEBI_2003_Guidelines": 48,
    "SEBI_2009_Regs": 355,
    "SEBI_2021_Regs": 69,
@@ -265,9 +317,9 @@
   "priority_grid_cells_filled": 8,
   "priority_grid_cells_total": 20,
   "field_completeness_pct": {
-   "isin": 0.6,
+   "isin": 0.8,
    "nse_symbol": 91.8,
-   "effective_delisting_date": 94.4,
+   "effective_delisting_date": 94.0,
    "order_date": 13.6,
    "exit_or_fair_value_inr": 0.2
   },
@@ -302,7 +354,7 @@
  "audit": {
   "errors": {},
   "warnings": {
-   "no_date": 6,
+   "no_date": 8,
    "possible_duplicate_event": 4,
    "year_out_of_range": 34
   }
@@ -494,6 +546,39 @@
    "fetched_ok": 0,
    "quarantined": 0,
    "new_records": 0
+  },
+  {
+   "run_id": "20261123-000410-13235",
+   "started_at": "2026-11-22T18:34:10+00:00",
+   "status": "completed",
+   "stop_reason": "drain_done",
+   "duration_s": 70.1,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 1,
+   "new_records": 0
+  },
+  {
+   "run_id": "20261123-000616-13814",
+   "started_at": "2026-11-22T18:36:16+00:00",
+   "status": "killed",
+   "stop_reason": "process ended without cleanup",
+   "duration_s": 12.3,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": null
+  },
+  {
+   "run_id": "20261123-001728-14578",
+   "started_at": "2026-11-22T18:47:28+00:00",
+   "status": "completed",
+   "stop_reason": "plan_exhausted",
+   "duration_s": 50.4,
+   "queries_done": 1,
+   "fetched_ok": 3,
+   "quarantined": 0,
+   "new_records": 2
   }
  ],
  "agent_sessions": [
