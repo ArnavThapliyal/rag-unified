@@ -195,6 +195,9 @@ def check(tool: str, inp: dict) -> str | None:
 def blocked_input(tool: str, inp: dict, reason: str) -> dict:
     """A harmless replacement call that tells the agent why the original was not run."""
     msg = f"BLOCKED by tool guard (needs the user's approval): {reason}. Allowed: .venv/bin/python scripts/<agent script>.py, git status."
+    if "query_plan" in json.dumps(inp):
+        msg += (" To add queries, edit config/query_plan.json with the editor tool (append to the agent_added"
+                " phase); don't script it.")
     if tool == "run_commands":
         return {"commands": [f"printf '%s\\n' {shlex.quote(msg)}"]}
     if tool == "read_files":

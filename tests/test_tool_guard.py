@@ -74,3 +74,9 @@ def test_docket_is_read_only_for_the_agent():
     for cmd in ["--retry dead", "--unblock nseindia.com", "--promote"]:
         assert g.check("run_commands", {"commands": [f".venv/bin/python scripts/docket.py {cmd}"]}), cmd
     assert g.check("run_commands", {"commands": [".venv/bin/python scripts/fetch_worker.py"]})
+
+
+def test_blocked_config_script_points_to_the_editor():
+    inp = {"commands": [".venv/bin/python - <<'PY'\nimport json; open('config/query_plan.json')\nPY"]}
+    reason = g.check("run_commands", inp)
+    assert reason and "editor tool" in g.blocked_input("run_commands", inp, reason)["commands"][0]
