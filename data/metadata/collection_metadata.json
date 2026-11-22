@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-22T01:16:24+00:00",
+ "generated_at": "2026-11-22T16:36:52+00:00",
  "indicators": {
   "records_total": 485,
   "priority_year_records": 118,
@@ -17,27 +17,24 @@
   "blocked_domains": 0,
   "isin_completeness_pct": 0.6,
   "last_run": {
-   "run_id": "20261122-061515-6664",
-   "started_at": "2026-11-22T00:45:15+00:00",
+   "run_id": "20261122-075435-24273",
+   "started_at": "2026-11-22T02:24:35+00:00",
    "status": "completed",
-   "stop_reason": "plan_exhausted",
-   "duration_s": 697.1,
-   "queries_done": 8,
-   "fetched_ok": 50,
+   "stop_reason": "search_engines_suspended",
+   "duration_s": 6.1,
+   "queries_done": 0,
+   "fetched_ok": 0,
    "quarantined": 0,
-   "new_records": 107
+   "new_records": 0
   },
-  "agent_sessions": 9,
+  "agent_sessions": 11,
   "proposed_delisting_leads": 14,
   "bse_only_delistings": 115,
-  "source_domains": 10,
-  "new_source_domains": 0,
-  "new_domains_with_rows": [],
   "audit_errors": 0,
   "audit_warnings": 44,
   "disk": {
    "data_gb": 0.83,
-   "free_gb": 353.9,
+   "free_gb": 353.7,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -108,15 +105,15 @@
   "blocked_domains": []
  },
  "fetch": {
-  "attempts": 474,
-  "ok": 465,
+  "attempts": 476,
+  "ok": 467,
   "quarantined": 9,
   "success_rate_pct": 98.1,
-  "total_mb": 823.31,
+  "total_mb": 823.53,
   "by_domain": {
    "nsearchives.nseindia.com": {
-    "ok": 316,
-    "bytes": 532130097,
+    "ok": 318,
+    "bytes": 532356417,
     "quarantined": 6
    },
    "beta.bseindia.com": {
@@ -162,7 +159,7 @@
    }
   },
   "by_http_status": {
-   "200": 465,
+   "200": 467,
    "404": 7,
    "None": 2
   },
@@ -172,7 +169,8 @@
    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 6,
    "application/x-zip-compressed": 20,
    "unknown": 2,
-   "application/vnd.ms-excel": 1
+   "application/vnd.ms-excel": 1,
+   "text/csv": 2
   }
  },
  "artifacts": {
@@ -463,6 +461,39 @@
    "fetched_ok": 50,
    "quarantined": 0,
    "new_records": 107
+  },
+  {
+   "run_id": "20261122-065233-18836",
+   "started_at": "2026-11-22T01:22:33+00:00",
+   "status": "completed",
+   "stop_reason": "search_engines_suspended",
+   "duration_s": 4.3,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": 0
+  },
+  {
+   "run_id": "20261122-071652-21362",
+   "started_at": "2026-11-22T01:46:52+00:00",
+   "status": "completed",
+   "stop_reason": "search_engines_suspended",
+   "duration_s": 44.2,
+   "queries_done": 1,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": 0
+  },
+  {
+   "run_id": "20261122-075435-24273",
+   "started_at": "2026-11-22T02:24:35+00:00",
+   "status": "completed",
+   "stop_reason": "search_engines_suspended",
+   "duration_s": 6.1,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": 0
   }
  ],
  "agent_sessions": [
@@ -581,15 +612,41 @@
   {
    "file": "logs/agent_sessions/agent-20261122-061121.jsonl",
    "started_at": "2026-11-22T00:41:23.237Z",
-   "finish_reason": "running_or_killed",
-   "iterations": null,
-   "tool_calls": 31,
+   "finish_reason": "completed",
+   "iterations": 32,
+   "tool_calls": 36,
    "tools": {
     "read_files": 5,
-    "run_commands": 26
+    "run_commands": 31
    },
-   "input_tokens": null,
-   "output_tokens": null
+   "input_tokens": 976940,
+   "output_tokens": 3875
+  },
+  {
+   "file": "logs/agent_sessions/agent-20261122-071420.jsonl",
+   "started_at": "2026-11-22T01:44:22.486Z",
+   "finish_reason": "completed",
+   "iterations": 8,
+   "tool_calls": 7,
+   "tools": {
+    "read_files": 1,
+    "run_commands": 6
+   },
+   "input_tokens": 146622,
+   "output_tokens": 803
+  },
+  {
+   "file": "logs/agent_sessions/agent-20261122-075322.jsonl",
+   "started_at": "2026-11-22T02:23:24.258Z",
+   "finish_reason": "completed",
+   "iterations": 7,
+   "tool_calls": 6,
+   "tools": {
+    "read_files": 1,
+    "run_commands": 5
+   },
+   "input_tokens": 118293,
+   "output_tokens": 825
   }
  ]
 }

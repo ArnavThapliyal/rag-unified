@@ -441,9 +441,30 @@
     "data/search_cache/7320c399548cf0e2.json",
     "data/search_cache/c9b98993bc2a678c.json"
    ]
+  },
+  "amalgamation scheme delisted from NSE 2020": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T01:46:53+00:00",
+   "run_id": "20261122-071652-21362",
+   "status": "engines_blocked",
+   "results": 0,
+   "unresponsive_engines": [
+    "brave",
+    "dogpile",
+    "presearch",
+    "qwant"
+   ],
+   "candidate_urls": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "cache_files": [
+    "data/search_cache/c8cc128adf458459.json"
+   ]
   }
  },
  "blocked_domains": [],
  "disk_warn_tier": 0,
- "engines_suspended_until": 1795269404.813387
+ "engines_suspended_until": 1795315558.852322,
+ "deferred_urls": []
 }
