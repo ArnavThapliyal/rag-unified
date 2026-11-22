@@ -1,0 +1,51 @@
+{
+ "fetched_ok": 7,
+ "failed": 0,
+ "dead": 0,
+ "harvested_new": 0,
+ "newly_blocked_domains": [],
+ "over_budget_domains": [],
+ "stop_reason": "idle",
+ "docket": {
+  "generated_at": "2026-11-22T19:11:17+00:00",
+  "total": 1932,
+  "by_status": {
+   "dead": 12,
+   "failed": 1,
+   "fetched": 34,
+   "parked": 1388,
+   "parsed": 497
+  },
+  "by_kind": {
+   "harvested": 1120,
+   "search": 812
+  },
+  "fetch_ready_now": 0,
+  "waiting_on_blocked_domain": 0,
+  "awaiting_parse": 34,
+  "parsed_zero_rows_relevant": 189,
+  "evidence_unfetched": 398,
+  "blocked_domains": [],
+  "top_pending_domains": [
+   {
+    "domain": "static.nseindia.com",
+    "n": 1
+   }
+  ],
+  "dead_reasons": [
+   {
+    "reason": "http 404",
+    "n": 8
+   },
+   {
+    "reason": "http 403",
+    "n": 2
+   },
+   {
+    "reason": "downloaded file missing",
+    "n": 2
+   }
+  ]
+ },
+ "duration_s": 39.6
+}

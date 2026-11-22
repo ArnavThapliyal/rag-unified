@@ -1,56 +1,67 @@
 {
- "generated_at": "2026-11-22T18:48:19+00:00",
+ "generated_at": "2026-11-22T19:11:42+00:00",
  "indicators": {
   "records_total": 487,
   "priority_year_records": 118,
   "verified_primary_pct": 99.2,
   "needs_review": 4,
   "priority_grid_coverage_pct": 40.0,
-  "query_plan_complete_pct": 21.8,
-  "queries_done": 24,
+  "query_plan_complete_pct": 28.2,
+  "queries_done": 31,
   "queries_total": 110,
-  "fetch_success_rate_pct": 97.9,
-  "artifacts_downloaded": 468,
-  "artifacts_with_rows": 104,
-  "artifacts_zero_rows": 202,
-  "artifacts_irrelevant": 162,
+  "fetch_success_rate_pct": 97.6,
+  "artifacts_downloaded": 531,
+  "artifacts_with_rows": 105,
+  "artifacts_zero_rows": 227,
+  "artifacts_irrelevant": 188,
   "blocked_domains": 0,
   "docket": {
    "by_status": {
-    "dead": 9,
+    "dead": 12,
     "failed": 1,
-    "parked": 456,
-    "parsed": 468
+    "fetched": 34,
+    "parked": 1388,
+    "parsed": 497
    },
    "fetch_ready_now": 0,
-   "awaiting_parse": 0,
+   "awaiting_parse": 34,
    "waiting_on_blocked_domain": 0,
-   "evidence_unfetched": 338,
-   "parsed_zero_rows_relevant": 187
+   "evidence_unfetched": 398,
+   "parsed_zero_rows_relevant": 189,
+   "historical": {
+    "window": [
+     2006,
+     2011
+    ],
+    "companies": 23,
+    "proven": 23,
+    "unproven": 0,
+    "with_supporting_docs": 0
+   }
   },
   "isin_completeness_pct": 0.8,
   "last_run": {
-   "run_id": "20261123-001728-14578",
-   "started_at": "2026-11-22T18:47:28+00:00",
-   "status": "completed",
-   "stop_reason": "plan_exhausted",
-   "duration_s": 50.4,
-   "queries_done": 1,
-   "fetched_ok": 3,
+   "run_id": "20261123-004037-22713",
+   "started_at": "2026-11-22T19:10:37+00:00",
+   "status": "running",
+   "stop_reason": null,
+   "duration_s": 0.0,
+   "queries_done": 0,
+   "fetched_ok": 0,
    "quarantined": 0,
-   "new_records": 2
+   "new_records": null
   },
-  "agent_sessions": 11,
+  "agent_sessions": 12,
   "proposed_delisting_leads": 14,
   "bse_only_delistings": 115,
-  "source_domains": 10,
-  "new_source_domains": 0,
+  "source_domains": 25,
+  "new_source_domains": 13,
   "new_domains_with_rows": [],
   "audit_errors": 0,
   "audit_warnings": 46,
   "disk": {
-   "data_gb": 0.83,
-   "free_gb": 358.0,
+   "data_gb": 0.9,
+   "free_gb": 349.5,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -78,19 +89,19 @@
    },
    "priority_2020": {
     "total": 10,
-    "done": 8,
+    "done": 10,
     "no_results": 0,
     "failed": 0,
-    "pending": 2,
-    "complete_pct": 80.0
+    "pending": 0,
+    "complete_pct": 100.0
    },
    "priority_2024": {
     "total": 10,
-    "done": 0,
+    "done": 5,
     "no_results": 0,
     "failed": 0,
-    "pending": 10,
-    "complete_pct": 0.0
+    "pending": 5,
+    "complete_pct": 50.0
    },
    "priority_2007": {
     "total": 10,
@@ -120,23 +131,24 @@
   "adhoc_queries": 0,
   "blocked_domains": [],
   "docket": {
-   "generated_at": "2026-11-22T18:48:19+00:00",
-   "total": 934,
+   "generated_at": "2026-11-22T19:11:42+00:00",
+   "total": 1932,
    "by_status": {
-    "dead": 9,
+    "dead": 12,
     "failed": 1,
-    "parked": 456,
-    "parsed": 468
+    "fetched": 34,
+    "parked": 1388,
+    "parsed": 497
    },
    "by_kind": {
-    "harvested": 304,
-    "search": 630
+    "harvested": 1120,
+    "search": 812
    },
    "fetch_ready_now": 0,
    "waiting_on_blocked_domain": 0,
-   "awaiting_parse": 0,
-   "parsed_zero_rows_relevant": 187,
-   "evidence_unfetched": 338,
+   "awaiting_parse": 34,
+   "parsed_zero_rows_relevant": 189,
+   "evidence_unfetched": 398,
    "blocked_domains": [],
    "top_pending_domains": [
     {
@@ -147,25 +159,39 @@
    "dead_reasons": [
     {
      "reason": "http 404",
-     "n": 7
+     "n": 8
+    },
+    {
+     "reason": "http 403",
+     "n": 2
     },
     {
      "reason": "downloaded file missing",
      "n": 2
     }
-   ]
+   ],
+   "historical": {
+    "window": [
+     2006,
+     2011
+    ],
+    "companies": 23,
+    "proven": 23,
+    "unproven": 0,
+    "with_supporting_docs": 0
+   }
   }
  },
  "fetch": {
-  "attempts": 480,
-  "ok": 470,
-  "quarantined": 10,
-  "success_rate_pct": 97.9,
-  "total_mb": 824.8,
+  "attempts": 546,
+  "ok": 533,
+  "quarantined": 13,
+  "success_rate_pct": 97.6,
+  "total_mb": 897.37,
   "by_domain": {
    "nsearchives.nseindia.com": {
-    "ok": 321,
-    "bytes": 533620727,
+    "ok": 327,
+    "bytes": 541391282,
     "quarantined": 6
    },
    "beta.bseindia.com": {
@@ -177,25 +203,62 @@
     "ok": 22,
     "bytes": 96980113
    },
-   "bseindia.com": {
-    "ok": 19,
-    "bytes": 29923019
-   },
    "sebi.gov.in": {
-    "ok": 28,
-    "bytes": 20073683
+    "ok": 35,
+    "bytes": 48966196
+   },
+   "bseindia.com": {
+    "ok": 22,
+    "bytes": 31015123,
+    "quarantined": 1
+   },
+   "ibbi.gov.in": {
+    "ok": 22,
+    "bytes": 25397428
    },
    "bsmedia.business-standard.com": {
     "ok": 1,
     "bytes": 11126364
    },
    "nseindia.com": {
-    "ok": 26,
-    "bytes": 9337552
+    "ok": 28,
+    "bytes": 9998585
    },
    "nclt.gov.in": {
     "ok": 5,
     "bytes": 3739666
+   },
+   "ibclaw.in": {
+    "ok": 2,
+    "bytes": 2503735
+   },
+   "en.wikipedia.org": {
+    "ok": 3,
+    "bytes": 2011359
+   },
+   "ijlra.com": {
+    "ok": 3,
+    "bytes": 808110
+   },
+   "investopedia.com": {
+    "ok": 1,
+    "bytes": 697304
+   },
+   "thinkingbridge.in": {
+    "ok": 1,
+    "bytes": 421536
+   },
+   "wallstreetmojo.com": {
+    "ok": 1,
+    "bytes": 411553
+   },
+   "kaskus.co.id": {
+    "ok": 5,
+    "bytes": 406809
+   },
+   "corporateprofessionals.com": {
+    "ok": 1,
+    "bytes": 385509
    },
    "efiling.nclt.gov.in": {
     "ok": 1,
@@ -205,19 +268,52 @@
     "ok": 1,
     "bytes": 299502
    },
+   "ibctamil.com": {
+    "ok": 1,
+    "bytes": 295728
+   },
+   "blog.ipleaders.in": {
+    "ok": 1,
+    "bytes": 285870
+   },
+   "geeksforgeeks.org": {
+    "ok": 1,
+    "bytes": 269515
+   },
+   "economictimes.indiatimes.com": {
+    "ok": 1,
+    "bytes": 147391
+   },
+   "about.youtube": {
+    "ok": 1,
+    "bytes": 96231
+   },
+   "dictionary.cambridge.org": {
+    "quarantined": 1,
+    "bytes": 5881
+   },
+   "merriam-webster.com": {
+    "quarantined": 1,
+    "bytes": 5856
+   },
+   "ibc.co.in": {
+    "ok": 1,
+    "bytes": 4860
+   },
    "static.nseindia.com": {
     "quarantined": 3,
     "bytes": 0
    }
   },
   "by_http_status": {
-   "200": 470,
-   "404": 7,
-   "None": 3
+   "200": 533,
+   "404": 8,
+   "None": 3,
+   "403": 2
   },
   "by_content_type": {
-   "text/html": 62,
-   "application/pdf": 386,
+   "text/html": 93,
+   "application/pdf": 421,
    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 6,
    "application/x-zip-compressed": 20,
    "unknown": 3,
@@ -226,14 +322,15 @@
   }
  },
  "artifacts": {
-  "total": 468,
+  "total": 531,
   "by_bucket": {
-   "master_lists": 354,
-   "priority_2017": 65,
-   "priority_2020": 49
+   "master_lists": 356,
+   "priority_2017": 70,
+   "priority_2020": 89,
+   "priority_2024": 16
   },
-  "parsed": 468,
-  "rows_extracted": 888
+  "parsed": 520,
+  "rows_extracted": 889
  },
  "records": {
   "total": 487,
@@ -360,6 +457,17 @@
   }
  },
  "runs": [
+  {
+   "run_id": null,
+   "started_at": null,
+   "status": null,
+   "stop_reason": "idle",
+   "duration_s": 39.6,
+   "queries_done": null,
+   "fetched_ok": 7,
+   "quarantined": null,
+   "new_records": null
+  },
   {
    "run_id": "20261121-161432-52703",
    "started_at": "2026-11-21T10:44:32+00:00",
@@ -579,6 +687,28 @@
    "fetched_ok": 3,
    "quarantined": 0,
    "new_records": 2
+  },
+  {
+   "run_id": "20261123-003102-17928",
+   "started_at": "2026-11-22T19:01:02+00:00",
+   "status": "completed",
+   "stop_reason": "plan_exhausted",
+   "duration_s": 280.6,
+   "queries_done": 8,
+   "fetched_ok": 56,
+   "quarantined": 3,
+   "new_records": 0
+  },
+  {
+   "run_id": "20261123-004037-22713",
+   "started_at": "2026-11-22T19:10:37+00:00",
+   "status": "running",
+   "stop_reason": null,
+   "duration_s": 0.0,
+   "queries_done": 0,
+   "fetched_ok": 0,
+   "quarantined": 0,
+   "new_records": null
   }
  ],
  "agent_sessions": [
@@ -732,6 +862,19 @@
    },
    "input_tokens": 118293,
    "output_tokens": 825
+  },
+  {
+   "file": "logs/agent_sessions/agent-20261123-002818.jsonl",
+   "started_at": "2026-11-22T18:58:20.695Z",
+   "finish_reason": "running_or_killed",
+   "iterations": null,
+   "tool_calls": 18,
+   "tools": {
+    "read_files": 3,
+    "run_commands": 15
+   },
+   "input_tokens": null,
+   "output_tokens": null
   }
  ]
 }

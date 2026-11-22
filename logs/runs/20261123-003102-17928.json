@@ -1,0 +1,55 @@
+{
+ "run_id": "20261123-003102-17928",
+ "agent_session": "agent-20261123-002818",
+ "started_at": "2026-11-22T19:01:02+00:00",
+ "finished_at": "2026-11-22T19:05:42+00:00",
+ "duration_s": 280.6,
+ "status": "completed",
+ "stop_reason": "plan_exhausted",
+ "stage": "all",
+ "args": {
+  "stage": "all",
+  "phase": "all",
+  "max_queries": 8,
+  "fetch_limit": null,
+  "max_fetch": null,
+  "process_every": 5,
+  "retry_failed": false,
+  "harvest_only": false,
+  "max_harvest": null,
+  "dry_run": false
+ },
+ "queries_planned": 8,
+ "queries_done": 8,
+ "queries_failed": 0,
+ "queries_no_results": 0,
+ "phases": {
+  "priority_2020": {
+   "queries": 3,
+   "urls": 129,
+   "filed": 90
+  },
+  "priority_2024": {
+   "queries": 5,
+   "urls": 207,
+   "filed": 92
+  }
+ },
+ "urls_found": 336,
+ "filed_new": 182,
+ "fetched_ok": 56,
+ "fetch_failed": 0,
+ "fetch_dead": 3,
+ "quarantined": 3,
+ "harvested_ok": 816,
+ "harvest_backlog": 7,
+ "newly_blocked_domains": [],
+ "fetch_stop_reason": "budget_exhausted",
+ "parsed_files": 29,
+ "parsed_rows": 0,
+ "parse_errors": 0,
+ "process_stop_reason": "unparseable_waiting",
+ "records_before": 487,
+ "records_after": 487,
+ "new_records": 0
+}

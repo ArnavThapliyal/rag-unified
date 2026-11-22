@@ -441,6 +441,160 @@
     "data/search_cache/7320c399548cf0e2.json",
     "data/search_cache/c9b98993bc2a678c.json"
    ]
+  },
+  "amalgamation scheme delisted from NSE 2020": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T19:01:02+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 30,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [
+    "mojeek"
+   ],
+   "candidate_urls": 30,
+   "filed_new": 27,
+   "filed_pending": 8,
+   "cache_files": [
+    "data/search_cache/c8cc128adf458459.json",
+    "data/search_cache/61a111c1983f38fd.json"
+   ]
+  },
+  "delisting COVID 2020 NSE SEBI relaxation": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T19:01:48+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 50,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 50,
+   "filed_new": 39,
+   "filed_pending": 6,
+   "cache_files": [
+    "data/search_cache/da77639b33d2cdcf.json",
+    "data/search_cache/7b00cd07694293c3.json"
+   ]
+  },
+  "IBC delisting 2020 NSE": {
+   "phase": "priority_2020",
+   "year_tag": "2020",
+   "ts": "2026-11-22T19:02:14+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 49,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 47,
+   "filed_new": 24,
+   "filed_pending": 7,
+   "cache_files": [
+    "data/search_cache/7a218dd47a89ca45.json",
+    "data/search_cache/8fe6ed1ade31b86c.json"
+   ]
+  },
+  "site:nseindia.com delisting circular 2024": {
+   "phase": "priority_2024",
+   "year_tag": "2024",
+   "ts": "2026-11-22T19:02:47+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 49,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 46,
+   "filed_new": 27,
+   "filed_pending": 6,
+   "cache_files": [
+    "data/search_cache/06ae81966c43ccd1.json",
+    "data/search_cache/4df56fb28b361e72.json"
+   ]
+  },
+  "site:nseindia.com compulsory delisting 2024": {
+   "phase": "priority_2024",
+   "year_tag": "2024",
+   "ts": "2026-11-22T19:03:27+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 39,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 10,
+   "filed_pending": 2,
+   "cache_files": [
+    "data/search_cache/4f81c2dc58580278.json",
+    "data/search_cache/8e2d43a3db0f654c.json"
+   ]
+  },
+  "site:nseindia.com voluntary delisting exit offer 2024": {
+   "phase": "priority_2024",
+   "year_tag": "2024",
+   "ts": "2026-11-22T19:03:51+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 40,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 13,
+   "filed_pending": 1,
+   "cache_files": [
+    "data/search_cache/085009d5c298e471.json",
+    "data/search_cache/5262c188cffbd93d.json"
+   ]
+  },
+  "site:sebi.gov.in delisting order 2024": {
+   "phase": "priority_2024",
+   "year_tag": "2024",
+   "ts": "2026-11-22T19:04:29+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 40,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 26,
+   "filed_pending": 4,
+   "cache_files": [
+    "data/search_cache/d6a0f464ed5e6658.json",
+    "data/search_cache/44381f43b5c2da85.json"
+   ]
+  },
+  "site:bseindia.com compulsory delisting notice 2024": {
+   "phase": "priority_2024",
+   "year_tag": "2024",
+   "ts": "2026-11-22T19:05:01+00:00",
+   "run_id": "20261123-003102-17928",
+   "status": "done",
+   "results": 39,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [],
+   "candidate_urls": 40,
+   "filed_new": 16,
+   "filed_pending": 2,
+   "cache_files": [
+    "data/search_cache/5192083b24b521d7.json",
+    "data/search_cache/c8c520ae660bb672.json"
+   ]
   }
  },
  "blocked_domains": [],
