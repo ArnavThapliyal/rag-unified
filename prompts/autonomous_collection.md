@@ -4,7 +4,7 @@ Read `soul.md` and `.cline/rules/01-nse-research.md` first, then work through th
 YOUR JOB IS COLLECTING, NOT DEBUGGING. You run the pipeline, watch its numbers, and REPORT anomalies with
 `scripts/report_issue.py`; the user fixes them. Never read, edit, rewrite or test files in `scripts/`, `tests/`,
 `skills/`, `prompts/`, `.cline/` or `soul.md`; never write ad-hoc Python (`python -c`) to probe parsers or data.
-The only file you may edit is `config/query_plan.json` (to append queries to `agent_added`).
+The only file you may edit is `config/query_plan.json` (append queries to `agent_added`, append websites to `fetch_domains`).
 
 IMPORTANT: shell commands are killed after 30 seconds. Collection runs take minutes, so ALWAYS run them
 through the job runner: `.venv/bin/python scripts/job.py start <collect.py args>` (returns immediately), then
@@ -29,7 +29,15 @@ directly, and never use `&`, `nohup` or /tmp logs.
      targeted queries to a phase named `agent_added` at the END of `config/query_plan.json`
      (use the discovery skill templates; set `year_tag`). Never delete existing queries.
    - `data/processed/proposed_delisting_leads.csv` has companies with `already_in_master = False` →
-     add queries like `site:nseindia.com "<company name>" delisting order` to `agent_added` (max 10 per cycle).
+     add queries like `"<company name>" delisted NSE` to `agent_added` (max 10 per cycle). No `site:` — any
+     website that has the story is fine.
+   - NEW WEBSITES: finding sources beyond NSE/BSE/SEBI is part of your job (NSE rate-limits hard, so it gets
+     only a few requests per run). `indicators.new_domains_with_rows` lists websites outside `fetch_domains`
+     whose pages gave rows (details: `data/metadata/domain_registry.json`). For each one not yet in
+     `fetch_domains` (max 5 per cycle): append it to `fetch_domains`, and add 1–2 queries
+     `site:<domain> delisted companies` / `site:<domain> delisting <year>` to `agent_added`.
+     Also add 1–2 open-web queries per cycle without `site:` (e.g. `list of companies delisted from NSE 2020`)
+     so search keeps finding new websites. At most 8 new queries per cycle in total.
    - `indicators.audit_errors` > 0 → `.venv/bin/python scripts/audit_dataset.py`, then report once with
      `--kind audit_error --summary "<check>: <count> rows" --evidence <record_id or artifact path>`.
    - Anything else that looks wrong (records drop without explanation, junk company names in the master,

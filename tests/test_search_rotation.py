@@ -43,3 +43,10 @@ def test_all_benched_raises_with_earliest_return(rot):
     with pytest.raises(sc.EnginesExhausted) as exc:
         rot.pick()
     assert exc.value.until == rot.state["c"]["benched_until"]
+
+
+def test_relevant_results_from_new_sites_do_not_bench(rot):
+    news = [{"url": "https://www.capitalmarket.com/x", "title": "Exchange to delist 200 firms", "engines": ["a"]}]
+    for _ in range(4):
+        rot.record(["a"], news, [])
+    assert "a" in rot.usable()

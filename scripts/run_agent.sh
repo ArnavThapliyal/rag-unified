@@ -21,6 +21,7 @@
 # Raw Cline events  -> logs/agent_sessions/<session>.jsonl
 # Readable progress -> terminal + logs/agent_run.log (tool calls, errors, completion)
 # Every script the agent runs tags its events with the session named in logs/agent_sessions/current.
+# Environment variables named like *API_KEY*, *TOKEN*, *SECRET*, *PASSWORD* are removed before Cline starts.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,6 +34,13 @@ MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-12}"  # search-engine suspensions to wait 
 PY="$ROOT/.venv/bin/python"
 
 [ -f "$PROMPT_FILE" ] || { echo "prompt file not found: $PROMPT_FILE" >&2; exit 2; }
+
+# Keys and tokens from your shell never reach the agent: Cline talks to LM Studio, which needs none.
+for v in $(env | grep -oE '^[A-Za-z_][A-Za-z0-9_]*(API_KEY|TOKEN|SECRET|PASSWORD|PASSWD)[A-Za-z0-9_]*=' | tr -d = || true); do
+  unset "$v"
+done
+# Cline's hub daemon keeps the environment it was first started with; restart it so it has none of them.
+pkill -f -- "--cline-hub-daemon --cwd $ROOT" 2>/dev/null || true
 
 preflight() {
   curl -sf -m 10 "http://localhost:8082/search?q=nse&format=json" >/dev/null \

@@ -102,6 +102,10 @@ def same_event(a: dict, b: dict) -> bool:
     return True
 
 
+# After the schema columns: how many sources a record has, and all their URLs and local files.
+PROVENANCE_FIELDS = ["source_count", "all_source_urls", "all_artifact_paths"]
+
+
 def is_bse_only_source(r: dict) -> bool:
     urls = r["all_source_urls"].split(" | ") if r.get("all_source_urls") else []
     return bool(urls) and all(domain_of(u).endswith("bseindia.com") for u in urls)
@@ -122,6 +126,9 @@ def merge_group(group: list[dict]) -> dict:
         best["confidence_status"] = "CORROBORATED_SECONDARY"
     best["source_count"] = len(urls)
     best["all_source_urls"] = " | ".join(urls)
+    # every downloaded file behind this record (best source first), not only the one its fields came from
+    best["all_artifact_paths"] = " | ".join(dict.fromkeys(
+        r["local_artifact_path"] for r in group if r.get("local_artifact_path")))
     key_date = best["effective_delisting_date"] or best["order_date"] or ""
     best["record_id"] = hashlib.sha256(
         f"{best['_key']}|{key_date}|{best['delisting_type']}".encode()).hexdigest()[:16]
@@ -169,14 +176,14 @@ def main() -> int:
     out_of_range = [r["record_id"] for r in merged if r["calendar_year"] and not 2006 <= r["calendar_year"] <= 2026]
 
     PROCESSED.mkdir(parents=True, exist_ok=True)
+    audit_fields = SCHEMA_FIELDS + PROVENANCE_FIELDS
     with (PROCESSED / "nse_delisted_master.csv").open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=SCHEMA_FIELDS, extrasaction="ignore")
+        w = csv.DictWriter(f, fieldnames=audit_fields, extrasaction="ignore")
         w.writeheader()
         w.writerows(merged)
     with (PROCESSED / "nse_delisted_master.jsonl").open("w", encoding="utf-8") as f:
         for r in merged:
-            f.write(json.dumps({k: r.get(k) for k in SCHEMA_FIELDS}, ensure_ascii=False) + "\n")
-    audit_fields = SCHEMA_FIELDS + ["source_count", "all_source_urls"]
+            f.write(json.dumps({k: r.get(k) for k in audit_fields}, ensure_ascii=False) + "\n")
     priority = [r for r in merged if r["is_priority_year"]]
     with (PROCESSED / "priority_years_audit.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=audit_fields, extrasaction="ignore")

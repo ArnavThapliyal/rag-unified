@@ -4,6 +4,7 @@ Writes:
   data/metadata/collection_metadata.json   totals, indicators, breakdowns, disk, audit, run + agent-session history
   data/metadata/artifacts.csv              one row per downloaded file (source, status, size, rows parsed)
   data/metadata/dataset_audit.json         data-quality checks (via audit_dataset.py)
+  data/metadata/domain_registry.json       every website we fetched from: files, rows, records; new = not in fetch_domains
 
 Run automatically at the end of every collect.py run; safe to run any time:
   python scripts/build_metadata.py
@@ -95,6 +96,29 @@ def artifact_inventory(manifest: list[dict]) -> list[dict]:
     return rows
 
 
+def domain_registry(inventory: list[dict], master: list[dict], known: list[str]) -> dict:
+    """Per website: files fetched, files that gave rows, rows, master records citing it. Websites
+    outside the plan's fetch_domains are "new": the agent adds site: queries for the productive ones."""
+    reg: dict[str, Counter] = defaultdict(Counter)
+    first: dict[str, str] = {}
+    for a in inventory:
+        d = a["domain"]
+        if not d:
+            continue
+        reg[d]["files"] += 1
+        reg[d]["files_with_rows"] += bool(a["rows_extracted"])
+        reg[d]["rows"] += a["rows_extracted"] or 0
+        if a["fetched_at"] and (d not in first or a["fetched_at"] < first[d]):
+            first[d] = a["fetched_at"]
+    for r in master:
+        for d in {domain_of(u) for u in (r.get("all_source_urls") or r.get("source_url") or "").split(" | ") if u}:
+            reg[d]["records"] += 1
+    out = {d: {**dict(c), "first_fetched": first.get(d),
+               "new": not any(d == k or d.endswith("." + k) for k in known)}
+           for d, c in sorted(reg.items(), key=lambda x: (-x[1]["records"], -x[1]["rows"], -x[1]["files"]))}
+    return out
+
+
 def record_stats(rows: list[dict]) -> dict:
     grid = defaultdict(Counter)
     for r in rows:
@@ -168,6 +192,9 @@ def build() -> dict:
     sessions = agent_sessions()
     audit = audit_dataset.run()
     disk = disk_status()
+    plan = json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8"))
+    domains = domain_registry(inventory, master, plan.get("fetch_domains", []))
+    new_domains = {d: v for d, v in domains.items() if v["new"]}
 
     total_q = sum(p["total"] for p in queries["phases"].values())
     done_q = sum(p["total"] - p["pending"] - p["failed"] for p in queries["phases"].values())
@@ -192,6 +219,9 @@ def build() -> dict:
         "agent_sessions": len(sessions),
         "proposed_delisting_leads": csv_rows("proposed_delisting_leads.csv"),
         "bse_only_delistings": csv_rows("bse_only_delistings.csv"),
+        "source_domains": len(domains),
+        "new_source_domains": len(new_domains),
+        "new_domains_with_rows": [d for d, v in new_domains.items() if v["rows"]][:15],
         "audit_errors": audit["error_count"], "audit_warnings": audit["warning_count"],
         "disk": disk,
     }
@@ -204,6 +234,7 @@ def build() -> dict:
 
     METADATA.mkdir(parents=True, exist_ok=True)
     (METADATA / "collection_metadata.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
+    (METADATA / "domain_registry.json").write_text(json.dumps(domains, indent=1), encoding="utf-8")
     with (METADATA / "artifacts.csv").open("w", newline="", encoding="utf-8") as f:
         fields = ["local_path", "bucket", "source_url", "domain", "year_tag", "content_type", "bytes",
                   "sha256", "harvested_from", "fetched_at", "parsed", "relevance", "rows_extracted"]

@@ -3,8 +3,11 @@
 - Resumable: completed queries are tracked in data/metadata/collection_state.json and skipped.
 - Logs every step to logs/events.jsonl + logs/agent_run.log, and writes a run summary to
   logs/runs/<run_id>.json (also on Ctrl-C or error).
-- Official HTML pages that get downloaded are scanned for linked documents (e.g. NSE's
-  orders-of-delisting page links ~140 order PDFs); those links are fetched too ("harvesting").
+- Search results from any website are fetched when the plan sets "open_web" (except "deny_domains").
+- Downloaded HTML pages are scanned for linked documents (e.g. NSE's orders-of-delisting page links
+  ~140 order PDFs); those links are fetched too ("harvesting").
+- Each domain has a per-run request budget ("domain_limits"; NSE's is small). URLs over budget are
+  kept in collection_state.json "deferred_urls" and fetched by later --harvest-only runs.
 - Domains that fail repeatedly are blocked (persisted) so the run stays polite.
 - Rebuilds data/metadata/ at the end.
 
@@ -33,8 +36,8 @@ import build_metadata
 import polite_fetcher
 import searxng_client
 from common import (
-    CONFIG, MANIFEST, METADATA, PRIMARY_DOMAINS, PROCESSED, ROOT, RUNS, SEARXNG_URL, agent_session, check_disk,
-    domain_matches, emit, log, now_iso, polite_sleep, read_jsonl, run_id,
+    CONFIG, MANIFEST, METADATA, PROCESSED, ROOT, RUNS, SEARXNG_URL, agent_session, check_disk,
+    emit, log, now_iso, polite_sleep, read_jsonl, run_id,
 )
 
 
@@ -126,32 +129,69 @@ def mark_stale_runs(current: str) -> None:
 
 
 def harvestable_pages(only: list[str] | None = None) -> list[dict]:
-    """Manifest entries for downloaded official HTML pages (optionally limited to `only` paths)."""
+    """Manifest entries for downloaded HTML pages (optionally limited to `only` paths)."""
+    policy = polite_fetcher.fetch_policy()
     pages = []
     for e in read_jsonl(MANIFEST):
         lp = e.get("local_path") or ""
         if e.get("quarantined") or not lp.endswith((".html", ".htm")):
             continue
-        if not domain_matches(e["url"], PRIMARY_DOMAINS) or (only is not None and lp not in only):
+        if not polite_fetcher.allowed(e["url"], policy) or (only is not None and lp not in only):
             continue
         pages.append(e)
     return list({p["local_path"]: p for p in pages}.values())
 
 
 def harvest_backlog() -> int:
-    """Linked documents on downloaded official pages that have not been fetched yet."""
+    """Linked documents on downloaded pages plus deferred URLs that have not been fetched yet."""
     done = polite_fetcher.already_fetched()
-    return len({u for pg in harvestable_pages()
-                for u in polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"]) if u not in done})
+    policy = polite_fetcher.fetch_policy()
+    links = {u for pg in harvestable_pages()
+             for u in polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"], policy)}
+    links |= {d["url"] for d in load_state().get("deferred_urls", [])}
+    return len(links - set(done))
+
+
+def defer(state: dict, urls: list[str], tag: str | None) -> None:
+    """Remember URLs a domain budget skipped, so a later run fetches them."""
+    known = {d["url"] for d in state.setdefault("deferred_urls", [])}
+    state["deferred_urls"] += [{"url": u, "year_tag": tag} for u in urls if u not in known]
+
+
+def fetch_deferred(state: dict, limit: int, blocked: set[str], block_after: int, step: dict) -> dict:
+    """Fetch deferred URLs (oldest first) within this run's domain budgets."""
+    done = polite_fetcher.already_fetched()
+    todo = [d for d in state.get("deferred_urls", []) if d["url"] not in done]
+    total = {"fetched_ok": 0, "quarantined": 0}
+    for tag in dict.fromkeys(d["year_tag"] for d in todo):
+        budget = limit - total["fetched_ok"] - total["quarantined"]
+        if budget <= 0:
+            break
+        f = polite_fetcher.fetch_urls([d["url"] for d in todo if d["year_tag"] == tag], tag, budget,
+                                      blocked, block_after)
+        total["fetched_ok"] += f["fetched_ok"]
+        total["quarantined"] += f["quarantined"]
+        step["newly_blocked_domains"] += f["newly_blocked_domains"]
+    done = polite_fetcher.already_fetched()
+    state["deferred_urls"] = [d for d in state.get("deferred_urls", []) if d["url"] not in done]
+    step["harvested_ok"] += total["fetched_ok"]
+    step["fetched_ok"] += total["fetched_ok"]
+    step["quarantined"] += total["quarantined"]
+    if todo:
+        log(f"deferred: {len(todo)} waiting, {total['fetched_ok']} ok, {total['quarantined']} quarantined, "
+            f"{len(state['deferred_urls'])} left", kind="deferred_fetch", **total)
+    return total
 
 
 def harvest(pages: list[dict], limit: int, blocked: set[str], block_after: int, step: dict) -> dict:
     """Fetch not-yet-fetched document links from `pages`, at most `limit` in total."""
     total = {"links": 0, "fetched_ok": 0, "quarantined": 0}
+    state = step["_disk_state"]
+    policy = polite_fetcher.fetch_policy()
     for pg in pages:
-        if check_disk(step["_disk_state"])["level"] == "critical":
+        if check_disk(state)["level"] == "critical":
             raise LowDisk()
-        links = polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"])
+        links = polite_fetcher.harvest_links(ROOT / pg["local_path"], pg["url"], policy)
         total["links"] += len(links)
         budget = limit - total["fetched_ok"] - total["quarantined"]
         if budget <= 0 or not links:
@@ -161,6 +201,7 @@ def harvest(pages: list[dict], limit: int, blocked: set[str], block_after: int, 
         total["fetched_ok"] += f["fetched_ok"]
         total["quarantined"] += f["quarantined"]
         step["newly_blocked_domains"] += f["newly_blocked_domains"]
+        defer(state, f["deferred"], pg.get("year_tag"))
     step["harvested_ok"] += total["fetched_ok"]
     step["fetched_ok"] += total["fetched_ok"]
     step["quarantined"] += total["quarantined"]
@@ -235,7 +276,7 @@ def main() -> int:
     summary_path = RUNS / f"{rid}.json"
     blocked = set(state["blocked_domains"])
     fetch_limit = a.fetch_limit or plan.get("fetch_limit_per_query", 8)
-    domains = plan.get("fetch_domains")
+    policy = polite_fetcher.fetch_policy()
     block_after = plan.get("block_domain_after_failures", 3)
     harvest_limit = a.max_harvest or plan.get("harvest_limit_per_page", 20)
     step = {
@@ -264,9 +305,12 @@ def main() -> int:
 
     if a.harvest_only:
         try:
-            h = harvest(harvestable_pages(), harvest_limit, blocked, block_after, step)
+            d = fetch_deferred(state, harvest_limit, blocked, block_after, step)
+            h = harvest(harvestable_pages(), max(0, harvest_limit - d["fetched_ok"] - d["quarantined"]),
+                        blocked, block_after, step)
+            save_state(state)
             step["harvest_backlog"] = harvest_backlog()
-            if h["fetched_ok"]:
+            if h["fetched_ok"] or d["fetched_ok"]:
                 process(step)
             step.update(status="completed", stop_reason="harvest_done")
         except LowDisk:
@@ -348,9 +392,10 @@ def main() -> int:
 
             urls = []
             for cf in s["cache_files"]:
-                u, _ = polite_fetcher.urls_from_cache_file(ROOT / cf, domains)
+                u, _ = polite_fetcher.urls_from_cache_file(ROOT / cf, policy)
                 urls += u
             f = polite_fetcher.fetch_urls(urls, tag, fetch_limit, blocked, block_after)
+            defer(state, f["deferred"], tag)
             for d in f["newly_blocked_domains"]:
                 step["newly_blocked_domains"].append(d)
             h = harvest(harvestable_pages(f["saved"]), harvest_limit, blocked, block_after, step) \
@@ -424,8 +469,8 @@ def main() -> int:
         log(traceback.format_exc()[-800:], level="ERROR", kind="run_error")
     finally:
         step["finished_at"] = now_iso()
-        step["harvest_backlog"] = harvest_backlog()
         save_state(state)
+        step["harvest_backlog"] = harvest_backlog()
         write_summary()
         try:
             meta = build_metadata.build()

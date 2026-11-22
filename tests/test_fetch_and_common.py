@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 
 import common
 import polite_fetcher as pf
@@ -78,6 +79,7 @@ def test_disk_levels_and_warning_tiers(tmp_path, monkeypatch):
 
 
 def test_404s_do_not_block_a_domain(monkeypatch):
+    monkeypatch.setattr(pf, "RUN_COUNTS", pf.Counter())
     monkeypatch.setattr(pf, "already_fetched", lambda: {})
     monkeypatch.setattr(pf, "polite_sleep", lambda *a: None)
     monkeypatch.setattr(pf, "log", lambda *a, **k: None)
@@ -114,3 +116,40 @@ def test_job_wait_counts_up_and_shows_run_progress(tmp_path, monkeypatch):
     s = job.wait(3)
     assert s["next"].endswith("job.py wait 4")
     assert s["progress"] == ["[11:21:00] run_start: run start", "[11:23:00] fetch: OK https://x/a.pdf"]
+
+
+POLICY = {"open_web": True, "known": ["nseindia.com", "sebi.gov.in"], "deny": ["youtube.com"],
+          "limits": {"nseindia.com": {"max_per_run": 2, "delay_s": [9, 9]},
+                     "default": {"max_per_run": 3, "delay_s": [1, 1]}}}
+
+
+def test_open_web_allows_new_sites_but_not_denied_ones():
+    assert pf.allowed("https://www.capitalmarket.com/news/delisting-x", POLICY)
+    assert not pf.allowed("https://m.youtube.com/watch?v=1", POLICY)
+    assert not pf.allowed("https://www.capitalmarket.com/x", {**POLICY, "open_web": False})
+    assert pf.limit_key("https://nsearchives.nseindia.com/a.pdf", POLICY) == "nseindia.com"
+    assert pf.limit_key("https://www.capitalmarket.com/a", POLICY) == "capitalmarket.com"
+
+
+def test_domain_budget_defers_and_uses_domain_delay(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(pf, "fetch_policy", lambda: POLICY)
+    monkeypatch.setattr(pf, "RUN_COUNTS", Counter())
+    monkeypatch.setattr(pf, "already_fetched", lambda: {})
+    monkeypatch.setattr(pf, "polite_sleep", lambda lo, hi: sleeps.append(lo))
+    monkeypatch.setattr(pf, "fetch_one", lambda s, u, t, h=None: {"quarantined": False, "http_status": 200,
+                                                                  "local_path": u})
+    nse = [f"https://nsearchives.nseindia.com/{i}.pdf" for i in range(4)]
+    f = pf.fetch_urls(nse + ["https://blog.example/a"], "2017", 10)
+    assert f["fetched_ok"] == 3 and f["deferred"] == nse[2:]
+    assert sleeps == [9, 1]  # NSE's long pause; the first request of a run does not wait
+
+
+def test_harvest_from_a_third_party_page_keeps_known_and_same_site_docs(tmp_path):
+    f = tmp_path / "page.html"
+    f.write_text("""<a href="https://nsearchives.nseindia.com/delisting_order.pdf">nse</a>
+<a href="/files/delisted-companies-2017.pdf">own</a>
+<a href="https://elsewhere.org/delisting.pdf">other</a>""")
+    links = pf.harvest_links(f, "https://www.capitalmarket.com/delisting-news", POLICY)
+    assert links == ["https://nsearchives.nseindia.com/delisting_order.pdf",
+                     "https://www.capitalmarket.com/files/delisted-companies-2017.pdf"]

@@ -103,3 +103,12 @@ def test_bse_only_delistings_go_to_their_own_file(tmp_path, monkeypatch):
     bse = list(csv.DictReader((tmp_path / "bse_only_delistings.csv").open()))
     assert [r["company_name"] for r in bse] == ["Adhunik Yarns Ltd"]
     assert [r["nse_symbol"] for r in master] == ["MANDUIND"]  # BSE notice joined the NSE company
+
+
+def test_merged_record_keeps_every_source_file():
+    a = _row(local_artifact_path="data/raw/master_lists/a.xlsx")
+    b = _row(local_artifact_path="data/raw/priority_2017/b.pdf", source_url="https://nseindia.com/b",
+             order_date="2017-05-01")
+    best = m.merge_group([a, b])
+    assert best["all_artifact_paths"] == "data/raw/priority_2017/b.pdf | data/raw/master_lists/a.xlsx"  # best first
+    assert best["source_count"] == 2

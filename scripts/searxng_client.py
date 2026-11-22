@@ -5,8 +5,8 @@ to parsing the HTML results page.
 
 Engine rotation: each request asks only `engines_per_query` engines (the ones rested longest), so no
 single engine sees every query. An engine that comes back rate-limited / CAPTCHA'd / denied is benched
-for a cooldown that depends on the reason, and one whose results never include an official domain
-(junk, e.g. Bing answering with unrelated forums) is benched too. State: data/metadata/engine_state.json.
+for a cooldown that depends on the reason, and one whose answers are junk (no result on a known source
+domain and none mentioning delisting, e.g. Bing answering with unrelated forums) is benched too. State: data/metadata/engine_state.json.
 Settings: the "search" block of config/query_plan.json.
 
 Examples:
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 
@@ -37,9 +38,18 @@ SEARCH_DEFAULTS = {
     # minutes an engine is benched, by the reason SearXNG reports (substring match, lower case)
     "cooldown_min": {"too many requests": 60, "suspended": 60, "captcha": 360, "access denied": 720,
                      "irrelevant": 360, "default": 120},
-    "irrelevant_after": 3,          # consecutive answers with no official-domain result -> benched
+    "irrelevant_after": 3,          # consecutive answers with no relevant result -> benched
     "query_delay_s": [20, 40],      # pause between queries (collect.py)
 }
+
+
+# A result is relevant if it is on a known source domain or its text is about delisting.
+RELEVANT_RESULT_RE = re.compile(r"delist|exit offer|reverse book|compulsor|nseindia|bseindia|sebi", re.I)
+
+
+def relevant(r: dict, domains) -> bool:
+    text = " ".join(str(r.get(k) or "") for k in ("url", "title", "content"))
+    return domain_matches(r.get("url", ""), domains) or bool(RELEVANT_RESULT_RE.search(text))
 
 
 class EnginesExhausted(RuntimeError):
@@ -106,13 +116,14 @@ class Rotation:
                 continue
             mine = [r for r in results if e in (r.get("engines") or [])]
             official = sum(domain_matches(r.get("url", ""), self.s["official_domains"]) for r in mine)
+            useful = sum(relevant(r, self.s["official_domains"]) for r in mine)
             st["results"] += len(mine)
             st["official"] += official
-            # empty or junk-only answers (no official domain) count toward benching the engine
-            st["irrelevant_streak"] = 0 if official else st["irrelevant_streak"] + 1
+            # empty or junk-only answers count toward benching the engine
+            st["irrelevant_streak"] = 0 if useful else st["irrelevant_streak"] + 1
             if st["irrelevant_streak"] >= self.s["irrelevant_after"]:
                 st["irrelevant_streak"] = 0
-                self.bench(e, f"irrelevant: {self.s['irrelevant_after']} answers in a row with no official-domain result")
+                self.bench(e, f"irrelevant: {self.s['irrelevant_after']} answers in a row with no relevant result")
         self.save()
 
     def report(self) -> dict:

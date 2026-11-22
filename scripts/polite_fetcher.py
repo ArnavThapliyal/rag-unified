@@ -1,7 +1,10 @@
 """Cached, rate-limited downloader.
 
 - Never fetches the same URL twice (checked against logs/fetch_manifest.jsonl).
-- Random 2-5s delay between requests; exponential backoff on 429/5xx.
+- Per-domain delay and per-run budget (config/query_plan.json "domain_limits"): NSE rate-limits hard,
+  so it gets long pauses and few requests per run; URLs over budget are deferred to a later run.
+- Any website may be fetched when "open_web" is true, except "deny_domains" (social media, video…).
+- Exponential backoff on 429/5xx.
 - Non-200 or empty responses go to data/quarantine/.
 - Every attempt is appended to logs/fetch_manifest.jsonl.
 
@@ -18,13 +21,14 @@ import mimetypes
 import re
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 
 from common import (
-    MANIFEST, NON_LISTING_RE, PRIMARY_DOMAINS, PROCEDURAL_RE, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, domain_of, emit, log,
+    CONFIG, MANIFEST, NON_LISTING_RE, PRIMARY_DOMAINS, PROCEDURAL_RE, QUARANTINE, ROOT, USER_AGENT, append_jsonl, domain_matches, domain_of, emit, log,
     now_iso, polite_sleep, raw_dir_for_tag, read_jsonl, sha256_bytes, sha256_text,
 )
 
@@ -43,21 +47,51 @@ CONTENT_EXT = {
 # No .zip: on BSE/NSE these are bundles of scanned newspaper notices (5–15 MB each, no extractable text).
 DOC_LINK_RE = re.compile(r"\.(pdf|xlsx?|csv)(\?|#|$)", re.I)
 RELEVANT_RE = re.compile(r"delist|exit|compuls|order|suspend|reverse.?book", re.I)
+DEFAULT_LIMITS = {"default": {"max_per_run": 15, "delay_s": [2, 5]}}
+RUN_COUNTS: Counter = Counter()  # requests per domain in this process (one collect.py run)
 
 
-def harvest_links(path: Path, page_url: str) -> list[str]:
-    """Document links (PDF/XLS/XLSX/CSV/ZIP) on official domains found in a downloaded HTML page.
-    On pages whose URL mentions delisting every document link is kept; elsewhere only links whose
-    URL or anchor text looks delisting-related."""
+def fetch_policy() -> dict:
+    """Which domains may be fetched, and how often, from config/query_plan.json."""
+    try:
+        plan = json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        plan = {}
+    return {"open_web": plan.get("open_web", False), "known": plan.get("fetch_domains", list(PRIMARY_DOMAINS)),
+            "deny": plan.get("deny_domains", []), "limits": {**DEFAULT_LIMITS, **plan.get("domain_limits", {})}}
+
+
+def allowed(url: str, policy: dict) -> bool:
+    if domain_matches(url, policy["deny"]):
+        return False
+    return policy["open_web"] or domain_matches(url, policy["known"])
+
+
+def limit_key(url: str, policy: dict) -> str:
+    """The domain_limits entry for a URL: a configured domain (subdomains count), else the host itself."""
+    return next((k for k in policy["limits"] if k != "default" and domain_matches(url, [k])), domain_of(url))
+
+
+def limits_for(key: str, policy: dict) -> dict:
+    return {**policy["limits"]["default"], **policy["limits"].get(key, {})}
+
+
+def harvest_links(path: Path, page_url: str, policy: dict | None = None) -> list[str]:
+    """Document links (PDF/XLS/XLSX/CSV) found in a downloaded HTML page, pointing to a known source
+    domain or to the page's own site. On pages whose URL mentions delisting every document link is
+    kept; elsewhere only links whose URL or anchor text looks delisting-related."""
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(path.read_text(encoding="utf-8", errors="ignore"), "lxml")
+    policy = policy or fetch_policy()
     page_relevant = bool(re.search(r"delist", page_url, re.I))
     out = []
     for a in soup.find_all("a", href=True):
         url = urljoin(page_url, a["href"].strip())
         url = re.sub(r"(?<!:)//+", "/", url)  # NSE links often contain '//web/...'
-        if not DOC_LINK_RE.search(urlparse(url).path) or not domain_matches(url, PRIMARY_DOMAINS):
+        if not DOC_LINK_RE.search(urlparse(url).path) or not allowed(url, policy):
+            continue
+        if not (domain_matches(url, policy["known"]) or domain_of(url) == domain_of(page_url)):
             continue
         fname = unquote(urlparse(url).path.rsplit("/", 1)[-1])
         if PROCEDURAL_RE.search(fname) or NON_LISTING_RE.search(fname):  # forms/SOPs, broker/member orders
@@ -131,10 +165,13 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvest
     return entry
 
 
-def urls_from_cache_file(path: Path, domains: list[str] | None) -> tuple[list[str], str | None]:
+def urls_from_cache_file(path: Path, domains: list[str] | dict | None) -> tuple[list[str], str | None]:
+    """Result URLs of a cached search, filtered by an allowlist of domains or a fetch_policy()."""
     d = json.loads(path.read_text(encoding="utf-8"))
     urls = [r["url"] for r in d.get("results", []) if r.get("url")]
-    if domains:
+    if isinstance(domains, dict):
+        urls = [u for u in urls if allowed(u, domains)]
+    elif domains:
         urls = [u for u in urls if domain_matches(u, domains)]
     return urls, d.get("year_tag")
 
@@ -143,8 +180,10 @@ def fetch_urls(urls: list[str], tag: str | None, limit: int,
                blocked_domains: set[str] | None = None, block_after: int = 3,
                harvested_from: str | None = None) -> dict:
     """Fetch up to `limit` not-yet-fetched URLs. Domains that fail `block_after` times in a row
-    (403/429/5xx/timeouts; 404/410 don't count) are added to `blocked_domains` and skipped."""
+    (403/429/5xx/timeouts; 404/410 don't count) are added to `blocked_domains` and skipped.
+    URLs whose domain used up its per-run budget are returned in `deferred` (not fetched)."""
     blocked = blocked_domains if blocked_domains is not None else set()
+    policy = fetch_policy()
     done = already_fetched()
     unique = list(dict.fromkeys(urls))
     pending = [u for u in unique if u not in done]
@@ -154,13 +193,19 @@ def fetch_urls(urls: list[str], tag: str | None, limit: int,
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-IN,en;q=0.9"})
     ok, quarantined, saved, fails = 0, 0, [], {}
-    newly_blocked = []
-    for i, url in enumerate(todo):
+    newly_blocked, deferred = [], []
+    for url in todo:
         d = domain_of(url)
         if d in blocked:
             continue
-        if i:
-            polite_sleep()
+        key = limit_key(url, policy)
+        lim = limits_for(key, policy)
+        if RUN_COUNTS[key] >= lim["max_per_run"]:
+            deferred.append(url)
+            continue
+        if RUN_COUNTS.total():
+            polite_sleep(*lim["delay_s"])
+        RUN_COUNTS[key] += 1
         e = fetch_one(session, url, tag, harvested_from)
         if e["quarantined"]:
             quarantined += 1
@@ -179,7 +224,7 @@ def fetch_urls(urls: list[str], tag: str | None, limit: int,
 
     return {"requested": len(unique), "skipped_cached": len(unique) - len(pending),
             "skipped_blocked": len(skipped_blocked), "fetched_ok": ok, "quarantined": quarantined,
-            "newly_blocked_domains": newly_blocked, "year_tag": tag, "saved": saved}
+            "newly_blocked_domains": newly_blocked, "deferred": deferred, "year_tag": tag, "saved": saved}
 
 
 def main() -> int:

@@ -13,6 +13,56 @@
     "thehindubusinessline.com",
     "financialexpress.com"
   ],
+  "_comment_sources": "open_web: fetch search results from ANY website (not only fetch_domains), except deny_domains. fetch_domains are the known sources: their links are harvested from any page, and records from them rank higher. The agent may append productive new websites (data/metadata/domain_registry.json, new=true, rows>0) to fetch_domains. domain_limits: requests per collect run and pause (seconds) before each request; URLs over budget are deferred to later --harvest-only runs. NSE rate-limits hard, so it gets few requests and long pauses.",
+  "open_web": true,
+  "deny_domains": [
+    "youtube.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "instagram.com",
+    "linkedin.com",
+    "reddit.com",
+    "quora.com",
+    "pinterest.com",
+    "t.me",
+    "telegram.me",
+    "whatsapp.com",
+    "play.google.com",
+    "apps.apple.com",
+    "steamcommunity.com",
+    "tiktok.com"
+  ],
+  "domain_limits": {
+    "nseindia.com": {
+      "max_per_run": 12,
+      "delay_s": [
+        10,
+        20
+      ]
+    },
+    "bseindia.com": {
+      "max_per_run": 20,
+      "delay_s": [
+        5,
+        10
+      ]
+    },
+    "sebi.gov.in": {
+      "max_per_run": 20,
+      "delay_s": [
+        4,
+        8
+      ]
+    },
+    "default": {
+      "max_per_run": 15,
+      "delay_s": [
+        2,
+        5
+      ]
+    }
+  },
   "fetch_limit_per_query": 8,
   "harvest_limit_per_page": 20,
   "block_domain_after_failures": 3,

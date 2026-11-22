@@ -20,7 +20,7 @@ Run every collection through the job runner (detached, survives the timeout):
 - `.venv/bin/python scripts/collect.py --dry-run` — pending queries per phase + harvest backlog
 - `job.py start --max-queries 8` — next 8 pending queries (search → fetch → harvest linked docs → parse → merge)
 - `job.py start --phase priority_2017` — one phase
-- `job.py start --harvest-only --max-harvest 40` — fetch documents linked from already-downloaded official pages
+- `job.py start --harvest-only --max-harvest 40` — fetch documents linked from already-downloaded pages, plus URLs deferred by a domain's per-run budget
 - `.venv/bin/python scripts/status_report.py --json` — indicators (incl. `disk`, `audit_errors`) + year × type grid
 - `.venv/bin/python scripts/audit_dataset.py` — data-quality audit of the dataset
 - `.venv/bin/python scripts/report_issue.py --kind <kind> --summary "<what is wrong, with counts>" --evidence <path>` —
@@ -33,7 +33,7 @@ Never read or edit the source of `scripts/`, `tests/`, `skills/`, `prompts/` or 
 need is in the scripts' JSON output: e.g. `collect.py --dry-run` shows `search_cooldown_min_left`), never edit `soul.md`, and never write ad-hoc
 `python -c` probes of the parser or the data. When something looks wrong, report it with
 `report_issue.py` (at most 3 `inspect_artifact.py` looks for evidence) and carry on collecting.
-The only file you may edit is `config/query_plan.json` (append to the `agent_added` phase).
+The only file you may edit is `config/query_plan.json` (append to the `agent_added` phase; append websites to `fetch_domains`).
 
 ## Individual steps (reference — the user's debugging tools; you don't need them)
 1. Discover — `scripts/searxng_client.py --query "<q>" --pages 2 --year-tag 2017` (skill: searxng-discovery)
@@ -51,6 +51,10 @@ The only file you may edit is `config/query_plan.json` (append to the `agent_add
 - No WAF/Akamai bypass, no headless-browser scraping, no removing delays. Blocked domains stay blocked.
 - Do not hand-edit `data/processed/*` or `data/metadata/*`. Re-run scripts instead.
 - To add searches, append to a phase named `agent_added` in `config/query_plan.json`; never delete queries.
+- Any website may be a source (`open_web`), not only NSE/BSE/SEBI. Records from other sites are marked
+  `NEEDS_REVIEW` (or `CORROBORATED_SECONDARY` for known news sites) — that's expected, not an anomaly.
+  Productive new websites (`indicators.new_domains_with_rows`) go into `fetch_domains`; never edit
+  `deny_domains` or `domain_limits`.
 - If collect.py stops with `low_disk_space`, stop working and log it — the user has to free space.
 - If collect.py stops with `search_engines_suspended`, don't retry searches (it extends the ban): finish any
   harvest backlog with `--harvest-only`, log it, and stop. `run_agent.sh` restarts after the cooldown.

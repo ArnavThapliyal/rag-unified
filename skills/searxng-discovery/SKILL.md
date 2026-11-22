@@ -15,7 +15,17 @@ description: Query patterns and pagination rules for finding NSE delisting sourc
 - `--list-cache` prints the cached queries so you don't repeat them.
 
 ## Query templates
-Replace `{Y}` with the year. Run the primary-source queries first.
+Replace `{Y}` with the year. Any website can be a source: NSE rate-limits hard (a few requests per run),
+so finding the same information elsewhere is valuable.
+
+**Open web (finds new websites — no `site:`)**
+- `list of companies delisted from NSE {Y}`
+- `"<company name>" delisted NSE` / `"<company name>" delisting exit price`
+- `compulsorily delisted companies {Y} list`
+- `delisting offer {Y} reverse book building result`
+
+**New websites** — for each site in `indicators.new_domains_with_rows` (`data/metadata/domain_registry.json`):
+- `site:<domain> delisted companies`, `site:<domain> delisting {Y}`
 
 **Primary (official)**
 - `site:nseindia.com delisting circular {Y}`
@@ -43,4 +53,5 @@ Replace `{Y}` with the year. Run the primary-source queries first.
 - One topic per query. Short queries (≤ 8 words) work best.
 - Don't paste search results into chat; read the summary and pass the cache file to `polite_fetcher.py`.
 - If SearXNG returns 0 results for a site: query, retry once without `site:` plus the domain name as a keyword.
+- Prefer open-web queries over more `site:nseindia.com` ones: the NSE fetch budget is small.
 - If the client reports `"mode": "html_fallback"`, JSON is disabled in SearXNG — tell the user.

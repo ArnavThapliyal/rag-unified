@@ -65,6 +65,10 @@ def print_indicators(meta: dict) -> None:
     mark = {"ok": "✓", "warn": "⚠ WARNING", "critical": "✖ CRITICAL"}[d["level"]]
     print(f" Disk: data/ {d['data_gb']} GB (warn at {d['warn_data_gb']:g} GB) | free {d['free_gb']} GB "
           f"(stop below {d['min_free_gb']:g} GB) {mark}")
+    if "source_domains" in ind:
+        nd = ind["new_domains_with_rows"]
+        print(f" Websites: {ind['source_domains']} fetched from, {ind['new_source_domains']} new"
+              + (f" — new with rows: {', '.join(nd[:6])}" if nd else "") + " (data/metadata/domain_registry.json)")
     print(f" Data audit: {ind['audit_errors']} errors, {ind['audit_warnings']} warnings "
           f"(data/metadata/dataset_audit.json)")
     eng = searxng_client.Rotation().report()

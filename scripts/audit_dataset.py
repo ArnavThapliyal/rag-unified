@@ -49,7 +49,8 @@ def audit(rows: list[dict]) -> dict:
         elif NON_LISTING_RE.search(r["source_url"]):
             flag(errors, "non_listing_source", r)
         lap = r.get("local_artifact_path")
-        if not lap or not (ROOT / lap).exists():
+        extra = [x for x in (r.get("all_artifact_paths") or "").split(" | ") if x]
+        if not lap or not all((ROOT / x).exists() for x in [lap, *extra]):
             flag(errors, "missing_artifact", r)
         if not r.get("order_date") and not r.get("effective_delisting_date"):
             flag(warnings, "no_date", r)
