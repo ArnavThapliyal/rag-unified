@@ -4,7 +4,7 @@
 #   scripts/run_agent.sh                         # default prompt: prompts/autonomous_collection.md
 #   scripts/run_agent.sh prompts/my_task.md      # custom prompt file
 #   CLINE_TIMEOUT=7200 scripts/run_agent.sh      # stop each session after 2 h (default: no limit)
-#   CLINE_MODEL=google/gemma-4-26b-a4b scripts/run_agent.sh   # other LM Studio model
+#   CLINE_MODEL=google/gemma-4-26b-a4b scripts/run_agent.sh   # other LM Studio model (or CLINE_MODEL= in .env)
 #   CLINE_MAX_RESTARTS=0 scripts/run_agent.sh    # don't auto-restart crashed sessions (default: 5)
 #
 # Uses LM Studio (localhost:1234) via Cline's lmstudio provider; LM Studio ignores the key.
@@ -28,6 +28,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PROMPT_FILE="${1:-prompts/autonomous_collection.md}"
 TIMEOUT="${CLINE_TIMEOUT:-}"   # empty = no limit (cline rejects --timeout 0)
+# CLINE_MODEL: environment, else the CLINE_MODEL line of .env (only that line is read: no secrets), else qwen
+if [ -z "${CLINE_MODEL:-}" ] && [ -f .env ]; then
+  CLINE_MODEL=$(grep -E '^CLINE_MODEL=' .env | tail -1 | cut -d= -f2- | tr -d "\"' " || true)
+fi
 MODEL="${CLINE_MODEL:-qwen/qwen3.8-27b}"
 MAX_RESTARTS="${CLINE_MAX_RESTARTS:-5}"
 MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-12}"  # search-engine suspensions to wait out

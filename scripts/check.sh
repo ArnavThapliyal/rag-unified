@@ -17,7 +17,7 @@ step "pyflakes"
 out=$("$PY" -m pyflakes scripts tests 2>&1) && ok || { bad; echo "$out"; }
 
 step "bash syntax"
-bash -n scripts/run_agent.sh scripts/check.sh && ok || bad
+bash -n scripts/run_agent.sh scripts/check.sh install.sh && ok || bad
 
 step "json configs"
 "$PY" -c "import json; [json.load(open(p)) for p in ('config/query_plan.json', 'package.json')]" && ok || bad

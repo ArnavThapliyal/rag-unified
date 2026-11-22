@@ -56,7 +56,42 @@ The only file the agent edits is `config/query_plan.json`, to append searches to
 ## Setup (one-time)
 
 ```bash
-git clone https://github.com/ArnavThapliyal/nse-delisted-comp && cd nse-delisted-comp
+git clone https://github.com/ArnavThapliyal/nse-delisted-comp.git
+cd nse-delisted-comp && ./install.sh
+```
+
+`install.sh` checks the prerequisites (Python 3.9+, and warns about missing git, Docker, npm, Homebrew or
+LM Studio), then starts a guided setup (`scripts/setup.py`, Python standard library only). Move through
+8 screens with the arrow keys; **the first option on every screen is the recommended one**, so Enter all
+the way through gives a working setup. The panel under the options shows exactly what the highlighted
+option will do and what is already in place.
+
+| Step | Recommended (first option) | Others |
+|---|---|---|
+| 1 · Python environment | create `.venv`, install `requirements.txt` | reuse `.venv` · skip |
+| 2 · Developer tools | install `requirements-dev.txt` (pytest, pyflakes) | skip |
+| 3 · SearXNG search | `docker compose up -d`, random secret written to `.env` | already running at :8082 · skip |
+| 4 · Search API keys | save to `~/.config/nse-delisted-comp/keys.env` (outside the repo, mode 600) | repo `.env` · skip |
+| 5 · OCR | install tesseract | skip |
+| 6 · Agent | `npm install` (Cline pinned to 3.0.75) | skip |
+| 7 · Agent model | `qwen/qwen3.8-27b` (saved as `CLINE_MODEL` in `.env`) | `google/gemma-4-26b-a4b` · keep current |
+| 8 · Finish | run `scripts/check.sh` | skip |
+
+Nothing changes until you confirm the summary. Steps already done are skipped, `.env` and the key file are
+backed up (`.bak`, `.bak1`, …) before they're written, an existing `SEARXNG_SECRET` is never replaced, and
+API keys are typed hidden and never printed (keys are refused for a `.env` tracked by git).
+**↑ / ↓** move · **⏎ / →** next · **← / b** back · **q** quit. Without a terminal UI it falls back to numbered
+prompts (blank = recommended).
+
+```bash
+./install.sh --defaults    # accept every recommended option, no questions (no key entry)
+./install.sh --dry-run     # show what would happen, change nothing
+```
+
+<details>
+<summary>Manual setup (what the wizard does)</summary>
+
+```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python pipeline
 .venv/bin/pip install -r requirements-dev.txt                         # pytest + pyflakes
 npm install                                                           # Cline CLI (pinned 3.0.75)
@@ -70,6 +105,8 @@ curl -s "localhost:8082/search?q=test&format=json" | head -c 80          # expec
 # Optional reference copy of Cline's source (git-ignored)
 git clone --depth 1 https://github.com/cline/cline vendor/cline
 ```
+
+</details>
 
 Requirements:
 
@@ -271,6 +308,7 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | Script | Purpose |
 |---|---|
 | `scripts/run_agent.sh` | Launch Cline unattended. Checks that SearXNG and LM Studio are up, logs the session, prints the dashboard at the end. |
+| `install.sh`, `scripts/setup.py` | Guided first-time setup (recommended option first on every screen; `--defaults`, `--dry-run`) |
 | `scripts/collect.py` | The resumable run: Discovery here, with the fetch and process workers alongside (`--stage all\|discover\|fetch\|process\|drain`) |
 | `scripts/docket.py` | The persistent queue between the stages; `--stats`, `--list`, `--promote`, `--retry`, `--unblock` |
 | `scripts/fetch_worker.py` | Downloads docket items, interleaving domains within their budgets and delays; files linked documents |
