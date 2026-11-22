@@ -98,8 +98,9 @@ class Rotation:
 
     def bench(self, engine: str, reason: str) -> None:
         r = reason.lower()
-        minutes = next((m for k, m in self.s["cooldown_min"].items() if k != "default" and k in r),
-                       self.s["cooldown_min"]["default"])
+        # "Suspended: access denied" matches both keys: the longer cooldown wins
+        minutes = max((m for k, m in self.s["cooldown_min"].items() if k != "default" and k in r),
+                      default=self.s["cooldown_min"]["default"])
         st = self.state[engine]
         st.update(benched_until=time.time() + 60 * minutes, reason=reason)
         log(f"engine {engine} benched {minutes} min: {reason}", level="WARN", kind="engine_benched",

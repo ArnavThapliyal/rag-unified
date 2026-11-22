@@ -50,3 +50,8 @@ def test_relevant_results_from_new_sites_do_not_bench(rot):
     for _ in range(4):
         rot.record(["a"], news, [])
     assert "a" in rot.usable()
+
+
+def test_longest_matching_cooldown_wins(rot):
+    rot.record(["a"], [], [["a", "Suspended: access denied"]])
+    assert rot.state["a"]["benched_until"] == pytest.approx(time.time() + 12 * 3600, abs=5)
