@@ -35,6 +35,8 @@ def audit(rows: list[dict]) -> dict:
 
     ids = Counter(r.get("record_id") for r in rows)
     by_company = defaultdict(list)
+    # A fresh clone has the dataset but not the raw downloads (data/raw/ is git-ignored): that is not an error.
+    raw_present = any(p.is_file() and not p.name.startswith(".") for p in (ROOT / "data" / "raw").rglob("*"))
     for r in rows:
         if ids[r.get("record_id")] > 1:
             flag(errors, "duplicate_record_id", r)
@@ -52,8 +54,10 @@ def audit(rows: list[dict]) -> dict:
             flag(errors, "non_listing_source", r)
         lap = r.get("local_artifact_path")
         extra = [x for x in (r.get("all_artifact_paths") or "").split(" | ") if x]
-        if not lap or not all((ROOT / x).exists() for x in [lap, *extra]):
+        if not lap:
             flag(errors, "missing_artifact", r)
+        elif not all((ROOT / x).exists() for x in [lap, *extra]):
+            flag(errors if raw_present else warnings, "missing_artifact" if raw_present else "raw_files_not_downloaded", r)
         if not r.get("order_date") and not r.get("effective_delisting_date"):
             flag(warnings, "no_date", r)
         y = r.get("calendar_year")

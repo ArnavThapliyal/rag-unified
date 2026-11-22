@@ -80,3 +80,16 @@ def test_verify_detects_order_only_split_event():
             {"record_id": "b", "company_name": "Zylog Systems Ltd", "order_date": "",
              "effective_delisting_date": "2021-02-24"}]
     assert v.split_events(rows) == {"a"}
+
+
+def test_fresh_clone_without_raw_files_only_warns(tmp_path, monkeypatch):
+    import audit_dataset as ad
+    monkeypatch.setattr(ad, "ROOT", tmp_path)
+    row = {"record_id": "a", "company_name": "ABC Ltd", "isin": None, "delisting_type": "COMPULSORY",
+           "confidence_status": "VERIFIED_PRIMARY", "source_url": "https://nseindia.com/x",
+           "local_artifact_path": "data/raw/master_lists/x.xlsx", "order_date": "2017-01-01", "calendar_year": "2017"}
+    res = ad.audit([row])
+    assert "missing_artifact" not in res["errors"] and "raw_files_not_downloaded" in res["warnings"]
+    (tmp_path / "data" / "raw" / "master_lists").mkdir(parents=True)
+    (tmp_path / "data" / "raw" / "master_lists" / "other.pdf").write_bytes(b"x")
+    assert "missing_artifact" in ad.audit([row])["errors"]
