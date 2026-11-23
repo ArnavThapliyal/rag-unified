@@ -3,7 +3,8 @@
 Reads  data/processed/parsed/*.jsonl
 Writes data/processed/nse_delisted_master.csv / .jsonl, priority_years_audit.csv, bse_only_delistings.csv,
        out_of_scope_delistings.csv (years outside 2006-2026), proposed_delisting_leads.csv,
-       record_sources.json (which sources back which record_id: keeps ids stable across runs)
+       record_sources.json (which sources back which record_id: keeps ids stable across runs),
+       extraction_review.csv (candidates an extractor refused, e.g. OCR garbage names: for a human, never merged)
 All files are written atomically (readers never see a half-written file).
 
 Reconciliation, in two steps:
@@ -320,6 +321,10 @@ def load_previous_sources() -> dict[str, str]:
     return {s: rid for rid, srcs in data.items() for s in srcs}
 
 
+REVIEW_FIELDS = ["reason", "candidate_name", "trailing_name", "isin", "extraction", "line", "source_url",
+                 "local_artifact_path"]
+
+
 def render_csv(rows: list[dict], fields: list[str]) -> str:
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore", lineterminator="\r\n")
@@ -380,6 +385,10 @@ def main() -> int:
         if r["_key"] and r["_key"] not in leads:
             r["already_in_master"] = bool({("I", r["isin"]), ("N", r["_name"]), ("S", r["_sym"])} & known)
             leads[r["_key"]] = r
+    review_path = PARSED / "_review.json"
+    review = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
+    review_rows = [c for _f, cands in sorted(review.items()) for c in cands]
+    atomic_write_text(PROCESSED / "extraction_review.csv", render_csv(review_rows, REVIEW_FIELDS))
     lead_fields = ["company_name", "nse_symbol", "isin", "source_url", "local_artifact_path", "already_in_master"]
     atomic_write_text(PROCESSED / "proposed_delisting_leads.csv",
                       render_csv(sorted(leads.values(), key=lambda r: r["company_name"] or ""), lead_fields))
@@ -390,7 +399,7 @@ def main() -> int:
         "duplicates_merged": len(rows) - len(merged), "priority_records": len(priority),
         "records_with_source_conflicts": sum(bool(r["source_conflicts"]) for r in master),
         "records_with_review_flags": sum(bool(r["review_flags"]) for r in master),
-        "ambiguous_company_rows": len(ambiguous), "record_ids_kept_from_previous_run": ids_kept,
+        "ambiguous_company_rows": len(ambiguous), "extraction_review_candidates": len(review_rows), "record_ids_kept_from_previous_run": ids_kept,
         "by_confidence": {c: sum(r["confidence_status"] == c for r in master) for c in CONF_RANK},
     }
     log(f"merge in={len(raw)} out={len(master)} priority={len(priority)}", kind="merge", **summary)

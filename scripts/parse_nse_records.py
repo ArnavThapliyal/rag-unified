@@ -41,6 +41,10 @@ SYMBOL_RE = re.compile(r"\b[A-Z][A-Z0-9&\-]{1,19}\b")
 ORDINAL_RE = re.compile(r"(?<=\d)(?:st|nd|rd|th)\b", re.I)
 NOT_SYMBOLS = {"LTD", "LIMITED", "INE", "THE", "AND", "OF", "ISIN", "CIN", "NSE", "BSE", "SYMBOL", "SCRIP", "CODE",
                "FACE", "VALUE", "RS", "INR", "NO", "WEF", "DATE", "NAME", "COMPANY"}
+# Institutions named with their abbreviation in orders ("Central Depository Services (India) Limited (CDSL)",
+# "BSE Limited (BSE)"): never the symbol of the company the order is about.
+INSTITUTION_SYMBOLS = {"BSE", "NSE", "NSEIL", "MSEI", "CDSL", "NSDL", "SEBI", "RBI", "NCLT", "NCLAT", "IBBI", "MCA",
+                       "ROC", "SAT", "CSE", "DSE", "ASE", "MSE", "NSCCL", "ICCL", "SCORES", "IBC"}
 MAX_ROWS_PER_FILE = 5000   # the largest real delisting list has a few hundred rows; more means a wrong table
 
 
@@ -319,21 +323,57 @@ def clean_text_name(before: str) -> str:
     return t.strip(" |,-:\t")
 
 
-def rows_from_text(text: str, doc_type: str) -> list[dict]:
+PRIVATE_COMPANY_RE = re.compile(r"\b(?:Private|Pvt\.?)\s+(?:Limited|Ltd\b)", re.I)
+SYMBOL_LABEL_RE = re.compile(r"(?:NSE\s*|Trading\s*)?Symbol\s*[:\-]?\s*([A-Z][A-Z0-9&\-]{1,19})\b")
+# The words right after an ISIN: a symbol ("INE002A01018 ABCIND 08 June 2017") or the start of another company's
+# name ("IN9509C01016 ... ADHARSHILA CAPITAL SERVICES LIMITED")
+AFTER_WORDS_RE = re.compile(r"\s*[|,;:\-]?\s*((?:[A-Z][A-Za-z0-9&.\-]*\s*){1,8})")
+TRAILING_COMPANY_RE = re.compile(r"\b([A-Z][A-Z0-9&.\-]+(?:\s+[A-Z][A-Z0-9&.\-]+){0,8}\s+(?:LIMITED|LTD\.?))(?![A-Za-z])")
+
+
+def text_name_ok(name: str) -> bool:
+    """A company name read from a free-text line, where an ISIN alone is weak evidence (newspaper clippings,
+    multi-column OCR): it must pass name_ok, look like a company and not be a private company."""
+    return (name_ok(name, True) and not LABEL_RE.search(name) and bool(COMPANY_RE.search(name))
+            and not PRIVATE_COMPANY_RE.search(name))
+
+
+def rows_from_text(text: str, doc_type: str, review: list | None = None) -> list[dict]:
+    """Rows from lines holding a valid ISIN. The name is the text before the ISIN; the symbol is a labelled
+    "Symbol: X" or the single token right after the ISIN, never a word of the name. A line whose name is not a
+    plausible company is not a record; if it carried a candidate name it goes to `review` (never silently kept)."""
     out = []
     for line in text.splitlines():
         m = ISIN_RE.search(line.upper())
         if not m or not isin_valid(m.group(0)):
             continue
-        before = clean_text_name(line[: m.start()])
-        syms = [s for s in SYMBOL_RE.findall(line[m.end():]) + SYMBOL_RE.findall(before)
-                if s not in NOT_SYMBOLS and not ISIN_RE.fullmatch(s) and not s.isdigit()]
+        raw_before, after = line[: m.start()], line[m.end():]
+        before = clean_text_name(raw_before)
+        label = SYMBOL_LABEL_RE.search(line)
+        sym = label.group(1) if label else None
+        words = AFTER_WORDS_RE.match(after)
+        trailing = TRAILING_COMPANY_RE.search(after)
+        if not sym and words and not COMPANY_RE.search(words.group(1)):
+            tok = words.group(1).split()[0]
+            if SYMBOL_RE.fullmatch(tok) and tok not in NOT_SYMBOLS and tok not in INSTITUTION_SYMBOLS:
+                sym = tok
+        if sym and (sym in NOT_SYMBOLS or sym in INSTITUTION_SYMBOLS
+                    or sym.lower() in {w.lower() for w in before.split()}):
+            sym = None
         dates = [d for d in (to_iso(x) for x in DATE_RE.findall(line)) if d]
-        if not before or not name_ok(before, True) or LABEL_RE.search(before):
-            continue  # an ISIN without a usable company name on the line is not a record
+        if not before or not text_name_ok(before):
+            # an ISIN without a usable company name on the line is not a record
+            if review is not None and (before or trailing):
+                reason = ("company_name_after_isin_ambiguous" if trailing and not COMPANY_RE.search(before)
+                          else "private_company" if PRIVATE_COMPANY_RE.search(before)
+                          else "name_not_company_like")
+                review.append({"extraction": "text", "reason": reason, "candidate_name": before or None,
+                               "trailing_name": trailing.group(1) if trailing else None,
+                               "isin": m.group(0), "line": line.strip()[:300]})
+            continue
         out.append({
             "company_name": before or None,
-            "nse_symbol": syms[0] if syms else None,
+            "nse_symbol": sym,
             "isin": m.group(0),
             "order_date": None,
             "effective_delisting_date": dates[0] if dates else None,
@@ -365,7 +405,27 @@ COMPULSORY_REG_RE = re.compile(r"Regulation\s+(?:22|32)\s*\(\s*1\s*\)|compulsor"
 EFFECTIVE_RE = re.compile(r"delisted[^.]{0,120}?(?:w\.e\.f\.?|with effect from)\s+([A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})", re.I)
 
 
-def rows_from_order(text: str) -> list[dict]:
+# Court cause-title roles: "In the matter of X ......Operational Creditor Vs. Y ......Corporate Debtor" names
+# litigants, not a company an exchange delisted.
+PARTY_ROLE_RE = re.compile(r"\.{2,}\s*(?:Operational|Financial)\s+Creditor|\.{2,}\s*Corporate\s+Debtor|"
+                           r"\.{2,}\s*(?:Applicant|Respondent|Petitioner)|[\u2026]+\s*(?:Operational|Financial|"
+                           r"Corporate|Applicant|Respondent|Petitioner)", re.I)
+
+
+def order_symbol(text: str, name: str) -> str | None:
+    """The symbol in "<name> Limited (SYMBOL)": only next to the company's own name, never an institution's
+    abbreviation ("Central Depository Services (India) Limited (CDSL)")."""
+    first = next((w for w in re.findall(r"[A-Za-z]{3,}", name) if w.lower() not in {"the", "shri", "sri"}), None)
+    for s in NAME_SYMBOL_RE.finditer(text):
+        sym = s.group(1)
+        if sym in INSTITUTION_SYMBOLS or sym in NOT_SYMBOLS:
+            continue
+        if first and re.search(rf"\b{re.escape(first)}\b", text[max(0, s.start() - 120): s.start()], re.I):
+            return sym
+    return None
+
+
+def rows_from_order(text: str, review: list | None = None) -> list[dict]:
     """Single-company Delisting Committee / exchange orders: one row from the order template."""
     head = text[:4000]
     if not re.search(r"Delisting Committee|In the matter of", head, re.I) or MEMBER_ORDER_RE.search(head):
@@ -374,11 +434,16 @@ def rows_from_order(text: str) -> list[dict]:
     if not m:
         return []
     name = re.sub(r"\s+", " ", m.group(1)).strip(" :,-")
-    symbol = m.group(2)
+    symbol = m.group(2) if m.group(2) not in INSTITUTION_SYMBOLS else None
     if not symbol:
-        s = NAME_SYMBOL_RE.search(text)
-        symbol = s.group(1) if s else None
+        symbol = order_symbol(text, name)
     if not name_ok(name, bool(symbol)):  # "In the matter of Non-Obtaining of SCORES Authentication"
+        return []
+    if PRIVATE_COMPANY_RE.search(name) or PARTY_ROLE_RE.search(head[m.start(): m.end() + 200]):
+        if review is not None:  # a court case caption or a private company: not an exchange delisting
+            review.append({"extraction": "order", "reason": "private_company" if PRIVATE_COMPANY_RE.search(name)
+                           else "court_case_party", "candidate_name": name, "trailing_name": None,
+                           "isin": None, "line": re.sub(r"\s+", " ", head[m.start(): m.end() + 120])[:300]})
         return []
     dates = ORDER_DATE_RE.findall(text[-3000:])
     found = list(DECISION_RE.finditer(text))
@@ -458,7 +523,7 @@ def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: 
 
 def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
     ext = path.suffix.lower()
-    stats = {"tables_seen": 0, "no_text": False, "title": "", "text_head": ""}
+    stats = {"tables_seen": 0, "no_text": False, "title": "", "text_head": "", "review": []}
     rows: list[dict] = []
     text = ""
     if ext in (".xlsx", ".xls"):
@@ -488,9 +553,9 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
         for df in tables:
             rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
         if not rows:
-            rows = rows_from_text(text, doc_type)
+            rows = rows_from_text(text, doc_type, stats["review"])
         if not rows:
-            rows = rows_from_order(text)
+            rows = rows_from_order(text, stats["review"])
     elif ext == ".pdf":
         import pdfplumber
         tables = []
@@ -510,17 +575,17 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
             stats["ocr_errors"] = ocr_errors
             stats["text_head"] = text[:2000]
         doc_type = classify(text)
-        order_rows = rows_from_order(text) or rows_from_letter(text)
+        order_rows = rows_from_order(text, stats["review"]) or rows_from_letter(text)
         if order_rows:  # order template wins: its tables are compliance lists, not delisted companies
             rows = order_rows
         else:
             for df in tables:
                 rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
             if not rows:
-                rows = rows_from_text(text, doc_type)
+                rows = rows_from_text(text, doc_type, stats["review"])
     elif ext == ".txt":
         text = path.read_text(encoding="utf-8", errors="ignore")
-        rows = rows_from_text(text, classify(text))
+        rows = rows_from_text(text, classify(text), stats["review"])
     else:
         stats["skipped_ext"] = ext
     stats["text_head"] = text[:6000]
@@ -557,6 +622,9 @@ def main() -> int:
     version = parser_version()
     relevance_path = PARSED / "_relevance.json"
     relevance = json.loads(relevance_path.read_text(encoding="utf-8")) if relevance_path.exists() else {}
+    # candidates an extractor refused (OCR garbage, a name after the ISIN, court captions): kept for a human
+    review_path = PARSED / "_review.json"
+    review = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
     summary = {"files_seen": len(files), "parsed": 0, "skipped_up_to_date": 0, "rows": 0,
                "irrelevant_files": 0, "zero_row_files": [], "no_text": [], "errors": [], "known_errors": [],
                "ocr_page_errors": []}
@@ -589,6 +657,10 @@ def main() -> int:
         if not relevant:
             rows = []
             summary["irrelevant_files"] += 1
+        if relevant and stats.get("review"):
+            review[rel] = [dict(c, source_url=src, local_artifact_path=rel) for c in stats["review"]]
+        else:
+            review.pop(rel, None)
         conf = confidence_for_url(src) if src else "NEEDS_REVIEW"
         if stats.get("ocr"):  # OCR can misread names and dates: a human should confirm
             conf = "NEEDS_REVIEW"
@@ -614,6 +686,8 @@ def main() -> int:
             summary["no_text"].append(rel)
 
     atomic_write_text(relevance_path, json.dumps(relevance, indent=1))
+    atomic_write_text(review_path, json.dumps(review, indent=1, ensure_ascii=False))
+    summary["review_candidates"] = sum(len(v) for v in review.values())
     atomic_write_text(errors_path, json.dumps(known, indent=1))
     summary["zero_row_files"] = summary["zero_row_files"][:20]
     log(f"parsed={summary['parsed']} rows={summary['rows']} errors={len(summary['errors'])}",
