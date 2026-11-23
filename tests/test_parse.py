@@ -227,7 +227,9 @@ def test_ocr_is_cached_and_skipped_without_tesseract(tmp_path, monkeypatch):
 
 
 def test_order_title_that_is_not_a_company_is_skipped():
-    assert p.rows_from_order("Before the Whole Time Member\\nIn the matter of Non- Obtaining of SCORES Authentication\\n") == []
+    # a real newline: with a literal backslash-n the matter line never matched and name_ok was never reached
+    text = "Before the Whole Time Member\nIn the matter of Non- Obtaining of SCORES Authentication\n"
+    assert p.MATTER_RE.search(text) and p.rows_from_order(text) == []
 
 
 def test_debt_isins_and_sentence_fragments_are_not_companies():

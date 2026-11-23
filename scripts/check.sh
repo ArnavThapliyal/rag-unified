@@ -17,7 +17,7 @@ step "pyflakes"
 out=$("$PY" -m pyflakes scripts tests 2>&1) && ok || { bad; echo "$out"; }
 
 step "bash syntax"
-bash -n scripts/run_agent.sh scripts/check.sh install.sh && ok || bad
+bash -n scripts/run_agent.sh scripts/check.sh install.sh .cline/hooks/PreToolUse.sh && ok || bad
 
 step "json configs"
 "$PY" -c "import json; [json.load(open(p)) for p in ('config/query_plan.json', 'package.json')]" && ok || bad
@@ -26,7 +26,10 @@ step "pytest"
 out=$("$PY" -m pytest -q tests 2>&1) && ok "$(echo "$out" | tail -1)" || { bad; echo "$out" | tail -30; }
 
 step "dataset audit"
-out=$(cd scripts && "$PY" audit_dataset.py) && ok "$out" || bad "$out"
+# read-only: the report goes to a temp file, the tracked data/metadata/dataset_audit.json is not rewritten
+audit_tmp=$(mktemp "${TMPDIR:-/tmp}/nse_audit.XXXXXX")
+out=$(cd scripts && "$PY" audit_dataset.py --out "$audit_tmp") && ok "$out" || bad "$out"
+rm -f "$audit_tmp"
 
 step "disk"
 d=$(cd scripts && "$PY" -c "import common; d = common.disk_status(); print(d['level'], d['data_gb'], 'GB data,', d['free_gb'], 'GB free')")

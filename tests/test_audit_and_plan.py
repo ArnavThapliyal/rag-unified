@@ -55,6 +55,7 @@ def test_query_plan_is_valid():
 def test_report_issue_dedupes_open_issues(tmp_path, monkeypatch):
     import report_issue as ri
     monkeypatch.setattr(ri, "ISSUES", tmp_path / "issues.jsonl")
+    monkeypatch.setattr(ri, "LOGS", tmp_path)   # the lock file too: tests never write the real logs/
     monkeypatch.setattr(ri, "log", lambda *a, **k: None)
     assert ri.report("zero_rows", "3 orders gave 0 rows", ["a.pdf"]) == {"reported": True, "id": 1}
     again = ri.report("zero_rows", "3 orders gave 0 rows", ["b.pdf"])
