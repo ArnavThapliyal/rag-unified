@@ -12,6 +12,11 @@
   (company-tagged documents beyond it are parked). A cap reached, or another stage's stop file, ends the run.
 - Stop reasons: max_files_reached, docket_exhausted (nothing left to download), sources_exhausted (items left,
   but each is over its domain's per-run budget, on a blocked domain or waiting out a retry backoff).
+- Network outages: a download that got no HTTP response triggers a connectivity probe (TCP connect, no data, to
+  config "network_probe_hosts", e.g. public DNS resolvers on :443). If no probe host answers either, our own
+  connection is down: the item is handed back without counting an attempt, its domain is not penalised, and the
+  worker stops with network_unavailable. If the probe succeeds, the failure is the URL's/site's and counts. Without
+  probe hosts configured, 4 network errors in a row on 2+ domains mean an outage.
 - Official URLs from the focus window (15-20 years ago) that are gone (404/410) are looked up in the Wayback
   Machine; a snapshot found is filed as an "archive" item.
 - --follow FILE: keep waiting for new items while FILE exists (Discovery creates it and deletes it when
@@ -28,6 +33,7 @@ import errno
 import json
 import os
 import random
+import socket
 import sys
 import time
 import traceback
@@ -47,6 +53,54 @@ DISK_CHECK_S = 60
 NETWORK_DOWN_AFTER = 4       # network errors in a row on 2+ domains: our connection is down, not the sites
 MAX_CONSECUTIVE_ERRORS = 3   # unexpected errors in a row: something is broken, stop and say so
 FAILURE_REASONS = ("worker_errors",)
+PROBE_TIMEOUT_S = 3
+PROBE_CACHE_S = 30           # one probe answers for every failure within 30 s
+
+
+def probe_hosts(p: dict) -> list[tuple[str, int]]:
+    """Hosts the connectivity probe tries. With an HTTP(S) proxy configured, downloads go through it, so the
+    proxy is what must be reachable (and the probe then never leaves through any other route)."""
+    from urllib.parse import urlparse
+    proxy = next((os.environ[k] for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+                  if os.environ.get(k)), None)
+    if proxy and p.get("network_probe_hosts"):
+        u = urlparse(proxy if "://" in proxy else f"http://{proxy}")
+        if u.hostname:
+            return [(u.hostname, u.port or (443 if u.scheme == "https" else 80))]
+    out = []
+    for h in p.get("network_probe_hosts") or []:
+        host, _, port = str(h).rpartition(":") if ":" in str(h) else (str(h), "", "443")
+        try:
+            out.append((host, int(port)))
+        except ValueError:
+            continue
+    return out
+
+
+def network_up(hosts: list[tuple[str, int]], _cache: dict = {}) -> bool | None:  # noqa: B006 (deliberate cache)
+    """True if any probe host accepts a TCP connection (nothing is sent), False if none does, None if no probe
+    hosts are configured (unknown)."""
+    if not hosts:
+        return None
+    key = tuple(hosts)
+    hit = _cache.get(key)
+    if hit and time.time() - hit[1] < PROBE_CACHE_S:
+        return hit[0]
+    up = False
+    for host, port in hosts:
+        try:
+            socket.create_connection((host, port), timeout=PROBE_TIMEOUT_S).close()
+            up = True
+            break
+        except OSError:
+            continue
+    _cache[key] = (up, time.time())
+    return up
+
+
+def network_failure(e: dict) -> bool:
+    """No HTTP response at all (DNS, connect, timeout): could be the site or our own connection."""
+    return e.get("http_status") is None and bool(e.get("error")) and not e.get("permanent") and not e.get("soft_block")
 
 
 def alive(pid: int | None) -> bool:
@@ -109,7 +163,8 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
     used = polite_fetcher.RUN_COUNTS          # requests per key in this run
     disk_state = dk.get_meta("disk_state", {})
     stop = stop or run_limits.StopFile(None)
-    out = {"fetched_ok": 0, "failed": 0, "dead": 0, "harvested_new": 0, "archive_filed": 0,
+    hosts = probe_hosts(p)
+    out = {"fetched_ok": 0, "failed": 0, "dead": 0, "harvested_new": 0, "archive_filed": 0, "outage_released": 0,
            "parked_company_cap": 0, "newly_blocked_domains": [], "over_budget_domains": [], "worker_errors": 0,
            "last_worker_error": None, "stop_reason": None}
     t0, last_disk, consecutive, inflight = time.time(), 0.0, 0, None
@@ -190,6 +245,15 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
                 continue
             inflight, consecutive = None, 0
             next_ok[key] = time.time() + random.uniform(*lim["delay_s"])
+            if network_failure(e) and network_up(hosts) is False:
+                dk.release(c["url"])          # our connection is down: the site was never reached
+                used[key] -= 1
+                out["outage_released"] += 1
+                out["stop_reason"] = "network_unavailable"
+                log(f"fetch worker: no response from {domain_of(c['url'])} and no probe host reachable: "
+                    "our network is down; item handed back, no attempt counted", level="ERROR",
+                    kind="network_unavailable", url=c["url"])
+                break
             status = dk.done_fetch(c["url"], e)
             ok = status == "fetched"
             out["fetched_ok" if ok else status] += 1

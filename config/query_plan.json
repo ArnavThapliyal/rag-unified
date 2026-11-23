@@ -89,6 +89,7 @@
   },
   "harvest_limit_per_page": 20,
   "block_domain_after_failures": 3,
+  "network_probe_hosts": ["1.1.1.1:443", "8.8.8.8:443", "9.9.9.9:443"],
   "disk": {
     "warn_data_gb": 5,
     "warn_step_gb": 5,
