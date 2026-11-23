@@ -31,6 +31,7 @@ See [`RECONCILIATION.md`](RECONCILIATION.md). Main points:
 | P1 Data integrity | D1–D16, O10 OCR failures, O11 parse retry loop, D12 atomic writes | `98aca2a` |
 | P2 Resilience | O1 domain blocks, O2 retry classes, network outage, O3 starvation, O4 company tags, O5/O6 search, O7 disk, O8 size cap and soft blocks | `c8d0480` |
 | P3 Tooling | read-only `check.sh`, test isolation, a test that tested nothing | `014115d` |
+| P1 follow-up | 3 data issues found by the dataset preview (§8) | `beb3fc1` |
 | Deferred | D17 (header-date back-fill), S9 (restart grep), O12/O13 (accepted) | §9 |
 
 ## 3. Implemented fixes
@@ -235,5 +236,14 @@ Passing tests show that the defects found are fixed. They do not show that no ot
 ## Commit history (`35df260..remediation/qa-phase1`)
 
 ```
-COMMITS_PLACEHOLDER
+beb3fc1 Data integrity follow-up from the dataset preview: reason-cell and sheet-level types, order/effective tolerance, BSE-only routing
+014115d Tooling: read-only check.sh audit, isolated issue lock in tests, a parser test that tests what it claims
+c8d0480 Operational resilience: expiring domain blocks, failure classes, outages, starvation, size cap, soft blocks (O1-O8)
+98aca2a Data integrity: dates, false entities, type classification, entity/event reconciliation, atomic outputs, audit (D1-D16, O10, O11)
+4673bb4 Execution reliability: worker crashes fail the run, poison items die, Retry-After dates (S5-S8, O9)
+2bfacea Security: allowlist-grammar tool guard with shell-free execution (S1-S4)
+88a5533 Remediation phase 0: import QA adversarial suite (unmodified) and the audit reconciliation matrix
+(next) Remediation report and evidence
+
+Code and docs diff (excluding qa/ and remediation/): 32 files changed, 2853 insertions(+), 417 deletions(-)
 ```
