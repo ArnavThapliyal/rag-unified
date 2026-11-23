@@ -1,0 +1,14 @@
+# E2E tests of tests/test_rc_agent_supervisor.py run against the OLD scripts/run_agent.sh (commit dbf54c0),
+# fake Cline emitting Cline's compact JSON. Result: 6 failed, 1 passed.
+# Behavioural failures (the defect):
+#  - test_e2e_model_text_does_not_stop_or_cool_down: model text "stop_reason: search_engines_suspended" made the
+#    old script wait ("search engines benched — waiting 31 min"); killed by the test timeout (assert (-9, 1) == (0, 2)).
+#  - test_e2e_low_disk_from_run_summary_stops: collect.py's structured stop_reason low_disk_space was ignored;
+#    the old script treated the session as completed (exit 0, expected stop with failure).
+#  - test_e2e_search_suspension_cooldown_limit: with the cooldown limit reached the old script exited 0 as if
+#    the job were done (new: exit 1, reason "cooldown limit reached").
+# Wording-only failures (old behaviour equivalent, messages differ):
+#  - test_e2e_normal_completion ("stopping: completed" message), test_e2e_persistent_failure_gives_up
+#    ("session failed 3 times" vs "gave up after 3"), test_e2e_interrupted_session_is_not_restarted (old prints
+#    "interrupted — not restarting", which contains "restarting").
+6 failed, 1 passed, 14 deselected in 187.84s (0:03:07)

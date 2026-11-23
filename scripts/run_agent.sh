@@ -10,13 +10,15 @@
 # Uses LM Studio (localhost:1234) via Cline's lmstudio provider; LM Studio ignores the key.
 # Extra Cline flags can be passed with CLINE_EXTRA_ARGS (e.g. "--thinking low").
 #
-# A session that ends abnormally is restarted with a fresh session; all progress lives in data/ and
-# logs/, so the new session resumes the plan. Abnormal = non-zero exit (e.g. Cline's hub daemon
-# restarted: "session not found") or a run that did not finish "completed" (e.g. Cline's loop
-# detection aborts after 5 identical tool calls, which still exits 0).
-# A completed run, Ctrl-C, low disk, or SearXNG/LM Studio being down stops the loop. If the session stopped
-# because every search provider is used up (search_engines_suspended), it waits until the first engine is
-# usable again (5 min – 12 h) and starts a new session (up to CLINE_MAX_COOLDOWNS times).
+# What happens after a session is decided by scripts/agent_supervisor.py from structured state only: Cline's
+# exit status, the finishReason of Cline's own run_result event, and the run summaries (logs/runs/*.json)
+# that collect.py wrote during the session. Never from the model's text.
+# - Abnormal end (non-zero exit, e.g. Cline's hub daemon restarted: "session not found"; or no "completed"
+#   finish, e.g. Cline's loop detection aborting, which still exits 0): a fresh session, up to
+#   CLINE_MAX_RESTARTS times, CLINE_RESTART_DELAY s apart (default 15). All progress lives in data/ and logs/.
+# - Last collection run stopped for search_engines_suspended: wait until the first engine is usable again
+#   (5 min – 12 h), then a fresh session (up to CLINE_MAX_COOLDOWNS times).
+# - Completed, Ctrl-C, low_disk_space, network_unavailable, or SearXNG/LM Studio down: the loop stops.
 #
 # Raw Cline events  -> logs/agent_sessions/<session>.jsonl
 # Readable progress -> terminal + logs/agent_run.log (tool calls, errors, completion)
@@ -35,6 +37,7 @@ fi
 MODEL="${CLINE_MODEL:-qwen/qwen3.8-27b}"
 MAX_RESTARTS="${CLINE_MAX_RESTARTS:-5}"
 MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-12}"  # search-engine suspensions to wait out
+RESTART_DELAY="${CLINE_RESTART_DELAY:-15}"
 PY="$ROOT/.venv/bin/python"
 
 [ -f "$PROMPT_FILE" ] || { echo "prompt file not found: $PROMPT_FILE" >&2; exit 2; }
@@ -86,34 +89,36 @@ while :; do
   status=${PIPESTATUS[0]}
   set -e
 
-  finish=$(grep -o '"type":"run_result","finishReason":"[a-z_]*' "$OUT" | tail -1 | sed 's/.*"finishReason":"//' || true)
-  "$PY" scripts/common.py log "agent session $SESSION ended (exit $status, finish: ${finish:-none})" >/dev/null
-  [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
-  if grep -q 'stop_reason[^a-z]*search_engines_suspended' "$OUT" && [ "$cooldowns" -lt "$MAX_COOLDOWNS" ]; then
-    cooldowns=$((cooldowns + 1))
-    # wait until the first search engine is usable again (collect.py --dry-run knows), 5 min .. 12 h
-    mins=$("$PY" scripts/collect.py --dry-run 2>/dev/null | "$PY" -c "import json,sys; print(json.load(sys.stdin)['search_cooldown_min_left'])" || echo 30)
-    mins=$(( mins < 5 ? 5 : (mins > 720 ? 720 : mins + 1) ))
-    echo "■ search engines benched — waiting $mins min, then a fresh session ($cooldowns/$MAX_COOLDOWNS)"
-    "$PY" scripts/common.py log "search engines benched: waiting $mins min before session restart ($cooldowns/$MAX_COOLDOWNS)" >/dev/null
-    for _ in $(seq $((mins * 6))); do sleep 10; [ "$interrupted" -eq 1 ] && break; done
-    [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
-    continue
-  fi
-  [ "$status" -eq 0 ] && [ "$finish" = "completed" ] && break
-  grep -q '"low_disk_space"' "$OUT" && { echo "■ stopped for low disk space — not restarting"; break; }
-  attempt=$((attempt + 1))
-  if [ "$attempt" -gt "$MAX_RESTARTS" ]; then
-    echo "■ session failed $attempt times — giving up (see $OUT)"
-    break
-  fi
-  reason=$(grep -o '"type":"error","message":"[^"]*' "$OUT" | tail -1 | sed 's/.*"message":"//' || true)
-  [ -z "$reason" ] && [ -n "$finish" ] && reason="finish: $finish"
-  echo "■ session ended abnormally (exit $status${reason:+: $reason}) — restarting in 15 s ($attempt/$MAX_RESTARTS)"
-  "$PY" scripts/common.py log "auto-restart $attempt/$MAX_RESTARTS after exit $status${reason:+: $reason}" >/dev/null
-  sleep 15
-  [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
+  "$PY" scripts/common.py log "agent session $SESSION ended (exit $status)" >/dev/null
+  intr_flag=()
+  [ "$interrupted" -eq 1 ] && intr_flag=(--interrupted)
+  decision=$("$PY" scripts/agent_supervisor.py decide --session "$SESSION" --log "$OUT" --exit-code "$status" \
+      --attempt "$attempt" --max-restarts "$MAX_RESTARTS" --cooldowns "$cooldowns" --max-cooldowns "$MAX_COOLDOWNS" \
+      "${intr_flag[@]+"${intr_flag[@]}"}") \
+    || decision='{"action": "stop", "reason": "supervisor failed", "wait_min": 0}'
+  IFS=$'\t' read -r action reason mins < <(printf '%s' "$decision" | "$PY" -c \
+    'import json,sys; d=json.load(sys.stdin); print(d["action"], d["reason"].replace("\t", " "), d["wait_min"], sep="\t")')
+  "$PY" scripts/common.py log "agent supervisor: $action ($reason)" >/dev/null
+  case "$action" in
+    cooldown)
+      cooldowns=$((cooldowns + 1))
+      echo "■ search engines benched — waiting $mins min, then a fresh session ($cooldowns/$MAX_COOLDOWNS)"
+      for _ in $(seq $((mins * 6))); do sleep 10; [ "$interrupted" -eq 1 ] && break; done
+      [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
+      ;;
+    restart)
+      attempt=$((attempt + 1))
+      echo "■ session ended abnormally ($reason) — restarting in ${RESTART_DELAY} s ($attempt/$MAX_RESTARTS)"
+      sleep "$RESTART_DELAY"
+      [ "$interrupted" -eq 1 ] && { echo "■ interrupted — not restarting"; break; }
+      ;;
+    *)
+      echo "■ stopping: $reason"
+      case "$reason" in completed) status=0 ;; interrupted) status=130 ;; *) [ "$status" -eq 0 ] && status=1 ;; esac
+      break
+      ;;
+  esac
 done
 
-"$PY" scripts/status_report.py | head -16
+{ "$PY" scripts/status_report.py | head -16; } || true   # a report problem (or SIGPIPE from head) never changes the exit code
 exit "$status"
