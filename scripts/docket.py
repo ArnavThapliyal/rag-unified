@@ -19,7 +19,11 @@ Item status:
   failed    download failed; retried with backoff (30 min, 2 h, 8 h) until MAX_ATTEMPTS
   dead      gave up: missing (404/410/other 4xx), or MAX_ATTEMPTS failures
   parse_error  the parser raised on the file (reported, not retried until the parser changes)
-Domains that fail repeatedly are blocked here (`domains` table); their items wait, untouched.
+Failure classes: 400/401/404/410/… dead at once; 403, 429 and soft-block pages are refusals, retried with long
+backoff (2 h, 8 h, then daily, up to MAX_THROTTLED_ATTEMPTS); network errors and 5xx are retried with backoff
+(30 min, 2 h, 8 h, up to MAX_ATTEMPTS). A domain that refuses (403/429/5xx/soft block) `block_domain_after_failures`
+times in a row is blocked for 6 h, then 24 h, then 72 h: blocks expire. Timeouts and connection errors never block
+a domain (a local network outage is not the site's fault; the fetch worker stops with network_unavailable).
 
 Stored in data/docket.sqlite (git-ignored; data/metadata/docket_stats.json is the tracked summary).
 
@@ -45,7 +49,14 @@ from common import atomic_write_text, DATA, METADATA, PARSED, PRIORITY_YEARS, do
 
 DB = DATA / "docket.sqlite"
 STATS = METADATA / "docket_stats.json"
-MAX_ATTEMPTS = 4
+MAX_ATTEMPTS = 4                    # network errors, 5xx, empty bodies
+MAX_THROTTLED_ATTEMPTS = 10         # 403 / 429 / soft blocks: the server is refusing for now, not "missing"
+THROTTLE_BACKOFF_MIN = [120, 480, 1440]   # 2 h, 8 h, then daily
+BLOCK_HOURS = [6, 24, 72]           # a domain's 1st, 2nd, 3rd+ block (expires; the domain is then tried again)
+LEGACY_BLOCK_S = 86400              # blocks recorded without an expiry (older dockets) end a day after they began
+CANDIDATES_PER_DOMAIN = 25          # every ready domain gets a place in the candidate list (no starvation)
+DEFINITIVE_STATUSES = {400, 401, 404, 405, 410, 414, 451}   # the URL is wrong or gone: dead at once
+THROTTLE_STATUSES = {403, 429}
 MAX_LEASE_CRASHES = 2      # a worker died while fetching it this often: a poison item, give up
 BACKOFF_MIN = [30, 120, 480]       # after failure 1, 2, 3
 LEASE_S = 15 * 60
@@ -66,7 +77,7 @@ CREATE INDEX IF NOT EXISTS items_queue ON items (status, priority DESC, discover
 CREATE INDEX IF NOT EXISTS items_path ON items (local_path);
 CREATE TABLE IF NOT EXISTS domains (
   domain TEXT PRIMARY KEY, blocked INTEGER DEFAULT 0, consecutive_fails INTEGER DEFAULT 0,
-  reason TEXT, blocked_at REAL);
+  reason TEXT, blocked_at REAL, blocked_until REAL, block_count INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 """
 
@@ -89,6 +100,11 @@ def priority(url: str, kind: str, year_tag: str | None, evidence: bool, known: l
     return p
 
 
+# domains blocked right now (expired blocks don't count); one parameter: now
+BLOCKED_NOW = ("SELECT domain FROM domains WHERE blocked=1 AND "
+               f"COALESCE(blocked_until, COALESCE(blocked_at, 0) + {LEGACY_BLOCK_S}) > ?")
+
+
 class Docket:
     def __init__(self, path: Path | None = None):
         self.path = path or DB
@@ -102,6 +118,10 @@ class Docket:
         for col, typ in (("company", "TEXT"), ("company_name", "TEXT"), ("crashes", "INTEGER DEFAULT 0")):
             if col not in cols:  # dockets created by older versions
                 self.db.execute(f"ALTER TABLE items ADD COLUMN {col} {typ}")
+        dcols = {r["name"] for r in self.db.execute("PRAGMA table_info(domains)")}
+        for col, typ in (("blocked_until", "REAL"), ("block_count", "INTEGER DEFAULT 0")):
+            if col not in dcols:
+                self.db.execute(f"ALTER TABLE domains ADD COLUMN {col} {typ}")
         self.db.execute("CREATE INDEX IF NOT EXISTS items_company ON items (company)")
         self.focus = historical.window()
 
@@ -136,14 +156,20 @@ class Docket:
             for it in items:
                 url = it["url"]
                 row = db.execute("SELECT status FROM items WHERE url=?", (url,)).fetchone()
+                text = f"{it.get('title') or ''} {it.get('snippet') or ''} {url}"
+                ev = bool(EVIDENCE_RE.search(text))
                 if row:
                     out["already_known"] += 1
+                    # keep the better metadata: a company tag, delisting evidence, a higher priority (never overwrite)
+                    db.execute("UPDATE items SET company=COALESCE(company, ?), company_name=COALESCE(company_name, ?),"
+                               " evidence=MAX(evidence, ?), priority=MAX(priority, ?), updated_at=? WHERE url=?",
+                               (it.get("company"), it.get("company_name"), int(ev),
+                                priority(url, it.get("kind", "search"), it.get("year_tag"), ev, known, it.get("rank"),
+                                         self.focus), now, url))
                     if row["status"] == "parked" and not it.get("parked"):
                         db.execute("UPDATE items SET status='pending', updated_at=? WHERE url=?", (now, url))
                         out["promoted"] += 1
                     continue
-                text = f"{it.get('title') or ''} {it.get('snippet') or ''} {url}"
-                ev = bool(EVIDENCE_RE.search(text))
                 status, http, path = ("parked" if it.get("parked") else "pending"), None, None
                 m = (fetched or {}).get(url)
                 if m:
@@ -166,20 +192,24 @@ class Docket:
 
     # --- fetch side -----------------------------------------------------------------------------
     def blocked(self) -> set[str]:
-        return {r["domain"] for r in self.db.execute("SELECT domain FROM domains WHERE blocked=1")}
+        """Domains blocked right now (expired blocks are over)."""
+        return {r["domain"] for r in self.db.execute(BLOCKED_NOW, (time.time(),))}
 
-    def candidates(self, limit: int = 300) -> list[sqlite3.Row]:
-        """Items a fetch worker may take now, best first (blocked domains excluded)."""
+    def candidates(self, limit: int = 1000, per_domain: int = CANDIDATES_PER_DOMAIN) -> list[sqlite3.Row]:
+        """Items a fetch worker may take now, best first, at most per_domain per domain, so that a domain waiting
+        out its delay or over its budget never hides the ready items of other domains."""
         now = time.time()
         return self.db.execute(
-            "SELECT * FROM items WHERE ((status IN ('pending','failed') AND next_attempt_at<=?)"
+            "SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY domain ORDER BY priority DESC, discovered_at) rn"
+            " FROM items WHERE ((status IN ('pending','failed') AND next_attempt_at<=?)"
             " OR (status='fetching' AND lease_until<?))"
-            " AND domain NOT IN (SELECT domain FROM domains WHERE blocked=1)"
-            " ORDER BY priority DESC, discovered_at LIMIT ?", (now, now, limit)).fetchall()
+            f" AND domain NOT IN ({BLOCKED_NOW})) WHERE rn<=?"
+            " ORDER BY priority DESC, discovered_at LIMIT ?", (now, now, now, per_domain, limit)).fetchall()
 
     def next_retry_at(self) -> float | None:
+        now = time.time()
         r = self.db.execute("SELECT MIN(next_attempt_at) t FROM items WHERE status IN ('pending','failed')"
-                            " AND domain NOT IN (SELECT domain FROM domains WHERE blocked=1)").fetchone()
+                            f" AND domain NOT IN ({BLOCKED_NOW})", (now,)).fetchone()
         return r["t"]
 
     def lease(self, url: str) -> bool:
@@ -231,10 +261,15 @@ class Docket:
             if ok:
                 status, nxt, err = "fetched", 0, None
             else:
-                err = entry.get("error") or (f"http {st}" if st else "no response") + \
-                    (" (empty body)" if st == 200 else "")
-                definitive = isinstance(st, int) and 400 <= st < 500 and st != 429
-                if definitive or attempts >= MAX_ATTEMPTS:
+                err = entry.get("error") or ("soft block page" if entry.get("soft_block") else
+                                             (f"http {st}" if st else "no response") + (" (empty body)" if st == 200 else ""))
+                kind = failure_class(entry)
+                if kind == "definitive":
+                    status, nxt = "dead", 0
+                elif kind == "throttled":
+                    status, nxt = ("dead", 0) if attempts >= MAX_THROTTLED_ATTEMPTS else \
+                        ("failed", now + 60 * THROTTLE_BACKOFF_MIN[min(attempts, len(THROTTLE_BACKOFF_MIN)) - 1])
+                elif attempts >= MAX_ATTEMPTS:
                     status, nxt = "dead", 0
                 else:
                     status, nxt = "failed", now + 60 * BACKOFF_MIN[min(attempts, len(BACKOFF_MIN)) - 1]
@@ -245,28 +280,46 @@ class Docket:
         return status
 
     def domain_result(self, domain: str, ok: bool, http_status, block_after: int) -> bool:
-        """Track consecutive failures per domain (404/410 don't count). True if it just got blocked."""
-        if not ok and http_status in (404, 410):
+        """Track consecutive refusals per domain: 403/429/5xx (soft blocks are passed as 403). Missing pages
+        (404/410…) and network errors (http_status None) don't count. A block expires (6 h, 24 h, 72 h); a success
+        clears it. True if the domain just got blocked."""
+        refusal = isinstance(http_status, int) and (http_status in THROTTLE_STATUSES or http_status >= 500)
+        if not ok and not refusal:
             return False
+        now = time.time()
         with self.txn() as db:
             db.execute("INSERT OR IGNORE INTO domains (domain) VALUES (?)", (domain,))
             if ok:
-                db.execute("UPDATE domains SET consecutive_fails=0 WHERE domain=?", (domain,))
+                db.execute("UPDATE domains SET consecutive_fails=0, blocked=0 WHERE domain=?", (domain,))
                 return False
             db.execute("UPDATE domains SET consecutive_fails=consecutive_fails+1 WHERE domain=?", (domain,))
-            r = db.execute("SELECT consecutive_fails, blocked FROM domains WHERE domain=?", (domain,)).fetchone()
-            if r["consecutive_fails"] >= block_after and not r["blocked"]:
-                db.execute("UPDATE domains SET blocked=1, reason=?, blocked_at=? WHERE domain=?",
-                           (f"{r['consecutive_fails']} consecutive failures (last: {http_status})", time.time(), domain))
+            r = db.execute("SELECT consecutive_fails, blocked, blocked_until, blocked_at, block_count FROM domains"
+                           " WHERE domain=?", (domain,)).fetchone()
+            active = r["blocked"] and (r["blocked_until"] or (r["blocked_at"] or 0) + LEGACY_BLOCK_S) > now
+            if r["consecutive_fails"] >= block_after and not active:
+                n = (r["block_count"] or 0) + 1
+                hours = BLOCK_HOURS[min(n, len(BLOCK_HOURS)) - 1]
+                db.execute("UPDATE domains SET blocked=1, reason=?, blocked_at=?, blocked_until=?, block_count=?,"
+                           " consecutive_fails=0 WHERE domain=?",
+                           (f"{r['consecutive_fails']} refusals in a row (last: http {http_status}); block #{n} for {hours} h",
+                            now, now + hours * 3600, n, domain))
                 return True
         return False
 
-    def block(self, domain: str, reason: str) -> None:
-        self.db.execute("INSERT INTO domains (domain, blocked, reason, blocked_at) VALUES (?,1,?,?) "
-                        "ON CONFLICT(domain) DO UPDATE SET blocked=1, reason=excluded.reason", (domain, reason, time.time()))
+    def block(self, domain: str, reason: str, hours: float = LEGACY_BLOCK_S / 3600) -> None:
+        now = time.time()
+        self.db.execute("INSERT INTO domains (domain, blocked, reason, blocked_at, blocked_until) VALUES (?,1,?,?,?) "
+                        "ON CONFLICT(domain) DO UPDATE SET blocked=1, reason=excluded.reason, blocked_at=excluded.blocked_at,"
+                        " blocked_until=excluded.blocked_until", (domain, reason, now, now + hours * 3600))
 
     def unblock(self, domain: str) -> int:
         return self.db.execute("UPDATE domains SET blocked=0, consecutive_fails=0 WHERE domain=?", (domain,)).rowcount
+
+    def refund_attempt(self, url: str, retry_in_s: float = 600) -> None:
+        """Undo the attempt a network outage cost an item (the site was never reached): retry it soon."""
+        self.db.execute("UPDATE items SET attempts=MAX(attempts-1, 0), status=CASE WHEN attempts-1>0 THEN 'failed'"
+                        " ELSE 'pending' END, next_attempt_at=?, updated_at=? WHERE url=? AND status IN ('failed','dead')",
+                        (time.time() + retry_in_s, time.time(), url))
 
     def park(self, url: str, reason: str) -> None:
         self.db.execute("UPDATE items SET status='parked', lease_until=0, last_error=?, updated_at=? WHERE url=?",
@@ -328,9 +381,9 @@ class Docket:
         by_status = {r["status"]: r["n"] for r in q("SELECT status, COUNT(*) n FROM items GROUP BY status")}
         now = time.time()
         ready = q("SELECT COUNT(*) n FROM items WHERE status IN ('pending','failed') AND next_attempt_at<=?"
-                  " AND domain NOT IN (SELECT domain FROM domains WHERE blocked=1)", (now,)).fetchone()["n"]
+                  f" AND domain NOT IN ({BLOCKED_NOW})", (now, now)).fetchone()["n"]
         waiting_blocked = q("SELECT COUNT(*) n FROM items WHERE status IN ('pending','failed')"
-                            " AND domain IN (SELECT domain FROM domains WHERE blocked=1)").fetchone()["n"]
+                            f" AND domain IN ({BLOCKED_NOW})", (now,)).fetchone()["n"]
         top = [dict(r) for r in q("SELECT domain, COUNT(*) n FROM items WHERE status IN ('pending','failed')"
                                   " GROUP BY domain ORDER BY n DESC LIMIT 8")]
         dead = [dict(r) for r in q("SELECT COALESCE(last_error,'?') reason, COUNT(*) n FROM items WHERE status='dead'"
@@ -373,6 +426,18 @@ class Docket:
             sql += " AND domain=?"
             args.append(domain)
         return self.db.execute(sql, args).rowcount
+
+
+def failure_class(entry: dict) -> str:
+    """definitive (dead now) | throttled (long backoff) | transient (normal backoff)."""
+    st = entry.get("http_status")
+    if entry.get("permanent"):
+        return "definitive"
+    if entry.get("soft_block") or st in THROTTLE_STATUSES:
+        return "throttled"
+    if isinstance(st, int) and (st in DEFINITIVE_STATUSES or (400 <= st < 500 and st not in (408, 425))):
+        return "definitive"
+    return "transient"
 
 
 def import_existing(dk: Docket) -> dict | None:

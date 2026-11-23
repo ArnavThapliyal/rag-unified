@@ -21,7 +21,7 @@ from pathlib import Path
 import common
 import docket
 import run_limits
-from common import atomic_write_text, ROOT, emit, log
+from common import atomic_write_text, ROOT, check_disk, emit, log
 
 POLL_S = 10
 
@@ -58,12 +58,16 @@ def run(batch: int, follow: int | None, max_companies: int | None = None, record
     stop = stop or run_limits.StopFile(None)
     dk = docket.open_docket()
     out = {"batches": 0, "parsed_files": 0, "parsed_rows": 0, "parse_errors": 0, "records_after": None,
-           "stop_reason": None}
+           "stop_reason": None, "partials_removed": common.cleanup_partials([common.PROCESSED, common.METADATA])}
+    disk_state: dict = {}
     try:
         while True:
             waiting = dk.fetched_count()
             upstream = alive(follow)
             if waiting and (waiting >= batch or not upstream):
+                if check_disk(disk_state)["level"] == "critical":   # parsing and OCR write files too
+                    out["stop_reason"] = "low_disk_space"
+                    break
                 r = process_once(dk)
                 out["batches"] += 1
                 for k in ("parsed_files", "parsed_rows", "parse_errors"):

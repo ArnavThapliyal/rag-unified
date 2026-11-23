@@ -44,6 +44,7 @@ from common import atomic_write_text, CONFIG, ROOT, USER_AGENT, check_disk, doma
 
 IDLE_POLL_S = 5
 DISK_CHECK_S = 60
+NETWORK_DOWN_AFTER = 4       # network errors in a row on 2+ domains: our connection is down, not the sites
 MAX_CONSECUTIVE_ERRORS = 3   # unexpected errors in a row: something is broken, stop and say so
 FAILURE_REASONS = ("worker_errors",)
 
@@ -112,6 +113,8 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
            "parked_company_cap": 0, "newly_blocked_domains": [], "over_budget_domains": [], "worker_errors": 0,
            "last_worker_error": None, "stop_reason": None}
     t0, last_disk, consecutive, inflight = time.time(), 0.0, 0, None
+    net_streak: list[tuple[str, str]] = []
+    out["partials_removed"] = common.cleanup_partials([common.RAW, common.QUARANTINE])
     try:
         while True:
             if max_files and out["fetched_ok"] >= max_files:
@@ -190,7 +193,18 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
             status = dk.done_fetch(c["url"], e)
             ok = status == "fetched"
             out["fetched_ok" if ok else status] += 1
-            if dk.domain_result(domain_of(c["url"]), ok, e.get("http_status"), block_after):
+            if not ok and e.get("http_status") is None and e.get("error"):
+                net_streak.append((c["url"], domain_of(c["url"])))
+            else:
+                net_streak = []
+            if len(net_streak) >= NETWORK_DOWN_AFTER and len({d for _, d in net_streak}) >= 2:
+                for u, _ in net_streak:       # the sites were never reached: those attempts don't count
+                    dk.refund_attempt(u)
+                out["stop_reason"] = "network_unavailable"
+                log(f"fetch worker: {len(net_streak)} network errors in a row on {len({d for _, d in net_streak})} "
+                    f"domains: stopping (network down?)", level="ERROR", kind="network_unavailable")
+                break
+            if dk.domain_result(domain_of(c["url"]), ok, 403 if e.get("soft_block") else e.get("http_status"), block_after):
                 out["newly_blocked_domains"].append(domain_of(c["url"]))
                 log(f"domain blocked after {block_after} consecutive failures: {domain_of(c['url'])}",
                     level="WARN", kind="domain_blocked", domain=domain_of(c["url"]))

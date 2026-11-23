@@ -428,8 +428,10 @@ def main() -> int:
                     newly_blocked_domains=f.get("newly_blocked_domains", []), fetch_stop_reason=f.get("stop_reason"),
                     parsed_files=pr.get("parsed_files", 0), parsed_rows=pr.get("parsed_rows", 0),
                     parse_errors=pr.get("parse_errors", 0), process_stop_reason=pr.get("stop_reason"))
-        if f.get("stop_reason") == "low_disk_space":
+        if "low_disk_space" in (f.get("stop_reason"), pr.get("stop_reason")):
             step.update(status="stopped", stop_reason="low_disk_space")
+        elif f.get("stop_reason") == "network_unavailable":
+            step.update(status="stopped", stop_reason="network_unavailable")
         elif failed and step["status"] in ("completed", "running"):
             # a worker crashed or failed: the run failed, whatever discovery did (agent: "job failed" rule)
             step.update(status="error", stop_reason=failed)

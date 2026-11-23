@@ -16,6 +16,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import mimetypes
 import re
@@ -36,6 +37,11 @@ from common import (
 
 MAX_RETRIES = 4
 RETRY_AFTER_CAP_S = 120
+DEFAULT_MAX_DOWNLOAD_MB = 40     # config "max_download_mb"; the largest real delisting document is a few MB
+DOC_URL_RE = re.compile(r"\.(pdf|xlsx?|csv|zip)$", re.I)
+# Block / challenge pages that WAFs serve with status 200 instead of the document
+WAF_RE = re.compile(rb"access denied|request unsuccessful|incapsula|attention required|cf-browser-verification|"
+                    rb"captcha|are you a robot|reference #\d", re.I)
 CONTENT_EXT = {
     "application/pdf": ".pdf",
     "text/html": ".html",
@@ -144,17 +150,61 @@ def retry_after(value) -> int | None:
     return max(0, int(dt.timestamp() - time.time()))
 
 
+@functools.lru_cache(maxsize=1)
+def max_download_bytes() -> int:
+    try:
+        mb = float(json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8")).get("max_download_mb")
+                   or DEFAULT_MAX_DOWNLOAD_MB)
+    except (OSError, ValueError, TypeError):
+        mb = DEFAULT_MAX_DOWNLOAD_MB
+    return int(mb * 1e6)
+
+
+def read_body(r, cap: int) -> tuple[bytes, bool]:
+    """The response body, streamed, stopping as soon as it exceeds cap bytes: (body, too_large)."""
+    cl = str(r.headers.get("Content-Length") or "")
+    if cl.isdigit() and int(cl) > cap:
+        return b"", True
+    if hasattr(r, "iter_content"):
+        buf = bytearray()
+        for chunk in r.iter_content(64 * 1024):
+            buf += chunk
+            if len(buf) > cap:
+                return b"", True
+        return bytes(buf), False
+    body = r.content
+    return (b"", True) if len(body) > cap else (body, False)
+
+
+def soft_block(url: str, ctype: str, body: bytes) -> str | None:
+    """Why a 200 response is a block page rather than the document, or None."""
+    head = body[:5000]
+    is_html = head.lstrip()[:15].lower().startswith((b"<!doctype html", b"<html")) or "html" in (ctype or "").lower()
+    if not is_html or body.startswith(b"%PDF"):
+        return None
+    if DOC_URL_RE.search(urlparse(url).path):
+        return "an HTML page was served for a document URL"
+    if len(body) < 30_000 and WAF_RE.search(head):
+        return "a block/challenge page (WAF)"
+    return None
+
+
 def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvested_from: str | None = None) -> dict:
     """GET with up to MAX_RETRIES attempts for 429/5xx/network errors (Retry-After honoured, capped; no sleep
     after the last attempt). The manifest entry records the last outcome: http_status of the last response
     (None if the last attempt got no response), `error` for a network failure, `last_http_status` for the
     last HTTP error seen before it."""
-    status, body, ctype, err, last_http = None, b"", "", None, None
+    status, body, ctype, err, last_http, too_large = None, b"", "", None, None, False
+    cap = max_download_bytes()
     for attempt in range(MAX_RETRIES):
         final = attempt == MAX_RETRIES - 1
         try:
-            r = session.get(url, timeout=45, allow_redirects=True)
-            status, body, ctype, err = r.status_code, r.content, r.headers.get("Content-Type", ""), None
+            r = session.get(url, timeout=45, allow_redirects=True, stream=True)
+            status, ctype, err = r.status_code, r.headers.get("Content-Type", ""), None
+            try:
+                body, too_large = (b"", False) if status == 429 or status >= 500 else read_body(r, cap)
+            finally:
+                getattr(r, "close", lambda: None)()
             if status == 429 or status >= 500:
                 last_http = status
                 if not final:
@@ -166,8 +216,9 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvest
             if not final:
                 time.sleep(2 ** (attempt + 2))
 
+    blocked = soft_block(url, ctype, body) if status == 200 and body else None
     digest = sha256_bytes(body) if body else None
-    ok = status == 200 and len(body) > 0
+    ok = status == 200 and len(body) > 0 and not blocked and not too_large
     base = sha256_text(url)[:16]
     ext = pick_ext(url, ctype)
     target_dir = raw_dir_for_tag(year_tag) if ok else QUARANTINE
@@ -186,6 +237,10 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvest
     }
     if harvested_from:
         entry["harvested_from"] = harvested_from
+    if too_large:
+        entry.update(permanent=True, error=f"too large (> {cap // 1_000_000} MB, config max_download_mb)")
+    if blocked:
+        entry.update(soft_block=True, error=f"soft block: {blocked}")
     if err and status is None:
         entry["error"] = err
         if last_http:

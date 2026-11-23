@@ -63,6 +63,8 @@ files, new companies, documents per company); they are the user's settings, neve
   and the last two cycles added 0 new records; or
 - Search unavailable (collect.py returns `search_unavailable` / `search_errors`) twice in a row; or
 - collect.py returns `stop_reason: low_disk_space` (the user must free disk space — stop immediately); or
+- collect.py returns `stop_reason: network_unavailable` (this machine lost its connection — report it once with
+  `--kind fetch` and stop; the docket keeps every item, nothing is lost); or
 - collect.py returns `stop_reason: search_engines_suspended` (every search provider is rate-limited, benched or out of its daily limit). If the
   harvest backlog is > 0, finish it with `--harvest-only` first; then log it and stop. Don't retry searches —
   `run_agent.sh` waits out the cooldown and starts a fresh session; or

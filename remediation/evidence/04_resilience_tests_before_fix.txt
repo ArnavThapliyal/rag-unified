@@ -1,0 +1,35 @@
+>       assert st == "failed"
+E       AssertionError: assert 'dead' == 'failed'
+E         - failed
+>       assert st == "failed"
+E       AssertionError: assert 'dead' == 'failed'
+E         - failed
+E       AssertionError: assert 'failed' == 'dead'
+E         + failed
+  ⇣ failed   None https://www.nseindia.com/0.pdf
+  ⇣ failed   None https://www.nseindia.com/1.pdf
+  ⇣ failed   None https://www.bseindia.com/0.pdf
+  ⇣ failed   None https://www.bseindia.com/1.pdf
+  ⇣ failed   None https://www.bseindia.com/2.pdf
+FAILED tests/test_operational_resilience.py::test_timeouts_and_connection_errors_never_block_a_domain
+FAILED tests/test_operational_resilience.py::test_server_refusals_block_temporarily_and_blocks_expire
+FAILED tests/test_operational_resilience.py::test_repeated_blocks_last_longer_and_success_clears
+FAILED tests/test_operational_resilience.py::test_legacy_blocks_without_an_expiry_expire_after_a_day
+FAILED tests/test_operational_resilience.py::test_throttling_is_retried_with_long_backoff_not_killed[403]
+FAILED tests/test_operational_resilience.py::test_throttling_is_retried_with_long_backoff_not_killed[429]
+FAILED tests/test_operational_resilience.py::test_permanent_problems_are_dead_at_once
+FAILED tests/test_operational_resilience.py::test_candidates_include_every_ready_domain
+FAILED tests/test_operational_resilience.py::test_over_budget_domain_does_not_end_the_run_early
+FAILED tests/test_operational_resilience.py::test_network_outage_stops_the_worker_without_using_up_attempts
+FAILED tests/test_operational_resilience.py::test_refiling_adds_the_company_tag
+FAILED tests/test_operational_resilience.py::test_empty_answer_falls_back_to_the_next_provider
+FAILED tests/test_operational_resilience.py::test_corrupt_cache_file_is_a_miss
+FAILED tests/test_operational_resilience.py::test_process_worker_stops_on_critical_disk
+FAILED tests/test_operational_resilience.py::test_stale_partial_files_are_removed
+ERROR tests/test_operational_resilience.py::test_oversized_download_is_refused_while_streaming
+ERROR tests/test_operational_resilience.py::test_declared_oversize_is_refused_before_reading
+ERROR tests/test_operational_resilience.py::test_soft_block_pages_are_not_documents[<html><title>Access Denied</title>Reference #18.abc</html>-text/html]
+ERROR tests/test_operational_resilience.py::test_soft_block_pages_are_not_documents[<!DOCTYPE html><html><body>Request unsuccessful. Incapsula incident ID</body></html>-text/html]
+ERROR tests/test_operational_resilience.py::test_soft_block_pages_are_not_documents[<html><body>hello</body></html>-application/pdf]
+ERROR tests/test_operational_resilience.py::test_real_html_page_is_still_fine
+15 failed, 8 passed, 6 errors in 0.20s

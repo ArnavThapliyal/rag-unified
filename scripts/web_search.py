@@ -47,6 +47,9 @@ SEARCH_DEFAULTS = {
                      "irrelevant": 360, "quota": 1440, "default": 120},
     "irrelevant_after": 3,          # consecutive answers with no relevant result -> benched
     "query_delay_s": [20, 40],      # pause between queries (collect.py)
+    # a clean empty answer: also ask the next provider? Off by default: the next ones are usually paid APIs
+    # (Serper/Brave credits). Set "fallback_on_empty": true in config "search" to trade credits for recall.
+    "fallback_on_empty": False,
 }
 
 # A result is relevant if it is on a known source domain or its text is about delisting.
@@ -259,7 +262,7 @@ class Search:
     # --- searching -------------------------------------------------------------------------------
     def page(self, session: requests.Session, query: str, page: int) -> tuple[Answer, str, list[str]]:
         """One results page from the first provider that can answer it."""
-        waits, errors, failed_answer = [], {}, None
+        waits, errors, failed_answer, empty_answer = [], {}, None, None
         for p in self.providers:
             if page > p.max_pages:
                 continue
@@ -292,11 +295,16 @@ class Search:
                     last = (ans, p.name, units)  # someone answered: genuinely no results
                 else:
                     failed_answer = failed_answer or (ans, p.name, units)
-            if last:
-                return last  # a clean empty answer is final: don't spend another provider's credits on it
+            if last:  # a clean empty answer: ask the next provider too (scrapers miss old documents), unless off
+                if not self.s.get("fallback_on_empty", False):
+                    return last
+                empty_answer = empty_answer or last
+                continue
             b = self.blocker(p)
             if b and b[1]:
                 waits.append(b[1])
+        if empty_answer:  # every provider that answered had nothing
+            return empty_answer
         if failed_answer:  # every unit asked failed and nobody else could answer: caller sees the failures
             return failed_answer
         if waits:
@@ -321,7 +329,11 @@ def run(query: str, pages: int, year_tag: str | None, search: Search | None = No
     providers_used: set[str] = set()
     for page in range(1, pages + 1):
         path = cache_path(query, page)
-        payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        except (OSError, ValueError):  # truncated by a crash: a miss, searched again and rewritten
+            log(f"search cache {path.name} unreadable: searching again", level="WARN", kind="search_cache_corrupt")
+            payload = None
         if payload and payload["results"]:
             cached_pages += 1
         else:  # not cached, or cached empty (engines may have been throttled) -> ask again

@@ -184,6 +184,24 @@ def atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
+def cleanup_partials(dirs, older_than_s: float = 3600) -> int:
+    """Remove leftovers of interrupted writes (.<name>.part downloads, .<name>.<pid>.tmp atomic writes) older than
+    older_than_s (younger ones may belong to a write in progress). Returns how many were removed."""
+    n, cutoff = 0, time.time() - older_than_s
+    for d in dirs:
+        d = Path(d)
+        if not d.exists():
+            continue
+        for f in d.rglob(".*"):
+            try:
+                if f.is_file() and f.name.endswith((".part", ".tmp")) and f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    n += 1
+            except OSError:
+                pass
+    return n
+
+
 def append_jsonl(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
