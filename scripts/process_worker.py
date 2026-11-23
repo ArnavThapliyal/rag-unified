@@ -21,7 +21,7 @@ from pathlib import Path
 import common
 import docket
 import run_limits
-from common import ROOT, emit, log
+from common import atomic_write_text, ROOT, emit, log
 
 POLL_S = 10
 
@@ -47,7 +47,7 @@ def run_script(name: str) -> dict:
 def process_once(dk: docket.Docket) -> dict:
     parsed = run_script("parse_nse_records.py")
     merged = run_script("normalize_and_merge.py")
-    sync = dk.sync_parsed(parsed.get("errors"))
+    sync = dk.sync_parsed((parsed.get("errors") or []) + (parsed.get("known_errors") or []))
     return {"parsed_files": parsed.get("parsed", 0), "parsed_rows": parsed.get("rows", 0),
             "parse_errors": len(parsed.get("errors", [])), "records_after": merged.get("records_out"), "docket": sync}
 
@@ -110,7 +110,7 @@ def main() -> int:
     out = run(a.batch, a.follow, run_limits.parse_cap(a.max_companies), a.records_before,
               run_limits.StopFile(a.stop_file))
     if a.summary_out:
-        a.summary_out.write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
+        atomic_write_text(a.summary_out, json.dumps(out, indent=1, default=str))
     emit(out)
     return 0 if not str(out["stop_reason"]).startswith("error") else 1
 

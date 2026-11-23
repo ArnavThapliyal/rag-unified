@@ -41,7 +41,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import historical
-from common import DATA, METADATA, PARSED, PRIORITY_YEARS, domain_matches, domain_of, emit, log, now_iso, read_jsonl
+from common import atomic_write_text, DATA, METADATA, PARSED, PRIORITY_YEARS, domain_matches, domain_of, emit, log, now_iso, read_jsonl
 
 DB = DATA / "docket.sqlite"
 STATS = METADATA / "docket_stats.json"
@@ -349,7 +349,7 @@ class Docket:
     def write_stats(self) -> dict:
         s = {"generated_at": now_iso(), **self.stats()}
         METADATA.mkdir(parents=True, exist_ok=True)
-        STATS.write_text(json.dumps(s, indent=1), encoding="utf-8")
+        atomic_write_text(STATS, json.dumps(s, indent=1))
         return s
 
     def listing(self, status: str, limit: int) -> list[dict]:

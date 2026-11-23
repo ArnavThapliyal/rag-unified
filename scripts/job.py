@@ -22,7 +22,7 @@ import sys
 import time
 from datetime import datetime
 
-from common import EVENTS, LOGS, METADATA, ROOT, emit, log
+from common import atomic_write_text, EVENTS, LOGS, METADATA, ROOT, emit, log
 
 JOB_FILE = METADATA / "job.json"
 JOBS_DIR = LOGS / "jobs"
@@ -112,7 +112,7 @@ def start(args: list[str]) -> dict:
                              start_new_session=True)  # survives the caller being killed
     job = {"pid": p.pid, "args": args, "started_at": stamp, "started_ts": time.time(),
            "output": str(out_path.relative_to(ROOT))}
-    JOB_FILE.write_text(json.dumps(job, indent=1), encoding="utf-8")
+    atomic_write_text(JOB_FILE, json.dumps(job, indent=1))
     log(f"job started pid={p.pid}: collect.py {' '.join(args)}", kind="job_start", pid=p.pid, args=args)
     return {"started": True, "pid": p.pid, "output": job["output"],
             "next": ".venv/bin/python scripts/job.py wait 1"}

@@ -323,6 +323,8 @@ tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio s
 | `logs/events.jsonl` | Every action as JSON (search, fetch, harvest, parse, merge, run_start/end, agent tool calls), tagged with `run_id` and `agent_session` | No (large) |
 | `logs/agent_run.log` | The same events as readable lines | No |
 | `data/processed/ocr/` | OCR text of scanned PDFs, one `.txt` per file (cache) | No (regenerable) |
+| `data/processed/out_of_scope_delistings.csv` | Delistings dated outside 2006–2026 (kept, not in the master) | Yes |
+| `data/processed/record_sources.json` | Which parsed sources back each `record_id` (keeps ids stable) | Yes |
 | `data/processed/bse_only_delistings.csv` | Companies delisted from BSE that appear in no NSE source and have no NSE symbol (many were never NSE-listed). Kept out of the master; same columns as the audit file | Yes |
 | `logs/issues.jsonl` | Anomalies reported by the agent (`report_issue.py`): kind, summary, evidence paths, times seen, open/closed | Yes |
 | `logs/agent_sessions/<session>.jsonl` | Cline's full raw event stream (its reasoning, tool calls, outputs, token usage) | No (large) |
@@ -373,7 +375,7 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | `scripts/credentials.py` | Reads API keys from the environment or a key file (never from the repo). |
 | `scripts/polite_fetcher.py` | Download URLs, a search cache file, or links harvested from a page (`--harvest`) |
 | `scripts/parse_nse_records.py` | Extract candidate rows from HTML, PDF, XLSX and CSV files |
-| `scripts/normalize_and_merge.py` | Normalize, dedupe, write the master, priority-audit and leads CSVs |
+| `scripts/normalize_and_merge.py` | Normalize, reconcile one record per company event (conflicts recorded), write the master, priority-audit, out-of-scope, BSE-only and leads files (atomically) |
 | `scripts/inspect_artifact.py` | Bounded excerpt of a downloaded file, or `--zero-rows` to list files that gave no rows |
 | `scripts/agent_progress.py` | Turns Cline's JSON stream into the readable terminal lines |
 | `scripts/audit_dataset.py` | Data-quality audit (duplicate ids, bad ISINs, off-topic sources, missing artifacts, no-date rows, suspicious names) |
@@ -388,16 +390,21 @@ Column definitions are in the root [`nse_delisted_master.csv`](nse_delisted_mast
 
 | Column | Notes |
 |---|---|
-| `record_id` | sha256(ISIN or normalized name \| date \| type), first 16 hex characters. Stable across re-runs. |
-| `company_name`, `nse_symbol`, `isin` | Symbol is uppercased, `UNKNOWN` if absent. ISIN matches `IN[A-Z0-9]{9}[0-9]`. |
+| `record_id` | sha256(ISIN or normalized name \| date \| type), first 16 hex characters, for a new record. Kept across re-runs: `data/processed/record_sources.json` remembers which sources backed each id, so a better source arriving for the same event does not change its id. |
+| `company_name`, `nse_symbol`, `isin` | Symbol is uppercased, `UNKNOWN` if absent. ISIN: `INE`/`IN9` + 8 characters + a valid check digit (spaces and lower case are cleaned; an invalid ISIN is dropped). Field labels (`ISIN`, `Symbol: X`, CINs) are never company names. |
 | `delisting_type` | `COMPULSORY`, `VOLUNTARY_EXIT_OFFER`, `VOLUNTARY_NO_EXIT`, `AMALGAMATION_MERGER`, `IBC_NCLT` or `OTHER` |
-| `order_date`, `effective_delisting_date` | ISO `YYYY-MM-DD`. Indian sources are read day-first. |
+| `order_date`, `effective_delisting_date` | ISO `YYYY-MM-DD`. Indian `dd-mm-yyyy` sources are read day-first; ISO `yyyy-mm-dd` is never read day-first. |
 | `calendar_year`, `financial_year` | Taken from the effective date, falling back to the order date. FY is written like `FY2017-18`. |
 | `is_priority_year` | `true` when the calendar year or the order year is 2007, 2017, 2020 or 2024 |
 | `regulatory_regime` | Set by date: `SEBI_2003_Guidelines` before 2009-06-10, `SEBI_2009_Regs` before 2021-06-10, `SEBI_2021_Regs` before 2024-09-25, `SEBI_2024_Amendment` after that |
 | `exit_or_fair_value_inr` | Exit price or fair value, if the document states one |
 | `source_url`, `local_artifact_path` | Where the row came from |
-| `confidence_status` | `VERIFIED_PRIMARY` (an official NSE, SEBI or BSE document), `CORROBORATED_SECONDARY` (a reputable source, or two or more independent domains), or `NEEDS_REVIEW` |
+| `confidence_status` | `VERIFIED_PRIMARY` (an official NSE, SEBI or BSE document), `CORROBORATED_SECONDARY` (a reputable source, or two or more independent domains), or `NEEDS_REVIEW` (incl. every OCR'd source) |
+| `source_count`, `all_source_urls`, `all_artifact_paths` | Every source merged into the record (best first) |
+| `source_conflicts` | Sources that disagree, e.g. `effective_delisting_date: 2018-08-08 vs 2018-08-09 (archives.nseindia.com)` or `delisting_type: IBC_NCLT vs COMPULSORY`. The record keeps the most confident source's value. |
+| `review_flags` | `<field>:needs_review_source` (a gap filled from a review-grade source such as OCR), `order_date_rejected:…` (a borrowed order date after the effective date or > 2 years before it), `ambiguous_company` (a name shared by two ISINs), `undated_unattached` |
+
+**One record per delisting event.** Rows are one company when they share an ISIN, a normalized name or an NSE symbol (never joining two ISINs). Within a company, rows are one event when their effective dates are within 30 days (7 if two specific types disagree), or an order date precedes an effective date by up to 270 days. A company delisted twice years apart keeps two records; sources that disagree by months are not merged, and `audit_dataset.py` flags them (`possible_duplicate_event`) for a person to decide. Records dated outside 2006–2026 go to `data/processed/out_of_scope_delistings.csv`.
 
 Don't edit the processed files or the metadata by hand. Fix the inputs or the parsing rules and re-run the scripts.
 

@@ -18,12 +18,13 @@ Writes data/processed/verification_report.csv (one row per record) and prints a 
 from __future__ import annotations
 
 import csv
+import io
 import re
 import sys
 from collections import Counter, defaultdict
 from datetime import date
 
-from common import DATA, PARSED, PROCESSED, domain_of, emit, log, read_jsonl
+from common import atomic_write_text, DATA, PARSED, PROCESSED, domain_of, emit, log, read_jsonl
 
 REFERENCE = DATA / "reference"
 OFFICIAL_LISTS = {"delisted.xlsx": "master_lists__d07b1e746ddd066e.jsonl",
@@ -203,10 +204,11 @@ def main() -> int:
     reasons, split = official_reasons(), split_events(rows)
     out = [check(r, listed, official, same_company, reasons, split) for r in rows]
     path = PROCESSED / "verification_report.csv"
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(out[0]))
-        w.writeheader()
-        w.writerows(sorted(out, key=lambda x: (x["verdict"] != "PROBLEM", x["verdict"] != "CHECK", x["company_name"])))
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=list(out[0]), lineterminator="\r\n")
+    w.writeheader()
+    w.writerows(sorted(out, key=lambda x: (x["verdict"] != "PROBLEM", x["verdict"] != "CHECK", x["company_name"])))
+    atomic_write_text(path, buf.getvalue())
     flags = Counter(fl for o in out for fl in o["flags"].split())
     summary = {"records": len(out), "verdict": dict(Counter(o["verdict"] for o in out)), "flags": dict(flags),
                "listing_status": dict(Counter(o["listing_status"] for o in out)),

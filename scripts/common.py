@@ -167,6 +167,23 @@ def raw_dir_for_tag(year_tag: str | None) -> Path:
     return RAW / "archive_2006_2026"
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write a whole file so readers see the old or the new content, never a partial one: a temp file in the
+    same directory, fsync, then os.replace. On failure the old file is untouched and the temp file removed."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with tmp.open("w", encoding="utf-8", newline="") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def append_jsonl(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -197,7 +214,14 @@ def disk_settings() -> dict:
         cfg = json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8")).get("disk", {})
     except (OSError, json.JSONDecodeError):
         cfg = {}
-    return {**DISK_DEFAULTS, **{k: float(v) for k, v in cfg.items() if k in DISK_DEFAULTS}}
+    out = dict(DISK_DEFAULTS)
+    for k, v in (cfg.items() if isinstance(cfg, dict) else []):
+        if k in DISK_DEFAULTS:
+            try:
+                out[k] = float(v)
+            except (TypeError, ValueError):  # keep the safe default; the bad value is reported, never fatal
+                print(f"warning: config disk.{k}={v!r} is not a number; using {DISK_DEFAULTS[k]}", file=sys.stderr)
+    return out
 
 
 def dir_size(path: Path) -> int:

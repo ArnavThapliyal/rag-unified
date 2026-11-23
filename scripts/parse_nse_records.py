@@ -11,10 +11,12 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
 import warnings
+from datetime import date
 from io import StringIO
 from pathlib import Path
 from urllib.parse import unquote
@@ -24,7 +26,8 @@ import pandas as pd
 import ocr
 
 from common import (
-    MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, confidence_for_url, emit, event, isin_equity, isin_valid, log, read_jsonl,
+    MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, atomic_write_text, confidence_for_url, emit, event, isin_equity,
+    isin_valid, log, read_jsonl,
 )
 
 warnings.filterwarnings("ignore")
@@ -32,9 +35,38 @@ warnings.filterwarnings("ignore")
 ISIN_RE = re.compile(r"\bIN[E9][A-Z0-9]{8}[0-9]\b")  # candidates; confirmed with common.isin_valid
 DATE_RE = re.compile(
     r"\b(\d{1,2}[-/.](?:\d{1,2}|[A-Za-z]{3,9})[-/.]\d{2,4}|\d{4}-\d{2}-\d{2}|"
-    r"(?:\d{1,2}\s+)?[A-Za-z]{3,9}\.?\s+\d{1,2}(?:,\s*|\s+)\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{4})\b"
+    r"(?:\d{1,2}\s+)?[A-Za-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{4})\b"
 )
 SYMBOL_RE = re.compile(r"\b[A-Z][A-Z0-9&\-]{1,19}\b")
+ORDINAL_RE = re.compile(r"(?<=\d)(?:st|nd|rd|th)\b", re.I)
+NOT_SYMBOLS = {"LTD", "LIMITED", "INE", "THE", "AND", "OF", "ISIN", "CIN", "NSE", "BSE", "SYMBOL", "SCRIP", "CODE",
+               "FACE", "VALUE", "RS", "INR", "NO", "WEF", "DATE", "NAME", "COMPANY"}
+MAX_ROWS_PER_FILE = 5000   # the largest real delisting list has a few hundred rows; more means a wrong table
+
+
+class ParseLimit(ValueError):
+    """The file produced an implausible number of rows (reported as a parse error, never truncated)."""
+
+
+class OcrFailed(RuntimeError):
+    """A scanned PDF whose OCR failed on every page (reported as a parse error, retried when the file changes)."""
+
+
+def parse_price(v) -> float | None:
+    """Exit / fair value in rupees: 125, "Rs. 125.50", "Rs.125/-", "₹ 1,234.00", "125.50 per share", "INR 3,400"."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    t = re.sub(r"(?i)\b(?:rs|inr)\b\.?|₹|/-", " ", str(v)).replace(",", "")
+    m = re.search(r"\d+(?:\.\d+)?", t)
+    return float(m.group(0)) if m else None
+
+
+def clean_isin(v) -> str | None:
+    """ISIN from a cell or text: spaces removed, upper-cased, check digit verified."""
+    m = ISIN_RE.search(re.sub(r"\s+", "", str(v or "")).upper())
+    return m.group(0) if m and isin_valid(m.group(0)) else None
 
 # header keyword -> schema field (checked in order; first match wins per column)
 HEADER_MAP = [
@@ -43,19 +75,21 @@ HEADER_MAP = [
     ("delist", "effective_delisting_date"),  # refined below: needs 'date'
     ("order", "order_date"), ("notice", "order_date"), ("approval", "order_date"),
     ("exit price", "exit_or_fair_value_inr"), ("fair value", "exit_or_fair_value_inr"),
-    ("offer price", "exit_or_fair_value_inr"), ("price", "exit_or_fair_value_inr"),
+    ("offer price", "exit_or_fair_value_inr"), ("discovered price", "exit_or_fair_value_inr"),
+    ("floor price", "exit_or_fair_value_inr"),  # never a bare "price": "Last Traded Price" is not an exit price
     ("company", "company_name"), ("name of", "company_name"),
     ("security name", "company_name"), ("scrip name", "company_name"), ("name", "company_name"),
     ("date", "_plain_date"),  # only trusted as the delisting date in tables that also carry a symbol/ISIN
     ("reason", "_reason"), ("remark", "_reason"), ("category", "_reason"), ("type", "_reason"), ("details", "_reason"),
 ]
 
-TYPE_KEYWORDS = [
-    ("IBC_NCLT", ("nclt", "insolvency", "resolution plan", "ibc", "liquidation")),
-    ("AMALGAMATION_MERGER", ("amalgamat", "merger", "scheme of arrangement", "merged")),
-    ("COMPULSORY", ("compulsor",)),
-    ("VOLUNTARY_EXIT_OFFER", ("exit offer", "reverse book", "exit price", "discovered price")),
-    ("VOLUNTARY_NO_EXIT", ("voluntar",)),
+# Whole words only ("Vibcon" is not IBC, "Liquidity" is not liquidation), in priority order for ties.
+TYPE_PATTERNS = [
+    ("IBC_NCLT", re.compile(r"\bnclt\b|\binsolvency\b|\bresolution plan\b|\bibc\b|\bliquidat(?:ion|ed|or)\b", re.I)),
+    ("AMALGAMATION_MERGER", re.compile(r"\bamalgamat(?:ion|ed)\b|\bmerger\b|\bscheme of arrangement\b|\bmerged\b", re.I)),
+    ("COMPULSORY", re.compile(r"\bcompulsor(?:y|ily)\b", re.I)),
+    ("VOLUNTARY_EXIT_OFFER", re.compile(r"\bexit offer\b|\breverse book\b|\bexit price\b|\bdiscovered price\b", re.I)),
+    ("VOLUNTARY_NO_EXIT", re.compile(r"\bvoluntar(?:y|ily)\b", re.I)),
 ]
 
 
@@ -77,9 +111,20 @@ LEGAL_TEXT_RE = re.compile(r"\bu/s\b|\bAct,?\s+\d{4}|\bSection\s+\d|\bRegulation
 FRAGMENT_END_RE = re.compile(r"\s(is|are|was|were|has|have|had|the|of|and|to|for|by|in|on|with|from|that)$", re.I)
 
 
+# Field labels that sit next to identifiers in documents: never part of a company name.
+FIELD_LABEL_RE = re.compile(r"\b(?:ISIN(?:\s*(?:No\.?|Number|Code))?|(?:NSE\s*|Trading\s*)?Symbol|Scrip\s*(?:Code|ID|Name)|"
+                      r"Security\s*(?:Code|ID)|BSE\s*Code|Face\s*Value|CIN)\b", re.I)
+CIN_RE = re.compile(r"\b[LU]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}\b")
+GENERIC_NAME_RE = re.compile(r"^(?:of\s+)?(?:the\s+)?(?:company|issuer|security|scrip|equity shares?|shares?)$", re.I)
+
+
 def name_ok(name: str, has_id: bool) -> bool:
     """Plausible company name. Without a symbol/ISIN the name must look like a company (filters
-    sentences, people and OCR noise)."""
+    sentences, people and OCR noise). Field labels (ISIN, Symbol, CIN, ...) and identifiers are never names."""
+    if FIELD_LABEL_RE.search(name) or "|" in name or ISIN_RE.search(name.upper()) or CIN_RE.search(name.upper()):
+        return False
+    if GENERIC_NAME_RE.match(name.strip()):
+        return False
     if not 3 <= len(name) <= 120 or "\n" in name or "•" in name or name[0] in "(-*•" or len(name.split()) > 12:
         return False
     if not re.search(r"[A-Za-z]{3}", name):
@@ -92,11 +137,12 @@ def name_ok(name: str, has_id: bool) -> bool:
 
 
 def classify(text: str) -> str:
-    t = (text or "").lower()
-    for label, kws in TYPE_KEYWORDS:
-        if any(k in t for k in kws):
-            return label
-    return "OTHER"
+    """The delisting type the text talks about most (ties: the order of TYPE_PATTERNS). A voluntary exit-offer
+    document that mentions an NCLT once stays a voluntary exit offer."""
+    t = text or ""
+    counts = [(len(rx.findall(t)), -i, label) for i, (label, rx) in enumerate(TYPE_PATTERNS)]
+    n, _, label = max(counts)
+    return label if n else "OTHER"
 
 
 def to_iso(val) -> str | None:
@@ -110,8 +156,17 @@ def to_iso(val) -> str | None:
     m = DATE_RE.search(s)
     if not m:
         return None
-    ts = pd.to_datetime(re.sub(r",(?=\d)", ", ", m.group(0)).replace("th ", " ").replace("st ", " ").replace("nd ", " ").replace("rd ", " "),
-                        dayfirst=True, errors="coerce")
+    raw = m.group(0)
+    iso = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", raw)
+    if iso:  # ISO 8601 is year-month-day: never day-first
+        try:
+            d = date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+        except ValueError:
+            return None
+        return d.isoformat() if 1990 <= d.year <= 2030 else None
+    txt = ORDINAL_RE.sub("", re.sub(r",(?=\d)", ", ", raw))   # "21st" -> "21" (but "August" stays August)
+    txt = re.sub(r"\bSept\b", "Sep", txt, flags=re.I)
+    ts = pd.to_datetime(txt, dayfirst=True, errors="coerce")
     if pd.isna(ts) or not (1990 <= ts.year <= 2030):
         return None
     return ts.strftime("%Y-%m-%d")
@@ -177,9 +232,7 @@ def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False)
                 continue
             rec[field] = v
         name = re.sub(r"\s+", " ", str(rec.get("company_name", ""))).strip()  # cells often wrap names
-        isin_m = ISIN_RE.search(str(rec.get("isin", "")).upper())
-        if isin_m and not isin_valid(isin_m.group(0)):
-            isin_m = None
+        isin = clean_isin(rec.get("isin"))
         if not name:
             continue
         if name.lower() in ("company name", "name of the company", "total", "nan", "nat", "none"):
@@ -187,22 +240,21 @@ def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False)
         symbol = str(rec.get("nse_symbol", "")).strip().upper()
         if not re.fullmatch(r"[A-Z][A-Z0-9&\-]{0,19}", symbol):  # cells of bullet text are not symbols
             symbol = ""
-        if name and not name_ok(name, bool(isin_m or symbol)):
+        if name and not name_ok(name, bool(isin or symbol)):
             continue
-        row_text = " ".join(str(v) for v in vals)
-        price = rec.get("exit_or_fair_value_inr")
-        try:
-            price = float(re.sub(r"[^\d.]", "", str(price))) if price is not None else None
-        except ValueError:
-            price = None
+        # the type comes from the reason column, else the row's other cells: never from the company name
+        ident_cols = {i for i, f in mapping.items() if f in ("company_name", "nse_symbol", "isin")}
+        row_text = " ".join(str(v) for i, v in enumerate(vals) if i not in ident_cols)
+        reason_type = classify(str(rec.get("_reason", "")))
+        price = parse_price(rec.get("exit_or_fair_value_inr"))
         out.append({
             "company_name": name or None,
             "nse_symbol": symbol or None,
-            "isin": isin_m.group(0) if isin_m else None,
+            "isin": isin,
             "order_date": to_iso(rec.get("order_date")),
             "effective_delisting_date": to_iso(rec.get("effective_delisting_date")),
             "exit_or_fair_value_inr": price,
-            "delisting_type": row_type if (row_type := classify(str(rec.get("_reason", "")) + " " + row_text)) != "OTHER"
+            "delisting_type": reason_type if reason_type != "OTHER" else row_type if (row_type := classify(row_text)) != "OTHER"
             else doc_type,  # the row's own words first; the document-wide guess only if the row says nothing
             "extraction": "table",
         })
@@ -242,16 +294,28 @@ def rows_from_status_table(df: pd.DataFrame) -> list[dict]:
     return []
 
 
+def clean_text_name(before: str) -> str:
+    """The company name in the text before an ISIN, without serial numbers, CINs, "Symbol: X", "Scrip Code 500325",
+    bare labels ("ISIN", "ISIN of") and separators."""
+    t = CIN_RE.sub(" ", before)
+    t = re.sub(r"(?i)\b(?:(?:NSE|Trading)\s*)?Symbol\s*[:\-]?\s*[A-Z][A-Z0-9&\-]{0,19}\b", " ", t)
+    t = re.sub(r"(?i)\b(?:Scrip|Security|BSE)\s*(?:Code|ID)\s*[:\-]?\s*\d{3,7}\b", " ", t)
+    t = FIELD_LABEL_RE.sub(" ", t)
+    t = re.sub(r"\s+", " ", t).strip(" |,-:.\t")
+    t = re.sub(r"^\s*\d+[.)]?\s*", "", t)                     # serial number
+    t = re.sub(r"(?i)^(?:of|for)\s+(?:the\s+)?(?=\S)", "", t)  # "ISIN of <company>"
+    return t.strip(" |,-:\t")
+
+
 def rows_from_text(text: str, doc_type: str) -> list[dict]:
     out = []
     for line in text.splitlines():
         m = ISIN_RE.search(line.upper())
         if not m or not isin_valid(m.group(0)):
             continue
-        before = line[: m.start()].strip(" |,-:\t")
-        before = re.sub(r"^\s*\d+[.)]?\s*", "", before)  # strip serial number
+        before = clean_text_name(line[: m.start()])
         syms = [s for s in SYMBOL_RE.findall(line[m.end():]) + SYMBOL_RE.findall(before)
-                if s not in ("LTD", "LIMITED", "INE", "THE", "AND", "OF") and not ISIN_RE.fullmatch(s)]
+                if s not in NOT_SYMBOLS and not ISIN_RE.fullmatch(s) and not s.isdigit()]
         dates = [d for d in (to_iso(x) for x in DATE_RE.findall(line)) if d]
         if not before or not name_ok(before, True) or LABEL_RE.search(before):
             continue  # an ISIN without a usable company name on the line is not a record
@@ -269,7 +333,9 @@ def rows_from_text(text: str, doc_type: str) -> list[dict]:
 
 
 DELIST_RE = re.compile(r"delist", re.I)
-PROPOSED_RE = re.compile(r"propos|show.?cause|to.?be.?delisted", re.I)
+CONTENT_SIGNAL_RE = re.compile(r"delist|withdrawn from (?:the )?(?:admission|dealings)|exit offer", re.I)
+# Lists of companies *proposed* to be delisted ("approved-delisting-proposals" are not proposals any more).
+PROPOSED_RE = re.compile(r"proposed|show.?cause|to.?be.?delisted", re.I)
 # "In the matter of the Company: SecUR Credentials Limited (SECURCRED)", or without the symbol and with
 # the name on the next line: "In the matter of the company\nM/s Petron Engineering Construction Limited".
 MATTER_RE = re.compile(
@@ -362,10 +428,17 @@ def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: 
         return False, "non_listing_page"
     if PROCEDURAL_RE.search(unquote((src or path.name).rsplit("/", 1)[-1])):
         return False, "procedural_document"
-    if DELIST_RE.search(src or "") or DELIST_RE.search(harvested_from or ""):
+    if DELIST_RE.search(src or ""):
         return True, "url"
     if path.suffix.lower() in (".html", ".htm"):  # page bodies include site-wide nav menus: trust the title only
         return (True, "title") if DELIST_RE.search(stats.get("title", "")) else (False, "html_title_unrelated")
+    if DELIST_RE.search(harvested_from or ""):  # linked from a delisting page: the document must say so too
+        head = stats.get("text_head", "")
+        if CONTENT_SIGNAL_RE.search(head):
+            return True, "linked_and_content"
+        if not head.strip():  # no text layer (scan without OCR): nothing contradicts the link
+            return True, "linked_no_text"
+        return False, "linked_from_delisting_page_without_delisting_text"
     if DELIST_RE.search(stats.get("text_head", "")):
         return True, "content"
     return False, f"no_delisting_signal ({where[-60:]})"
@@ -419,8 +492,11 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
         stats["tables_seen"] = len(tables)
         stats["no_text"] = not text.strip()
         if stats["no_text"]:  # scanned PDF: OCR it (cached), then use the text extractors
-            text = ocr.ocr_pdf(path)
+            text, ocr_errors = ocr.ocr_pdf_detail(path)
+            if ocr_errors and not text.strip():
+                raise OcrFailed("; ".join(ocr_errors)[:300])
             stats["ocr"] = bool(text.strip())
+            stats["ocr_errors"] = ocr_errors
             stats["text_head"] = text[:2000]
         doc_type = classify(text)
         order_rows = rows_from_order(text) or rows_from_letter(text)
@@ -437,7 +513,17 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
     else:
         stats["skipped_ext"] = ext
     stats["text_head"] = text[:6000]
+    if len(rows) > MAX_ROWS_PER_FILE:
+        raise ParseLimit(f"{len(rows)} rows from one file (> {MAX_ROWS_PER_FILE}): not a delisting list")
     return rows, stats
+
+
+def parser_version() -> str:
+    """Changes whenever the parser or OCR code changes: files that failed are retried then."""
+    h = hashlib.sha256()
+    for f in ("parse_nse_records.py", "ocr.py", "common.py"):
+        h.update((Path(__file__).parent / f).read_bytes())
+    return h.hexdigest()[:12]
 
 
 def manifest_index() -> dict[str, dict]:
@@ -455,10 +541,14 @@ def main() -> int:
     files = [a.file if a.file.is_absolute() else ROOT / a.file] if a.file else \
         sorted(p for p in RAW.rglob("*") if p.is_file() and not p.name.startswith("."))
     idx = manifest_index()
+    errors_path = PARSED / "_errors.json"
+    known = json.loads(errors_path.read_text(encoding="utf-8")) if errors_path.exists() else {}
+    version = parser_version()
     relevance_path = PARSED / "_relevance.json"
     relevance = json.loads(relevance_path.read_text(encoding="utf-8")) if relevance_path.exists() else {}
     summary = {"files_seen": len(files), "parsed": 0, "skipped_up_to_date": 0, "rows": 0,
-               "irrelevant_files": 0, "zero_row_files": [], "no_text": [], "errors": []}
+               "irrelevant_files": 0, "zero_row_files": [], "no_text": [], "errors": [], "known_errors": [],
+               "ocr_page_errors": []}
 
     for p in files:
         rel = str(p.relative_to(ROOT))
@@ -466,12 +556,21 @@ def main() -> int:
         if out.exists() and not a.force and out.stat().st_mtime >= p.stat().st_mtime:
             summary["skipped_up_to_date"] += 1
             continue
+        k = known.get(rel)
+        if k and not a.force and k.get("mtime") == p.stat().st_mtime and k.get("parser") == version:
+            summary["known_errors"].append({"file": rel, "error": k["error"]})  # not retried until file/parser change
+            continue
         try:
             rows, stats = parse_file(p, proposed=bool(PROPOSED_RE.search(idx.get(rel, {}).get("url") or rel)))
         except Exception as e:  # keep going; one bad artifact shouldn't stop the batch
-            summary["errors"].append({"file": rel, "error": f"{type(e).__name__}: {e}"[:200]})
+            err = f"{type(e).__name__}: {e}"[:200]
+            summary["errors"].append({"file": rel, "error": err})
+            known[rel] = {"error": err, "mtime": p.stat().st_mtime, "parser": version}
             log(f"parse error {rel}: {e}", level="ERROR", kind="parse_error", file=rel)
             continue
+        known.pop(rel, None)
+        if stats.get("ocr_errors"):
+            summary["ocr_page_errors"].append({"file": rel, "errors": stats["ocr_errors"][:5]})
         m = idx.get(rel, {})
         src = m.get("url")
         relevant, reason = is_relevant(p, src, m.get("harvested_from"), stats)
@@ -486,13 +585,14 @@ def main() -> int:
         record_status = "PROPOSED" if PROPOSED_RE.search(src or rel) else "DELISTED"
         # debt securities (NCDs, bonds, CP) are suspended/redeemed, not delisted companies
         rows = [r for r in rows if not r.get("isin") or isin_equity(r["isin"])]
-        with out.open("w", encoding="utf-8") as f:
-            for r in rows:
-                r.update({"source_url": src, "local_artifact_path": rel, "year_tag": m.get("year_tag"),
-                          "record_status": record_status,
-                          "confidence_status": conf if (r.get("isin") or r.get("effective_delisting_date")
-                                                        or r.get("order_date")) else "NEEDS_REVIEW"})
-                f.write(json.dumps(r, ensure_ascii=False, default=str) + "\n")
+        lines = []
+        for r in rows:
+            r.update({"source_url": src, "local_artifact_path": rel, "year_tag": m.get("year_tag"),
+                      "record_status": record_status, "ocr": bool(stats.get("ocr")),
+                      "confidence_status": conf if (r.get("isin") or r.get("effective_delisting_date")
+                                                    or r.get("order_date")) else "NEEDS_REVIEW"})
+            lines.append(json.dumps(r, ensure_ascii=False, default=str) + "\n")
+        atomic_write_text(out, "".join(lines))  # the merge may be reading parsed/ right now
         summary["parsed"] += 1
         summary["rows"] += len(rows)
         event("parse_file", file=rel, rows=len(rows), tables_seen=stats["tables_seen"],
@@ -502,7 +602,8 @@ def main() -> int:
         if stats.get("no_text"):
             summary["no_text"].append(rel)
 
-    relevance_path.write_text(json.dumps(relevance, indent=1), encoding="utf-8")
+    atomic_write_text(relevance_path, json.dumps(relevance, indent=1))
+    atomic_write_text(errors_path, json.dumps(known, indent=1))
     summary["zero_row_files"] = summary["zero_row_files"][:20]
     log(f"parsed={summary['parsed']} rows={summary['rows']} errors={len(summary['errors'])}",
         kind="parse", files=summary["parsed"], rows=summary["rows"], errors=len(summary["errors"]))

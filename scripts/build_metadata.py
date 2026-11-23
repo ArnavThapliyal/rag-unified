@@ -12,12 +12,14 @@ Run automatically at the end of every collect.py run; safe to run any time:
 from __future__ import annotations
 
 import csv
+import io
 import json
 import sys
 from collections import Counter, defaultdict
 
 import audit_dataset
 from common import (
+    atomic_write_text,
     AGENT_SESSIONS, CONFIG, MANIFEST, METADATA, PARSED, PRIORITY_YEARS, PROCESSED, RAW, ROOT, RUNS,
     disk_status, domain_of, emit, now_iso, read_jsonl,
 )
@@ -247,14 +249,15 @@ def build() -> dict:
             "runs": runs, "agent_sessions": sessions}
 
     METADATA.mkdir(parents=True, exist_ok=True)
-    (METADATA / "collection_metadata.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
-    (METADATA / "domain_registry.json").write_text(json.dumps(domains, indent=1), encoding="utf-8")
-    with (METADATA / "artifacts.csv").open("w", newline="", encoding="utf-8") as f:
-        fields = ["local_path", "bucket", "source_url", "domain", "year_tag", "content_type", "bytes",
-                  "sha256", "harvested_from", "fetched_at", "parsed", "relevance", "rows_extracted"]
-        w = csv.DictWriter(f, fieldnames=fields)
-        w.writeheader()
-        w.writerows(inventory)
+    atomic_write_text(METADATA / "collection_metadata.json", json.dumps(meta, indent=1, default=str))
+    atomic_write_text(METADATA / "domain_registry.json", json.dumps(domains, indent=1))
+    fields = ["local_path", "bucket", "source_url", "domain", "year_tag", "content_type", "bytes",
+              "sha256", "harvested_from", "fetched_at", "parsed", "relevance", "rows_extracted"]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=fields, lineterminator="\r\n")
+    w.writeheader()
+    w.writerows(inventory)
+    atomic_write_text(METADATA / "artifacts.csv", buf.getvalue())
     return meta
 
 

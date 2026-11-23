@@ -20,7 +20,7 @@ import json
 import sys
 from contextlib import contextmanager
 
-from common import LOGS, agent_session, emit, log, now_iso, read_jsonl
+from common import atomic_write_text, LOGS, agent_session, emit, log, now_iso, read_jsonl
 
 ISSUES = LOGS / "issues.jsonl"
 KINDS = ("zero_rows", "bad_rows", "audit_error", "fetch", "script_error", "coverage_gap", "other")
@@ -32,7 +32,7 @@ def load() -> list[dict]:
 
 def save(issues: list[dict]) -> None:
     ISSUES.parent.mkdir(parents=True, exist_ok=True)
-    ISSUES.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in issues), encoding="utf-8")
+    atomic_write_text(ISSUES, "".join(json.dumps(i, ensure_ascii=False) + "\n" for i in issues))
 
 
 @contextmanager

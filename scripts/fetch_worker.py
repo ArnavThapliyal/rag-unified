@@ -40,7 +40,7 @@ import docket
 import historical
 import polite_fetcher
 import run_limits
-from common import CONFIG, ROOT, USER_AGENT, check_disk, domain_matches, domain_of, emit, log
+from common import atomic_write_text, CONFIG, ROOT, USER_AGENT, check_disk, domain_matches, domain_of, emit, log
 
 IDLE_POLL_S = 5
 DISK_CHECK_S = 60
@@ -244,7 +244,7 @@ def main() -> int:
     out = run(run_limits.parse_cap(a.max_files), a.follow, a.follow_pid, a.max_seconds,
               run_limits.parse_cap(a.max_docs_per_company), run_limits.StopFile(a.stop_file))
     if a.summary_out:
-        a.summary_out.write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
+        atomic_write_text(a.summary_out, json.dumps(out, indent=1, default=str))
     emit({k: v for k, v in out.items() if k != "docket"} | {"docket_ready": (out.get("docket") or {}).get("fetch_ready_now")})
     reason = str(out["stop_reason"])
     return 1 if reason in FAILURE_REASONS or reason.startswith("error") else 0

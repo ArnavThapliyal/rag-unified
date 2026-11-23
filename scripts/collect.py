@@ -54,6 +54,7 @@ import polite_fetcher
 import run_limits
 import web_search
 from common import (
+    atomic_write_text,
     CONFIG, METADATA, PROCESSED, ROOT, RUNS, agent_session, check_disk,
     emit, log, now_iso, polite_sleep, run_id,
 )
@@ -129,7 +130,7 @@ def mark_stale_runs(current: str) -> None:
             continue
         if r.get("status") == "running":
             r.update(status="killed", stop_reason="process ended without cleanup")
-            p.write_text(json.dumps(r, indent=1), encoding="utf-8")
+            atomic_write_text(p, json.dumps(r, indent=1))
 
 
 def bar(done: int, total: int, width: int = 20) -> str:
@@ -338,7 +339,7 @@ def main() -> int:
         step["duration_s"] = round(time.time() - t0, 1)
         if step["records_after"] is not None:
             step["new_records"] = step["records_after"] - step["records_before"]
-        summary_path.write_text(json.dumps(step, indent=1), encoding="utf-8")
+        atomic_write_text(summary_path, json.dumps(step, indent=1))
 
     log(f"run start: stage={stage}, {len(todo)} queries, phase={a.phase}, {limits['mode']}: "
         f"{run_limits.describe(limits)}", kind="run_start", queries_planned=len(todo), phase=a.phase, stage=stage,

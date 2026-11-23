@@ -34,7 +34,7 @@ import requests
 
 import credentials
 import search_providers
-from common import CONFIG, METADATA, SEARCH_CACHE, USER_AGENT, domain_matches, emit, log, now_iso, \
+from common import atomic_write_text, CONFIG, METADATA, SEARCH_CACHE, USER_AGENT, domain_matches, emit, log, now_iso, \
     polite_sleep, sha256_text
 from search_providers.base import Answer, SearchProvider
 
@@ -177,7 +177,7 @@ class Search:
 
     def save(self) -> None:
         ENGINE_STATE.parent.mkdir(parents=True, exist_ok=True)
-        ENGINE_STATE.write_text(json.dumps(self.state, indent=1), encoding="utf-8")
+        atomic_write_text(ENGINE_STATE, json.dumps(self.state, indent=1))
 
     # --- budgets ---------------------------------------------------------------------------------
     def usage(self, name: str) -> dict:
@@ -338,7 +338,7 @@ def run(query: str, pages: int, year_tag: str | None, search: Search | None = No
                 "results": [{k: r.get(k) for k in ("url", "title", "content", "engines", "publishedDate")}
                             for r in ans.results],
             }
-            path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+            atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=1))
         cache_files.append(str(path.relative_to(SEARCH_CACHE.parent.parent)))
         page_new = [r["url"] for r in payload["results"] if r.get("url") and r["url"] not in seen]
         seen.update(page_new)
