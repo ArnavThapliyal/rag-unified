@@ -1,0 +1,15 @@
+_________ test_expired_lease_counts_as_a_failed_attempt_and_ends_dead __________
+    def test_expired_lease_counts_as_a_failed_attempt_and_ends_dead(dk):
+FAILED tests/test_execution_reliability.py::test_retry_after_parsing - Attrib...
+FAILED tests/test_execution_reliability.py::test_http_date_retry_after_does_not_crash
+FAILED tests/test_execution_reliability.py::test_no_sleep_after_the_last_attempt_and_retry_after_is_capped
+FAILED tests/test_execution_reliability.py::test_last_network_error_is_kept_after_an_earlier_5xx
+FAILED tests/test_execution_reliability.py::test_unexpected_exception_is_recorded_and_the_worker_goes_on
+FAILED tests/test_execution_reliability.py::test_repeated_unexpected_errors_stop_the_worker_with_a_reason
+FAILED tests/test_execution_reliability.py::test_disk_full_stops_the_run_as_low_disk
+FAILED tests/test_execution_reliability.py::test_expired_lease_counts_as_a_failed_attempt_and_ends_dead
+FAILED tests/test_execution_reliability.py::test_done_fetch_on_unknown_url_is_reported
+FAILED tests/test_execution_reliability.py::test_process_worker_reports_any_exception
+FAILED tests/test_execution_reliability.py::test_collect_fails_when_a_worker_crashes[raise ValueError('Retry-After: Wed, 21 Oct 2026')]
+FAILED tests/test_execution_reliability.py::test_collect_fails_when_a_worker_crashes[import os; os._exit(9)]
+12 failed, 1 passed in 0.42s

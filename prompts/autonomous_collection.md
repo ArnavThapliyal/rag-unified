@@ -66,7 +66,7 @@ files, new companies, documents per company); they are the user's settings, neve
 - collect.py returns `stop_reason: search_engines_suspended` (every search provider is rate-limited, benched or out of its daily limit). If the
   harvest backlog is > 0, finish it with `--harvest-only` first; then log it and stop. Don't retry searches —
   `run_agent.sh` waits out the cooldown and starts a fresh session; or
-- A script crashes (traceback / non-JSON output) or a job ends `status: failed` twice in a row → report it
+- A script crashes (traceback / non-JSON output) or a job result says `status: error`, `killed` or `unknown` twice in a row (e.g. `stop_reason: fetch_worker_failed …`) → report it
   (`--kind script_error`, include the job output path) and STOP: collection can't continue until the user fixes it; or
 - 25 cycles completed.
 

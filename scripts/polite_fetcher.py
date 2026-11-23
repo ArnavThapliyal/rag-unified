@@ -22,6 +22,8 @@ import re
 import sys
 import time
 from collections import Counter
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse
 
@@ -33,6 +35,7 @@ from common import (
 )
 
 MAX_RETRIES = 4
+RETRY_AFTER_CAP_S = 120
 CONTENT_EXT = {
     "application/pdf": ".pdf",
     "text/html": ".html",
@@ -122,20 +125,46 @@ def pick_ext(url: str, content_type: str) -> str:
     return mimetypes.guess_extension(ct) or ".bin"
 
 
+def retry_after(value) -> int | None:
+    """Seconds to wait from a Retry-After header: delay-seconds or an HTTP date (RFC 9110 10.2.3).
+    None if absent or unreadable (the caller falls back to exponential backoff); 0 if the date has passed."""
+    s = str(value).strip() if value is not None else ""
+    if re.fullmatch(r"\d{1,9}", s):
+        return int(s)
+    if not s or not re.search(r"[A-Za-z]", s):
+        return None
+    try:
+        dt = parsedate_to_datetime(s)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return max(0, int(dt.timestamp() - time.time()))
+
+
 def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvested_from: str | None = None) -> dict:
-    status, body, ctype, err = None, b"", "", None
+    """GET with up to MAX_RETRIES attempts for 429/5xx/network errors (Retry-After honoured, capped; no sleep
+    after the last attempt). The manifest entry records the last outcome: http_status of the last response
+    (None if the last attempt got no response), `error` for a network failure, `last_http_status` for the
+    last HTTP error seen before it."""
+    status, body, ctype, err, last_http = None, b"", "", None, None
     for attempt in range(MAX_RETRIES):
+        final = attempt == MAX_RETRIES - 1
         try:
             r = session.get(url, timeout=45, allow_redirects=True)
-            status, body, ctype = r.status_code, r.content, r.headers.get("Content-Type", "")
+            status, body, ctype, err = r.status_code, r.content, r.headers.get("Content-Type", ""), None
             if status == 429 or status >= 500:
-                wait = int(r.headers.get("Retry-After", 0) or 0) or 2 ** (attempt + 2)
-                time.sleep(min(wait, 120))
+                last_http = status
+                if not final:
+                    time.sleep(min(retry_after(r.headers.get("Retry-After")) or 2 ** (attempt + 2), RETRY_AFTER_CAP_S))
                 continue
             break
         except requests.RequestException as e:
-            err = str(e)
-            time.sleep(2 ** (attempt + 2))
+            status, body, ctype, err = None, b"", "", f"{type(e).__name__}: {e}"[:300]
+            if not final:
+                time.sleep(2 ** (attempt + 2))
 
     digest = sha256_bytes(body) if body else None
     ok = status == 200 and len(body) > 0
@@ -159,6 +188,8 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvest
         entry["harvested_from"] = harvested_from
     if err and status is None:
         entry["error"] = err
+        if last_http:
+            entry["last_http_status"] = last_http
     append_jsonl(MANIFEST, entry)
     log(f"{'OK' if ok else 'QUARANTINE'} {status} {url} -> {entry['local_path']}",
         level="INFO" if ok else "WARN", kind="fetch", url=url, domain=domain_of(url),

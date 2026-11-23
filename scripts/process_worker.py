@@ -87,9 +87,9 @@ def run(batch: int, follow: int | None, max_companies: int | None = None, record
             time.sleep(POLL_S)
     except KeyboardInterrupt:
         out["stop_reason"] = "keyboard_interrupt"
-    except RuntimeError as e:
-        out["stop_reason"] = f"error: {e}"[:300]
-        log(f"process worker: {e}", level="ERROR", kind="run_error")
+    except Exception as e:  # parser/merge scripts failing, or the docket database: an error, never a silent stop
+        out["stop_reason"] = f"error: {e}"[:300] if isinstance(e, RuntimeError) else f"error: {type(e).__name__}: {e}"[:300]
+        log(f"process worker: {out['stop_reason']}", level="ERROR", kind="run_error")
     log(f"process worker: {out['batches']} batches, {out['parsed_files']} files, +{out['parsed_rows']} rows; "
         f"stop: {out['stop_reason']}", kind="process_worker",
         **{k: out[k] for k in ("batches", "parsed_files", "parsed_rows", "parse_errors", "stop_reason")})

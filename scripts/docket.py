@@ -11,7 +11,9 @@ Item status:
   parked    found, but below the per-query fetch cut (fetch_limit_per_query) - kept as evidence;
             `--promote` makes it pending
   pending   waiting for the fetch worker (next_attempt_at may be in the future: retry backoff)
-  fetching  leased by a fetch worker (a crashed worker's lease expires after 15 min)
+  fetching  leased by a fetch worker (a crashed worker's lease expires after 15 min; re-leasing an expired
+            lease counts as a failed attempt, and after MAX_LEASE_CRASHES the item is dead: a URL that
+            kills the worker must not kill every later run too)
   fetched   downloaded, waiting for the process worker
   parsed    parsed (rows, relevance recorded)
   failed    download failed; retried with backoff (30 min, 2 h, 8 h) until MAX_ATTEMPTS
@@ -44,6 +46,7 @@ from common import DATA, METADATA, PARSED, PRIORITY_YEARS, domain_matches, domai
 DB = DATA / "docket.sqlite"
 STATS = METADATA / "docket_stats.json"
 MAX_ATTEMPTS = 4
+MAX_LEASE_CRASHES = 2      # a worker died while fetching it this often: a poison item, give up
 BACKOFF_MIN = [30, 120, 480]       # after failure 1, 2, 3
 LEASE_S = 15 * 60
 DOC_RE = re.compile(r"\.(pdf|xlsx?|csv)(\?|#|$)", re.I)
@@ -57,7 +60,8 @@ CREATE TABLE IF NOT EXISTS items (
   harvested_from TEXT, discovered_at REAL, discovered_run TEXT,
   attempts INTEGER DEFAULT 0, next_attempt_at REAL DEFAULT 0, lease_until REAL DEFAULT 0,
   http_status INTEGER, last_error TEXT, local_path TEXT, fetched_at REAL,
-  parsed_at REAL, rows INTEGER, relevance TEXT, updated_at REAL, company TEXT, company_name TEXT);
+  parsed_at REAL, rows INTEGER, relevance TEXT, updated_at REAL, company TEXT, company_name TEXT,
+  crashes INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS items_queue ON items (status, priority DESC, discovered_at);
 CREATE INDEX IF NOT EXISTS items_path ON items (local_path);
 CREATE TABLE IF NOT EXISTS domains (
@@ -95,9 +99,9 @@ class Docket:
         self.db.execute("PRAGMA busy_timeout=60000")
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(items)")}
-        for col in ("company", "company_name"):  # dockets created before the historical focus
-            if col not in cols:
-                self.db.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
+        for col, typ in (("company", "TEXT"), ("company_name", "TEXT"), ("crashes", "INTEGER DEFAULT 0")):
+            if col not in cols:  # dockets created by older versions
+                self.db.execute(f"ALTER TABLE items ADD COLUMN {col} {typ}")
         self.db.execute("CREATE INDEX IF NOT EXISTS items_company ON items (company)")
         self.focus = historical.window()
 
@@ -179,21 +183,51 @@ class Docket:
         return r["t"]
 
     def lease(self, url: str) -> bool:
+        """Take an item for fetching. An expired lease means the worker that held it died mid-fetch: that
+        counts as a failed attempt, and an item that killed MAX_LEASE_CRASHES workers is marked dead."""
         now = time.time()
         with self.txn() as db:
-            n = db.execute("UPDATE items SET status='fetching', lease_until=?, updated_at=? WHERE url=? AND"
-                           " ((status IN ('pending','failed') AND next_attempt_at<=?) OR"
-                           " (status='fetching' AND lease_until<?))",
-                           (now + LEASE_S, now, url, now, now)).rowcount
-        return n == 1
+            row = db.execute("SELECT status, attempts, crashes, lease_until, next_attempt_at FROM items WHERE url=?",
+                             (url,)).fetchone()
+            if not row:
+                return False
+            if row["status"] == "fetching" and row["lease_until"] < now:
+                attempts, crashes = row["attempts"] + 1, (row["crashes"] or 0) + 1
+                if crashes >= MAX_LEASE_CRASHES or attempts >= MAX_ATTEMPTS:
+                    db.execute("UPDATE items SET status='dead', attempts=?, crashes=?, lease_until=0, updated_at=?,"
+                               " last_error=? WHERE url=?",
+                               (attempts, crashes, now, f"worker stopped while fetching it {crashes} time(s) "
+                                                        "(crash or kill): given up", url))
+                    log(f"docket: {url} marked dead after {crashes} worker crash(es) while fetching it",
+                        level="WARN", kind="docket_poison_item", url=url, crashes=crashes)
+                    return False
+                db.execute("UPDATE items SET status='fetching', attempts=?, crashes=?, lease_until=?, updated_at=?,"
+                           " last_error='worker stopped while fetching it (crash or kill)' WHERE url=?",
+                           (attempts, crashes, now + LEASE_S, now, url))
+                return True
+            if row["status"] in ("pending", "failed") and row["next_attempt_at"] <= now:
+                db.execute("UPDATE items SET status='fetching', lease_until=?, updated_at=? WHERE url=?",
+                           (now + LEASE_S, now, url))
+                return True
+        return False
+
+    def release(self, url: str) -> None:
+        """Give a leased item back without counting an attempt (graceful stop mid-fetch)."""
+        self.db.execute("UPDATE items SET status=CASE WHEN attempts>0 THEN 'failed' ELSE 'pending' END, lease_until=0,"
+                        " updated_at=? WHERE url=? AND status='fetching'", (time.time(), url))
 
     def done_fetch(self, url: str, entry: dict) -> str:
-        """Record a fetch attempt (a fetch_manifest entry). Returns the new status."""
+        """Record a fetch attempt (a fetch_manifest entry). Returns the new status, or "unknown" (nothing
+        recorded) for a URL that is not in the docket."""
         now, ok = time.time(), not entry.get("quarantined")
         st = entry.get("http_status")
         with self.txn() as db:
             row = db.execute("SELECT attempts FROM items WHERE url=?", (url,)).fetchone()
-            attempts = (row["attempts"] if row else 0) + 1
+            if not row:
+                log(f"docket: fetch result for a URL that is not in the docket: {url}", level="WARN",
+                    kind="docket_unknown_url", url=url)
+                return "unknown"
+            attempts = row["attempts"] + 1
             if ok:
                 status, nxt, err = "fetched", 0, None
             else:

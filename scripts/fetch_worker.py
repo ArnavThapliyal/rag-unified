@@ -24,11 +24,13 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import random
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import requests
@@ -42,6 +44,8 @@ from common import CONFIG, ROOT, USER_AGENT, check_disk, domain_matches, domain_
 
 IDLE_POLL_S = 5
 DISK_CHECK_S = 60
+MAX_CONSECUTIVE_ERRORS = 3   # unexpected errors in a row: something is broken, stop and say so
+FAILURE_REASONS = ("worker_errors",)
 
 
 def alive(pid: int | None) -> bool:
@@ -105,8 +109,9 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
     disk_state = dk.get_meta("disk_state", {})
     stop = stop or run_limits.StopFile(None)
     out = {"fetched_ok": 0, "failed": 0, "dead": 0, "harvested_new": 0, "archive_filed": 0,
-           "parked_company_cap": 0, "newly_blocked_domains": [], "over_budget_domains": [], "stop_reason": None}
-    t0, last_disk = time.time(), 0.0
+           "parked_company_cap": 0, "newly_blocked_domains": [], "over_budget_domains": [], "worker_errors": 0,
+           "last_worker_error": None, "stop_reason": None}
+    t0, last_disk, consecutive, inflight = time.time(), 0.0, 0, None
     try:
         while True:
             if max_files and out["fetched_ok"] >= max_files:
@@ -157,10 +162,30 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
                 out["stop_reason"] = "docket_exhausted" if not dk.remaining() else "sources_exhausted"
                 break
             c, key, lim = pick
-            if not dk.lease(c["url"]):            # another worker took it
+            if not dk.lease(c["url"]):            # another worker took it, or it is a poison item (now dead)
                 continue
             used[key] += 1
-            e = polite_fetcher.fetch_one(session, c["url"], c["year_tag"], c["harvested_from"])
+            inflight = c["url"]
+            try:
+                e = polite_fetcher.fetch_one(session, c["url"], c["year_tag"], c["harvested_from"])
+            except Exception as ex:  # one bad response must not kill the worker (and every later run)
+                inflight = None
+                next_ok[key] = time.time() + random.uniform(*lim["delay_s"])
+                msg = f"worker error: {type(ex).__name__}: {ex}"[:300]
+                dk.done_fetch(c["url"], {"http_status": None, "quarantined": True, "error": msg})
+                out["worker_errors"] += 1
+                out["last_worker_error"] = msg
+                consecutive += 1
+                log(f"fetch worker: {msg} on {c['url']}", level="ERROR", kind="fetch_worker_error", url=c["url"],
+                    traceback=traceback.format_exc()[-800:])
+                if isinstance(ex, OSError) and ex.errno == errno.ENOSPC:
+                    out["stop_reason"] = "low_disk_space"
+                    break
+                if consecutive >= MAX_CONSECUTIVE_ERRORS:
+                    out["stop_reason"] = "worker_errors"
+                    break
+                continue
+            inflight, consecutive = None, 0
             next_ok[key] = time.time() + random.uniform(*lim["delay_s"])
             status = dk.done_fetch(c["url"], e)
             ok = status == "fetched"
@@ -169,16 +194,31 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
                 out["newly_blocked_domains"].append(domain_of(c["url"]))
                 log(f"domain blocked after {block_after} consecutive failures: {domain_of(c['url'])}",
                     level="WARN", kind="domain_blocked", domain=domain_of(c["url"]))
-            if status == "dead" and e.get("http_status") in (404, 410):
-                out["archive_filed"] += archive_fallback(dk, session, c, policy, used)
-            if ok and (e.get("local_path") or "").endswith((".html", ".htm")):
-                out["harvested_new"] += harvest(dk, e, policy, per_page, run_id).get("new", 0)
+            try:
+                if status == "dead" and e.get("http_status") in (404, 410):
+                    out["archive_filed"] += archive_fallback(dk, session, c, policy, used)
+                if ok and (e.get("local_path") or "").endswith((".html", ".htm")):
+                    out["harvested_new"] += harvest(dk, e, policy, per_page, run_id).get("new", 0)
+            except Exception as ex:  # the download itself is recorded; a failed link scan is only logged
+                out["worker_errors"] += 1
+                out["last_worker_error"] = f"after download: {type(ex).__name__}: {ex}"[:300]
+                log(f"fetch worker: harvest/archive step failed for {c['url']}: {ex}", level="ERROR",
+                    kind="fetch_worker_error", url=c["url"], traceback=traceback.format_exc()[-800:])
             print(f"  ⇣ {status:<8} {e.get('http_status')} {c['url'][:90]}", flush=True)
     except KeyboardInterrupt:
         out["stop_reason"] = "keyboard_interrupt"
+        if inflight:
+            dk.release(inflight)
+    except Exception as ex:  # e.g. the docket database itself failing: stop with the reason, summary still written
+        out["stop_reason"] = f"error: {type(ex).__name__}: {ex}"[:300]
+        log(f"fetch worker stopped: {out['stop_reason']}", level="ERROR", kind="run_error",
+            traceback=traceback.format_exc()[-800:])
     finally:
         dk.set_meta("disk_state", disk_state)
-        out["docket"] = dk.write_stats()
+        try:
+            out["docket"] = dk.write_stats()
+        except Exception as ex:
+            out["docket"] = {"error": str(ex)[:200]}
         out["duration_s"] = round(time.time() - t0, 1)
         log(f"fetch worker: {out['fetched_ok']} ok, {out['failed']} failed (will retry), {out['dead']} dead, "
             f"+{out['harvested_new']} linked docs, +{out['archive_filed']} archive copies filed; "
@@ -205,8 +245,9 @@ def main() -> int:
               run_limits.parse_cap(a.max_docs_per_company), run_limits.StopFile(a.stop_file))
     if a.summary_out:
         a.summary_out.write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
-    emit({k: v for k, v in out.items() if k != "docket"} | {"docket_ready": out["docket"]["fetch_ready_now"]})
-    return 0
+    emit({k: v for k, v in out.items() if k != "docket"} | {"docket_ready": (out.get("docket") or {}).get("fetch_ready_now")})
+    reason = str(out["stop_reason"])
+    return 1 if reason in FAILURE_REASONS or reason.startswith("error") else 0
 
 
 if __name__ == "__main__":

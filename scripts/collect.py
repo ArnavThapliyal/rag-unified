@@ -236,6 +236,16 @@ def spawn(script: str, *args: str, out: Path) -> subprocess.Popen:
     return subprocess.Popen([PY, "-u", str(ROOT / "scripts" / script), *args, "--summary-out", str(out)], cwd=ROOT)
 
 
+def worker_failure(workers: dict) -> str | None:
+    """Why the run failed because of a worker, or None. A worker failed if it exited non-zero (a traceback, a
+    signal, or its own error stop reason) or left no summary (it died before writing it)."""
+    for name, w in workers.items():
+        if w["exit_code"] not in (0, None) or not w["summary"]:
+            detail = w["stop_reason"] or ("no summary written" if not w["summary"] else "")
+            return f"{name}_failed (exit {w['exit_code']}{': ' + str(detail) if detail else ''})"[:300]
+    return None
+
+
 def child_summary(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -357,7 +367,7 @@ def main() -> int:
     marker = RUNS / f".{rid}.discovering"  # exists while Discovery runs: the fetch worker waits for new items
     stop = run_limits.StopFile(RUNS / f".{rid}.stop")  # the first stage to reach a cap writes the reason here
     cap = {k: str(limits[k] or "all") for k in run_limits.CAPS}
-    children: list[subprocess.Popen] = []
+    children: dict[str, subprocess.Popen] = {}
     try:
         if stage in ("all", "drain", "fetch"):
             follow = []
@@ -366,13 +376,13 @@ def main() -> int:
                 follow = ["--follow", str(marker), "--follow-pid", str(os.getpid())]
             fw = spawn("fetch_worker.py", "--max-files", cap["max_files"], "--max-docs-per-company",
                        cap["max_docs_per_company"], "--stop-file", str(stop.path), *follow, out=fetch_out)
-            children.append(fw)
+            children["fetch_worker"] = fw
             if stage != "fetch":
-                children.append(spawn("process_worker.py", "--batch", str(a.process_every), "--follow", str(fw.pid),
+                children["process_worker"] = (spawn("process_worker.py", "--batch", str(a.process_every), "--follow", str(fw.pid),
                                       "--max-companies", cap["max_companies"], "--records-before",
                                       str(step["records_before"]), "--stop-file", str(stop.path), out=proc_out))
         elif stage == "process":
-            children.append(spawn("process_worker.py", "--batch", "1", "--max-companies", cap["max_companies"],
+            children["process_worker"] = (spawn("process_worker.py", "--batch", "1", "--max-companies", cap["max_companies"],
                                   "--records-before", str(step["records_before"]), "--stop-file", str(stop.path),
                                   out=proc_out))
         if todo:
@@ -381,7 +391,7 @@ def main() -> int:
             finally:
                 marker.unlink(missing_ok=True)  # the fetch worker drains what is left, then stops
             write_summary()
-        for c in children:
+        for c in children.values():
             c.wait()
         step["status"] = "completed"
         step["discovery_stop_reason"] = step["stop_reason"] or (
@@ -394,12 +404,21 @@ def main() -> int:
         step.update(status="error", stop_reason=f"{type(e).__name__}: {e}"[:300])
         log(traceback.format_exc()[-800:], level="ERROR", kind="run_error")
     finally:
-        for c in children:  # Ctrl-C / job.py stop reach the workers too (same process group); give them time
+        for c in children.values():  # Ctrl-C / job.py stop reach the workers too (same process group)
             try:
                 c.wait(timeout=120)
             except subprocess.TimeoutExpired:
                 c.terminate()
+                try:
+                    c.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    c.kill()
         f, pr = child_summary(fetch_out), child_summary(proc_out)
+        step["workers"] = {name: {"exit_code": c.returncode,
+                                  "summary": bool(f if name == "fetch_worker" else pr),
+                                  "stop_reason": (f if name == "fetch_worker" else pr).get("stop_reason")}
+                           for name, c in children.items()}
+        failed = worker_failure(step["workers"])
         capped = stop.reason()
         for p in (fetch_out, proc_out, marker, stop.path):
             p.unlink(missing_ok=True)
@@ -410,6 +429,10 @@ def main() -> int:
                     parse_errors=pr.get("parse_errors", 0), process_stop_reason=pr.get("stop_reason"))
         if f.get("stop_reason") == "low_disk_space":
             step.update(status="stopped", stop_reason="low_disk_space")
+        elif failed and step["status"] in ("completed", "running"):
+            # a worker crashed or failed: the run failed, whatever discovery did (agent: "job failed" rule)
+            step.update(status="error", stop_reason=failed)
+            log(f"run failed: {failed}", level="ERROR", kind="run_error", workers=step["workers"])
         elif step["status"] == "completed":
             # one reason for the run: a cap reached, else discovery's own stop, else how the docket ended
             step["stop_reason"] = capped or step["discovery_stop_reason"] or f.get("stop_reason") \
@@ -430,7 +453,7 @@ def main() -> int:
             **{k: step[k] for k in ("status", "stop_reason", "stage", "queries_done", "fetched_ok", "quarantined",
                                     "new_records", "duration_s")})
 
-    emit({k: step[k] for k in ("run_id", "status", "stop_reason", "discovery_stop_reason", "stage", "limits",
+    emit({k: step.get(k) for k in ("run_id", "status", "stop_reason", "discovery_stop_reason", "stage", "limits", "workers",
                                "queries_done", "queries_failed",
                                "urls_found", "filed_new", "fetched_ok", "fetch_failed", "fetch_dead", "harvested_ok",
                                "harvest_backlog", "fetch_stop_reason", "parsed_rows", "records_before",
