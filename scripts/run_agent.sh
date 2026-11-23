@@ -6,6 +6,12 @@
 #   CLINE_TIMEOUT=7200 scripts/run_agent.sh      # stop each session after 2 h (default: no limit)
 #   CLINE_MODEL=google/gemma-4-26b-a4b scripts/run_agent.sh   # other LM Studio model (or CLINE_MODEL= in .env)
 #   CLINE_MAX_RESTARTS=0 scripts/run_agent.sh    # don't auto-restart crashed sessions (default: 5)
+#   CLINE_SANDBOX=0 scripts/run_agent.sh         # run without the OS sandbox (default on macOS: on)
+#
+# OS sandbox (macOS sandbox-exec, scripts/agent_sandbox.py): Cline and everything it starts cannot read or
+# write your home directory outside the project, ~/.cline and the runtimes; ~/.ssh, ~/.config/nse-delisted-comp
+# (search keys), the project .env and the keychain are denied. Agent sessions therefore search via SearXNG only
+# (CLINE_SANDBOX_ALLOW_KEYS=1 lets the sandbox read the keys file). The profile is checked before each session.
 #
 # Uses LM Studio (localhost:1234) via Cline's lmstudio provider; LM Studio ignores the key.
 # Extra Cline flags can be passed with CLINE_EXTRA_ARGS (e.g. "--thinking low").
@@ -39,6 +45,8 @@ MAX_RESTARTS="${CLINE_MAX_RESTARTS:-5}"
 MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-12}"  # search-engine suspensions to wait out
 RESTART_DELAY="${CLINE_RESTART_DELAY:-15}"
 PY="$ROOT/.venv/bin/python"
+CLINE_BIN="$ROOT/node_modules/.bin/cline"   # not npx: no npm registry check, and it runs inside the sandbox
+SANDBOX_MODE="${CLINE_SANDBOX:-auto}"
 
 [ -f "$PROMPT_FILE" ] || { echo "prompt file not found: $PROMPT_FILE" >&2; exit 2; }
 
@@ -59,6 +67,26 @@ preflight() {
   echo "■ disk: $disk"
   case "$disk" in *'"level": "critical"'*) echo "Not enough free disk space — free some up first." >&2; return 1;; esac
 }
+
+SANDBOX_CMD=()
+if [ "$SANDBOX_MODE" != "0" ]; then
+  if [ "$(uname)" = "Darwin" ] && command -v sandbox-exec >/dev/null; then
+    mkdir -p logs/agent_sessions
+    keys=()
+    [ "${CLINE_SANDBOX_ALLOW_KEYS:-0}" = "1" ] && keys=(--allow-keys)
+    "$PY" scripts/agent_sandbox.py --out logs/agent_sessions/sandbox.sb "${keys[@]+"${keys[@]}"}" \
+      || { echo "could not build the sandbox profile (CLINE_SANDBOX=0 runs without it)" >&2; exit 2; }
+    if ! "$PY" scripts/agent_sandbox.py --check "${keys[@]+"${keys[@]}"}" >/dev/null; then
+      echo "sandbox probe failed: refusing to start (CLINE_SANDBOX=0 runs without it)" >&2; exit 2
+    fi
+    SANDBOX_CMD=(sandbox-exec -f "$ROOT/logs/agent_sessions/sandbox.sb")
+    echo "■ OS sandbox on: home directory, keys, .env and keychain are out of the agent's reach"
+  elif [ "$SANDBOX_MODE" = "1" ]; then
+    echo "CLINE_SANDBOX=1 but sandbox-exec is not available on this system" >&2; exit 2
+  else
+    echo "■ OS sandbox unavailable on this system: the tool guard is the only boundary" >&2
+  fi
+fi
 
 interrupted=0
 trap 'interrupted=1' INT
@@ -83,7 +111,7 @@ while :; do
   # --auto-approve true is required: it overrides any approval settings saved in ~/.cline by
   # interactive use, which would otherwise make every tool call fail in this non-interactive mode.
   # shellcheck disable=SC2086
-  npx --no-install cline --json -c "$ROOT" -P lmstudio -k lm-studio -m "$MODEL" --auto-approve true \
+  "${SANDBOX_CMD[@]+"${SANDBOX_CMD[@]}"}" "$CLINE_BIN" --json -c "$ROOT" -P lmstudio -k lm-studio -m "$MODEL" --auto-approve true \
     "${TIMEOUT_ARGS[@]+"${TIMEOUT_ARGS[@]}"}" --retries 5 ${CLINE_EXTRA_ARGS:-} "$(cat "$PROMPT_FILE")" \
     | tee "$OUT" | "$PY" scripts/agent_progress.py
   status=${PIPESTATUS[0]}

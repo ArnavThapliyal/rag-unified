@@ -163,6 +163,12 @@ if step.get("finish"):
     print(json.dumps({"type": "run_result", "finishReason": step["finish"], "text": " ".join(step.get("say", []))},
                      separators=(",", ":")),
           flush=True)
+if step.get("probe_home"):
+    try:
+        leaked = (Path(os.environ["HOME"]) / "canary.txt").read_text()
+    except OSError as e:
+        leaked = f"denied: {type(e).__name__}"
+    (root / "probe_result").write_text(leaked)
 sys.exit(step.get("exit", 0))
 '''
 
@@ -175,15 +181,20 @@ def sandbox(tmp_path):
         shutil.copytree(ROOT / d, sb / d, ignore=shutil.ignore_patterns("__pycache__"))
     for d in ("logs/runs", "logs/agent_sessions", "data/processed", "data/metadata"):
         (sb / d).mkdir(parents=True)
-    (sb / ".venv").symlink_to(Path(sys.executable).resolve().parents[1])
+    (sb / ".venv").symlink_to((ROOT / ".venv").resolve())
     (sb / "scripts" / "web_search.py").write_text("import sys\nsys.exit(0)\n")   # preflight: search "up"
     bin_ = tmp_path / "bin"
     bin_.mkdir()
     (bin_ / "fake_cline.py").write_text(FAKE_CLINE)
-    (bin_ / "npx").write_text(f'#!/bin/sh\nexec "{sys.executable}" "{bin_}/fake_cline.py" "$@"\n')
+    cline = sb / "node_modules" / ".bin" / "cline"                                # run_agent.sh's CLINE_BIN
+    cline.parent.mkdir(parents=True)
+    cline.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{bin_}/fake_cline.py" "$@"\n')
+    cline.chmod(0o755)
     (bin_ / "curl").write_text("#!/bin/sh\nexit 0\n")                            # preflight: LM Studio "up"
-    for f in ("npx", "curl"):
-        (bin_ / f).chmod(0o755)
+    (bin_ / "curl").chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "canary.txt").write_text("CANARY_SECRET")
     return sb, bin_
 
 
@@ -192,7 +203,8 @@ def run_agent(sandbox, plan, extra_env=None, interrupt_when_running=False, timeo
     (sb / "plan.json").write_text(json.dumps(plan))
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLINE_")}
     env.update(PATH=f"{bin_}:{env['PATH']}", SANDBOX=str(sb), FAKE_PLAN=str(sb / "plan.json"),
-               CLINE_RESTART_DELAY="0", HOME=str(sb), **(extra_env or {}))
+               CLINE_RESTART_DELAY="0", CLINE_SANDBOX="0", HOME=str(sb.parent / "home"))
+    env.update(extra_env or {})
     p = subprocess.Popen(["bash", str(sb / "scripts" / "run_agent.sh")], cwd=sb, env=env, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, text=True, start_new_session=True)
     if interrupt_when_running:
@@ -255,3 +267,20 @@ def test_e2e_interrupted_session_is_not_restarted(sandbox):
     assert calls == 1, out
     assert "interrupted" in out and "restarting" not in out
     assert code != 0
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("sandbox-exec"), reason="macOS sandbox-exec only")
+def test_e2e_sandboxed_session_cannot_read_home(sandbox):
+    sb, _ = sandbox
+    code, out, calls = run_agent(sandbox, [{"probe_home": True, "finish": "completed"}],
+                                 extra_env={"CLINE_SANDBOX": "1"})
+    assert (code, calls) == (0, 1), out
+    assert "OS sandbox on" in out
+    assert (sb / "probe_result").read_text().startswith("denied")
+
+
+def test_e2e_without_sandbox_the_same_probe_reads_home(sandbox):
+    """Control: the probe works, so the denial above is the sandbox's doing."""
+    sb, _ = sandbox
+    code, out, calls = run_agent(sandbox, [{"probe_home": True, "finish": "completed"}])
+    assert (sb / "probe_result").read_text() == "CANARY_SECRET"
