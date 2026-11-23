@@ -73,6 +73,26 @@ def test_company_name_never_decides_the_row_type():
     assert [r["delisting_type"] for r in p.rows_from_table(df, "COMPULSORY")] == ["COMPULSORY"] * 3
 
 
+def test_an_unrecognised_reason_is_other_not_the_documents_guess():
+    df = pd.DataFrame([["Symbol", "Company Name", "Delisted Date", "Type of Delisting"],
+                       ["HUSYS", "Husys Consulting Limited", "09-06-2016", "Exit from ITP platform"],
+                       ["ABC", "ABC Industries Ltd", "09-06-2016", "Voluntary Delisting"],
+                       ["XYZ", "XYZ Industries Ltd", "09-06-2016", ""]])
+    assert [r["delisting_type"] for r in p.rows_from_table(df, "COMPULSORY")] == ["OTHER", "VOLUNTARY_NO_EXIT", "COMPULSORY"]
+
+
+def test_workbook_sheets_fall_back_to_their_own_type(tmp_path):
+    f = tmp_path / "delisted.xlsx"
+    with pd.ExcelWriter(f) as w:
+        pd.DataFrame([["Symbol", "Company Name", "Delisted Date", "Type of Delisting"]] +
+                     [[f"V{i}", f"Vol {i} Ltd", "01-01-2017", "Voluntary Delisting"] for i in range(5)]
+                     ).to_excel(w, sheet_name="delisted", header=False, index=False)
+        pd.DataFrame([["Symbol", "Company", "Delisted Date", "Exit Price"], ["BHORIND", "Bhor Industries Ltd", "24-03-2017", 0.92]]
+                     ).to_excel(w, sheet_name="Exit Provided", header=False, index=False)
+    rows, _ = p.parse_file(f)
+    assert {r["company_name"]: r["delisting_type"] for r in rows}["Bhor Industries Ltd"] == "OTHER"
+
+
 @pytest.mark.parametrize("text,want", [
     ("Voluntary delisting of equity shares. Exit offer at the discovered price of Rs 120. Note: the acquirer is "
      "not under any NCLT proceedings.", "VOLUNTARY_EXIT_OFFER"),
@@ -228,6 +248,30 @@ def test_disagreeing_sources_months_apart_are_not_merged(tmp_path, monkeypatch):
     assert len(out) == 2
     res = ad.audit(out)
     assert res["warnings"]["possible_duplicate_event"]["count"] == 2
+
+
+def test_order_dated_a_few_days_after_the_effective_date_still_pairs(tmp_path, monkeypatch):
+    out = merge(tmp_path, monkeypatch, [
+        row("Poddar Housing and Development Limited", effective_delisting_date="2026-10-07", delisting_type="COMPULSORY"),
+        row("Poddar Housing and Development Limited", order_date="2026-10-09", delisting_type="COMPULSORY", source_url=ORDER)])
+    assert len(out) == 1 and (out[0]["order_date"], out[0]["effective_delisting_date"]) == ("2026-10-09", "2026-10-07")
+
+
+def test_a_bse_event_of_an_nse_company_is_bse_only(tmp_path, monkeypatch):
+    out = merge(tmp_path, monkeypatch, [
+        row("BIL Industries Limited", nse_symbol="BIL", effective_delisting_date="2016-09-12", delisting_type="IBC_NCLT"),
+        row("Bil Industries Ltd", effective_delisting_date="2016-08-17", delisting_type="COMPULSORY",
+            source_url="https://www.bseindia.com/downloads1/comp_delisted_cos_db.pdf")])
+    bse = list(csv.DictReader((tmp_path / "bse_only_delistings.csv").open()))
+    assert [r["nse_symbol"] for r in out] == ["BIL"] and [r["effective_delisting_date"] for r in bse] == ["2016-08-17"]
+
+
+def test_a_sheet_title_is_type_evidence_its_column_names_are_not():
+    df = pd.DataFrame([["Report under Regulation 27 (c) pertaining to the Delisting Exit Offer", None, None],
+                       ["Symbol", "Name of the Company", "Date of Delisting"], ["TCIDEVELOP", "TCI Developers Limited", "18-11-2022"]])
+    assert p.sheet_type(df) == "VOLUNTARY_EXIT_OFFER"
+    assert p.sheet_type(pd.DataFrame([["Symbol", "Company", "Delisted Date", "Exit Price"],
+                                      ["BHORIND", "Bhor Industries Ltd", "24-03-2017", 0.92]])) == "OTHER"
 
 
 def test_order_after_the_effective_date_is_not_merged(tmp_path, monkeypatch):

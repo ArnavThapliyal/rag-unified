@@ -12,14 +12,14 @@ Reconciliation, in two steps:
    ambiguous: rows without an ISIN are not guessed into either (flag `ambiguous_company`).
 2. Event, within a company:
    - effective dates within 30 days (7 days if two specific types disagree);
-   - an order date-only row up to 270 days before an effective date (an order, then the delisting);
+   - an order date-only row up to 270 days before (or, as sources differ, 30 days after) an effective date;
    - an undated row joins the company's only event.
    Anything else is a separate event. Example: one company delisted under two symbols five years apart
    stays two records. Sources that disagree by months are not merged; the audit flags them for review.
 Merging keeps the most confident source's values and fills gaps from the others:
 - `source_conflicts` records every disagreeing date or type.
 - `review_flags` records fields taken from NEEDS_REVIEW sources (e.g. OCR) and order dates rejected as
-  implausible (after the effective date, or more than 2 years before it).
+  implausible (more than 30 days after the effective date, or more than 2 years before it).
 
   python scripts/normalize_and_merge.py
 """
@@ -44,6 +44,7 @@ NAME_STOP = re.compile(r"\b(LTD|LIMITED|PVT|PRIVATE|THE|CO|COMPANY|CORPN?|CORPOR
 MERGE_WINDOW_DAYS = 30           # same type, or one side OTHER (unspecified)
 CROSS_TYPE_WINDOW_DAYS = 7       # two specific types that disagree: only (nearly) the same date
 ORDER_TO_EFFECTIVE_DAYS = 270    # an order and the delisting it ordered (verify_records.py uses the same window)
+ORDER_AFTER_EFFECTIVE_DAYS = 30  # sources date the same event a few days apart: an order up to 30 days "after" still pairs
 MAX_ORDER_LEAD_DAYS = 730        # a borrowed order date further before the effective date is implausible
 SCOPE_YEARS = (2006, 2026)
 FILL_ORDER = ["effective_delisting_date", "order_date", "company_name", "nse_symbol", "isin", "exit_or_fair_value_inr",
@@ -174,9 +175,9 @@ def dates_compatible(a: dict, b: dict) -> bool:
     if ea and eb:
         return abs((ea - eb).days) <= window
     if oa and eb:
-        return 0 <= (eb - oa).days <= ORDER_TO_EFFECTIVE_DAYS
+        return -ORDER_AFTER_EFFECTIVE_DAYS <= (eb - oa).days <= ORDER_TO_EFFECTIVE_DAYS
     if ob and ea:
-        return 0 <= (ea - ob).days <= ORDER_TO_EFFECTIVE_DAYS
+        return -ORDER_AFTER_EFFECTIVE_DAYS <= (ea - ob).days <= ORDER_TO_EFFECTIVE_DAYS
     if oa and ob:
         return abs((oa - ob).days) <= window
     return False
@@ -248,7 +249,7 @@ def merge_group(group: list[dict]) -> dict:
                 continue
             if k == "order_date" and best.get("effective_delisting_date"):
                 o, e = parse_d(v), parse_d(best["effective_delisting_date"])
-                if not (o and e and 0 <= (e - o).days <= MAX_ORDER_LEAD_DAYS):
+                if not (o and e and -ORDER_AFTER_EFFECTIVE_DAYS <= (e - o).days <= MAX_ORDER_LEAD_DAYS):
                     flags.append(f"order_date_rejected:{v}({domain_of(other.get('source_url') or '')})")
                     continue
             best[k] = v
@@ -351,11 +352,9 @@ def main() -> int:
         r["_entity"] = g[0]["_entity"]
     ids_kept = assign_ids(merged, load_previous_sources())
     merged.sort(key=lambda r: (r["calendar_year"] or 0, r["company_name"] or "", r["record_id"]))
-    # BSE-only delistings (no NSE symbol, only BSE sources, company in no NSE-sourced record) are not NSE
-    # delistings: many of these companies were never NSE-listed. They go to their own file.
-    nse_entities = {r["_entity"] for r in merged if not is_bse_only_source(r)}
-    bse_only = [r for r in merged if is_bse_only_source(r) and r["nse_symbol"] == "UNKNOWN"
-                and r["_entity"] not in nse_entities]
+    # BSE-only delistings (no NSE symbol, only BSE sources) are not NSE delistings: many of these companies were
+    # never NSE-listed, and a BSE event that did not merge into a company's NSE event is BSE's own delisting.
+    bse_only = [r for r in merged if is_bse_only_source(r) and r["nse_symbol"] == "UNKNOWN"]
     bse_ids = {r["record_id"] for r in bse_only}
     rest = [r for r in merged if r["record_id"] not in bse_ids]
     out_of_scope = [r for r in rest if r["calendar_year"] and not SCOPE_YEARS[0] <= r["calendar_year"] <= SCOPE_YEARS[1]]

@@ -208,6 +208,16 @@ def find_header_row(df: pd.DataFrame, scan: int = 15, allow_people: bool = False
     return None
 
 
+def sheet_type(df: pd.DataFrame) -> str:
+    """Fallback type of one sheet from its title lines and data cells, never its column-header row ("Exit Price" as a
+    column name is not evidence of an exit offer; a title "... pertaining to the Delisting Exit Offer" is)."""
+    df = df.dropna(how="all").dropna(axis=1, how="all")
+    hdr = find_header_row(df, allow_people=True)
+    if hdr is not None and hdr >= 0:
+        df = df.drop(df.index[hdr])
+    return classify(df.to_string(header=False)[:20000])
+
+
 def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False) -> list[dict]:
     df = df.dropna(how="all").dropna(axis=1, how="all")
     if df.empty:
@@ -254,8 +264,10 @@ def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False)
             "order_date": to_iso(rec.get("order_date")),
             "effective_delisting_date": to_iso(rec.get("effective_delisting_date")),
             "exit_or_fair_value_inr": price,
-            "delisting_type": reason_type if reason_type != "OTHER" else row_type if (row_type := classify(row_text)) != "OTHER"
-            else doc_type,  # the row's own words first; the document-wide guess only if the row says nothing
+            # the row's own reason first; a reason we can't classify ("Exit from ITP platform") is OTHER, never the
+            # document-wide guess; that guess only applies to rows that say nothing at all
+            "delisting_type": reason_type if reason_type != "OTHER" else "OTHER" if str(rec.get("_reason", "")).strip()
+            else row_type if (row_type := classify(row_text)) != "OTHER" else doc_type,
             "extraction": "table",
         })
     return out
@@ -454,9 +466,8 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
         for df in sheets.values():
             stats["tables_seen"] += 1
             text += df.to_string()[:20000]
-        doc_type = classify(text)
-        for df in sheets.values():
-            rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
+        for df in sheets.values():  # a workbook mixes sheets of every type: each sheet's fallback is its own data
+            rows += rows_from_table(df, sheet_type(df), proposed) or rows_from_status_table(df)
     elif ext == ".csv":
         df = pd.read_csv(path, header=None, dtype=str, on_bad_lines="skip", encoding_errors="ignore")
         stats["tables_seen"] = 1
