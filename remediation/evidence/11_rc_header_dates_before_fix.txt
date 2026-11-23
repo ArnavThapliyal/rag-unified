@@ -1,0 +1,4 @@
+FAILED tests/test_rc_header_dates.py::test_merge_prefers_a_stated_date_source_over_a_header_one
+FAILED tests/test_rc_header_dates.py::test_ambiguous_header_flag_reaches_the_record
+FAILED tests/test_rc_header_dates.py::test_date_source_is_exported - Assertio...
+14 failed in 0.14s

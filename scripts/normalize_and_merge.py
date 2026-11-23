@@ -121,6 +121,11 @@ def normalize(r: dict) -> dict:
         "source_url": r.get("source_url"),
         "local_artifact_path": r.get("local_artifact_path"),
         "confidence_status": r.get("confidence_status") if r.get("confidence_status") in CONF_RANK else "NEEDS_REVIEW",
+        "date_source": r.get("date_source") or (("document_text" if r.get("extraction") not in ("table", "status_table")
+                                                  else "table_column")
+                                                 if (r.get("effective_delisting_date") or r.get("order_date")) else None),
+        "_date_evidence": r.get("date_evidence"),
+        "_flags": list(r.get("parse_flags") or []),
         "_key": isin or norm_name(name),
         "_name": norm_name(name),
         "_sym": sym if sym != "UNKNOWN" else None,
@@ -201,7 +206,7 @@ def undated(r: dict) -> bool:
 
 def rank(r: dict) -> tuple:
     return (CONF_RANK[r["confidence_status"]], bool(r["effective_delisting_date"]),
-            sum(v not in (None, "", "UNKNOWN") for k, v in r.items() if not k.startswith("_")))
+            sum(v not in (None, "", "UNKNOWN") for k, v in r.items() if not k.startswith("_") and k != "date_source"))
 
 
 def events(members: list[dict]) -> list[list[dict]]:
@@ -218,14 +223,15 @@ def events(members: list[dict]) -> list[list[dict]]:
         same_type = [ev for ev in evs if ev[0]["delisting_type"] == r["delisting_type"]]
         target = evs[0] if len(evs) == 1 else same_type[0] if same_type else None
         if target is None and evs:
-            r = dict(r, _flags=["undated_unattached"])
+            r = dict(r, _flags=r.get("_flags", []) + ["undated_unattached"])
         (target.append(r) if target is not None else evs.append([r]))
     return evs
 
 
 # ---------- merging one event -------------------------------------------------------------------------------------
 # After the schema columns: provenance and reconciliation notes.
-PROVENANCE_FIELDS = ["source_count", "all_source_urls", "all_artifact_paths", "source_conflicts", "review_flags"]
+PROVENANCE_FIELDS = ["source_count", "all_source_urls", "all_artifact_paths", "source_conflicts", "review_flags",
+                     "date_source"]
 
 
 def is_bse_only_source(r: dict) -> bool:
@@ -268,6 +274,12 @@ def merge_group(group: list[dict]) -> dict:
         if others:
             conflicts.append(f"{k}: {best[k] or '-'} vs " + ", ".join(f"{v} ({d})" for v, d in others))
     derive(best)
+    # where the record's date came from: the best-ranked source stating that same date (a stated column or
+    # sentence beats a date read from a document header)
+    key = "effective_delisting_date" if best["effective_delisting_date"] else "order_date"
+    same = [r for r in group if best[key] and r[key] == best[key] and r.get("date_source")]
+    same.sort(key=lambda r: r["date_source"] == "document_header")
+    best["date_source"] = same[0]["date_source"] if same else None
     urls = list(dict.fromkeys(r["source_url"] for r in group if r.get("source_url")))
     if best["confidence_status"] == "NEEDS_REVIEW" and len({domain_of(u) for u in urls}) >= 2:
         best["confidence_status"] = "CORROBORATED_SECONDARY"
@@ -345,7 +357,7 @@ def main() -> int:
 
     ent, ambiguous = entities(rows)
     for i in ambiguous:
-        rows[i]["_flags"] = ["ambiguous_company"]
+        rows[i]["_flags"] = rows[i].get("_flags", []) + ["ambiguous_company"]
     by_entity: dict[int, list[dict]] = defaultdict(list)
     for i, r in enumerate(rows):
         r["_entity"] = ent[i]

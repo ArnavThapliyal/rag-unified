@@ -498,6 +498,64 @@ def rows_from_letter(text: str) -> list[dict]:
              "delisting_type": dtype, "extraction": "letter"}]
 
 
+# A circular/notice whose table has no date column states the date in its text: "the admission to dealings ...
+# shall be withdrawn (delisted) w.e.f. November 03, 2025", "would be delisted ... with effect from March 05, 2018".
+HEADER_SCAN_CHARS = 6000
+_HDATE = (r"([A-Z][a-z]+\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+\.?,?\s+\d{4}"
+          r"|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})")
+HEADER_EFFECTIVE_RE = re.compile(r"(delist\w*|withdrawn|withdraw the admission|cease\w* to be listed)([^.;]{0,250}?)"
+                                 r"(?:w\.?\s?e\.?\s?f\.?|with effect from)\s*:?\s*" + _HDATE, re.I | re.S)
+
+
+def header_dates(text: str) -> list[tuple[str, str]]:
+    """Distinct effective delisting dates stated in the document's opening text, each with its evidence snippet.
+    Only a date bound to a delisting verb in the same sentence counts (never a suspension date or a reference
+    date like "circular dated ...")."""
+    out: dict[str, str] = {}
+    head = (text or "")[:HEADER_SCAN_CHARS].replace("_", " ")
+    head = re.sub(r"(?<=e)\(cid:\d+\)(?=ect)", "ff", head)   # "with e(cid:431)ect from": a broken ff ligature
+    for start in re.finditer(r"delist|withdraw|cease", head, re.I):  # every verb (spans may overlap)
+        m = HEADER_EFFECTIVE_RE.match(head, start.start())
+        if not m or re.search(r"suspen", m.group(2), re.I):
+            continue
+        d = to_iso(m.group(3))
+        if d:
+            out.setdefault(d, re.sub(r"\s+", " ", m.group(0))[:200])
+    return list(out.items())
+
+
+# A notice reversing a delisting ("the status of the company would be changed from “Delisted” to “Suspended”"):
+# the company named in it is not delisted by this document.
+REVERSAL_RE = re.compile(r"from\s*[\"“”']?\s*Delisted\s*[\"“”']?\s*to\s*[\"“”']?\s*(?:Suspended|Active|Listed)|"
+                         r"revocation of (?:the )?delisting|delisting (?:order )?(?:is |stands )?(?:revoked|set aside)", re.I)
+
+
+def apply_header_dates(rows: list[dict], text: str) -> None:
+    """Fill the effective date of table/text rows from the document header, only when none of those rows has a
+    date of its own (the table has no date column). One distinct header date: used, with provenance. Several:
+    no date is set and every row is flagged for review. No header date: nothing is invented."""
+    targets = [r for r in rows if r.get("extraction") in ("table", "text", "status_table")]
+    if not targets or any(r.get("effective_delisting_date") or r.get("order_date") for r in targets):
+        return
+    found = header_dates(text)
+    if len(found) == 1:
+        d, evidence = found[0]
+        for r in targets:
+            r.update(effective_delisting_date=d, date_source="document_header", date_evidence=evidence)
+    elif len(found) > 1:
+        for r in targets:
+            r.setdefault("parse_flags", []).append("header_date_ambiguous:" + "|".join(d for d, _ in found))
+
+
+def date_source(r: dict) -> str | None:
+    if r.get("date_source"):
+        return r["date_source"]
+    if not (r.get("effective_delisting_date") or r.get("order_date")):
+        return None
+    return {"table": "table_column", "status_table": "table_column", "text": "line_text"}.get(
+        r.get("extraction"), "document_text")
+
+
 def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: dict) -> tuple[bool, str]:
     """Only documents about delisting may produce rows. Returns (relevant, reason)."""
     where = " ".join(x for x in (src, harvested_from, path.name) if x)
@@ -589,6 +647,15 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
     else:
         stats["skipped_ext"] = ext
     stats["text_head"] = text[:6000]
+    if rows and REVERSAL_RE.search(text[:HEADER_SCAN_CHARS]):
+        m = REVERSAL_RE.search(text[:HEADER_SCAN_CHARS])
+        stats["review"] += [{"extraction": r.get("extraction"), "reason": "delisting_reversed_notice",
+                             "candidate_name": r.get("company_name"), "trailing_name": None, "isin": r.get("isin"),
+                             "line": re.sub(r"\s+", " ", text[max(0, m.start() - 150): m.end() + 60])[:300]}
+                            for r in rows]
+        rows = []
+    if ext in (".pdf", ".html", ".htm", ".txt"):
+        apply_header_dates(rows, text)
     if len(rows) > MAX_ROWS_PER_FILE:
         raise ParseLimit(f"{len(rows)} rows from one file (> {MAX_ROWS_PER_FILE}): not a delisting list")
     return rows, stats
@@ -670,6 +737,7 @@ def main() -> int:
         rows = [r for r in rows if not r.get("isin") or isin_equity(r["isin"])]
         lines = []
         for r in rows:
+            r["date_source"] = date_source(r)
             r.update({"source_url": src, "local_artifact_path": rel, "year_tag": m.get("year_tag"),
                       "record_status": record_status, "ocr": bool(stats.get("ocr")),
                       "confidence_status": conf if (r.get("isin") or r.get("effective_delisting_date")
