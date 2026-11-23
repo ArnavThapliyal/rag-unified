@@ -219,3 +219,15 @@ def test_scripts_refuse_abbreviated_options(argv, tmp_path):
     r = subprocess.run([sys.executable, *argv], capture_output=True, text=True, cwd=tmp_path)
     assert r.returncode == 2 and "unrecognized arguments" in r.stderr, (r.returncode, r.stdout[-200:], r.stderr[-300:])
     assert '"status": "open"' in (tmp_path / "logs" / "issues.jsonl").read_text()
+
+
+# ---------- RC: an empty argument is an argument, not an operator (real-Cline smoke test finding) -----------------
+def test_empty_argument_gets_the_real_refusal_reason():
+    import tool_guard as tg
+    with pytest.raises(tg.Bad, match="command not allowed: sed"):
+        tg.plan_command("sed -i '' 's/3/99/' config/query_plan.json")
+    with pytest.raises(tg.Bad) as e:
+        tg.plan_command("git status ''")
+    assert "redirection" not in str(e.value)
+    with pytest.raises(tg.Bad, match="redirection"):
+        tg.plan_command("git status > x")

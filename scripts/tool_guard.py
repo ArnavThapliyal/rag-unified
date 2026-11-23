@@ -376,7 +376,7 @@ def parse(cmd: str) -> list[dict]:
             if t != "|":
                 plan.append({"op": op, "pipeline": pipeline})
                 op, pipeline = t, []
-        elif set(t) <= set("&|;<>()"):
+        elif t and set(t) <= set("&|;<>()"):
             raise Bad(f"'{t}' (redirection/background) is not allowed")
         else:
             cur.append(t)
