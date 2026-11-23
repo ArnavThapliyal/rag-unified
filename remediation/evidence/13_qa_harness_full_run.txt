@@ -1,0 +1,103 @@
+# pytest qa/ with QA_SANDBOX=/private/tmp/claude-501/-Users-arnav-Projects-Software-nse-delisted-comp/b6229518-3719-4612-a528-27f213a52c82/scratchpad/qa_sb (built by qa/make_sandbox.sh from this branch at 1c160e9); qa/ files unmodified since import
+PASSED qa/test_adv_io_security.py::test_provider_exception_is_a_runtime_error
+PASSED qa/test_adv_io_security.py::test_clean_empty_answer_is_returned_not_raised
+PASSED qa/test_adv_io_security.py::test_all_units_failing_returns_failures
+PASSED qa/test_adv_io_security.py::test_corrupt_cache_file_poisons_the_query
+PASSED qa/test_adv_io_security.py::test_searxng_non_json_200_marks_provider_down
+PASSED qa/test_adv_io_security.py::test_corrupt_pdf_raises
+PASSED qa/test_adv_io_security.py::test_html_saved_as_pdf_raises
+PASSED qa/test_adv_io_security.py::test_corrupt_xlsx_raises
+PASSED qa/test_adv_io_security.py::test_parse_main_retries_broken_files_every_batch
+PASSED qa/test_adv_io_security.py::test_ocr_failure_is_cached_forever
+PASSED qa/test_adv_io_security.py::test_ocr_timeout_propagates
+PASSED qa/test_adv_io_security.py::test_real_tesseract_on_a_synthetic_scan
+PASSED qa/test_adv_io_security.py::test_disk_setting_with_bad_value_crashes
+PASSED qa/test_adv_io_security.py::test_process_worker_never_checks_disk
+PASSED qa/test_adv_io_security.py::test_tracked_env_is_refused
+PASSED qa/test_adv_io_security.py::test_redact_hides_keys
+PASSED qa/test_adv_io_security.py::test_where_never_returns_the_value
+PASSED qa/test_adv_io_security.py::test_credential_lookup_failure_mode_when_tracked_env_exists
+PASSED qa/test_adv_io_security.py::test_pipe_filters_cannot_read_or_write_files[.venv/bin/python scripts/common.py log x | cut -c1-200 .env]
+PASSED qa/test_adv_io_security.py::test_pipe_filters_cannot_read_or_write_files[c1]
+PASSED qa/test_adv_io_security.py::test_pipe_filters_cannot_read_or_write_files[.venv/bin/python scripts/common.py log x | grep -eKEY .env]
+PASSED qa/test_adv_io_security.py::test_pipe_filters_cannot_read_or_write_files[.venv/bin/python scripts/common.py log x | grep -r API_KEY]
+PASSED qa/test_adv_io_security.py::test_pipe_filters_cannot_read_or_write_files[.venv/bin/python scripts/common.py log x | sort -oscripts/collect.py]
+PASSED qa/test_adv_io_security.py::test_pipe_filters_cannot_read_or_write_files[.venv/bin/python scripts/common.py log x | sort --files0-from=.env]
+PASSED qa/test_adv_io_security.py::test_script_argument_rules[.venv/bin/python scripts/docket.py --stats --unblock nseindia.com]
+PASSED qa/test_adv_io_security.py::test_script_argument_rules[.venv/bin/python scripts/docket.py --list dead --retry dead]
+PASSED qa/test_adv_io_security.py::test_script_argument_rules[.venv/bin/python scripts/docket.py --stats --promote --limit 100000]
+PASSED qa/test_adv_io_security.py::test_script_argument_rules[.venv/bin/python scripts/report_issue.py --close=1]
+PASSED qa/test_adv_io_security.py::test_script_argument_rules[.venv/bin/python scripts/report_issue.py --clos 1]
+PASSED qa/test_adv_io_security.py::test_script_argument_rules[.venv/bin/python scripts/job.py start --unlimited]
+PASSED qa/test_adv_io_security.py::test_script_argument_rules[.venv/bin/python scripts/job.py start --max-files all --max-docs-per-company all]
+PASSED qa/test_adv_io_security.py::test_agent_cannot_edit_politeness_or_disk_settings["min_free_gb": 20-"min_free_gb": 0]
+PASSED qa/test_adv_io_security.py::test_agent_cannot_edit_politeness_or_disk_settings["delay_s": [10, 20]-"delay_s": [0, 0]]
+PASSED qa/test_adv_io_security.py::test_agent_cannot_edit_politeness_or_disk_settings["max_per_run": 12-"max_per_run": 5000]
+PASSED qa/test_adv_io_security.py::test_agent_cannot_edit_politeness_or_disk_settings["deny_domains": [-"deny_domains_x": []
+PASSED qa/test_adv_io_security.py::test_agent_cannot_edit_politeness_or_disk_settings["block_domain_after_failures": 3-"block_domain_after_failures": 9999]
+PASSED qa/test_adv_io_security.py::test_agent_cannot_delete_the_plan
+PASSED qa/test_adv_io_security.py::test_hook_fails_closed_on_garbage_input
+PASSED qa/test_adv_io_security.py::test_control_dry_run_is_allowed
+PASSED qa/test_adv_merge_docket.py::test_same_company_with_and_without_isin_is_one_record
+PASSED qa/test_adv_merge_docket.py::test_audit_flags_isin_vs_name_split
+PASSED qa/test_adv_merge_docket.py::test_conflicting_types_a_few_days_apart_are_one_event
+PASSED qa/test_adv_merge_docket.py::test_conflicting_dates_keep_primary_and_record_the_conflict
+PASSED qa/test_adv_merge_docket.py::test_year_out_of_range_rows_are_kept_in_master
+PASSED qa/test_adv_merge_docket.py::test_429_throttling_eventually_kills_the_url
+PASSED qa/test_adv_merge_docket.py::test_403_is_dead_on_first_attempt
+PASSED qa/test_adv_merge_docket.py::test_domain_block_never_expires
+PASSED qa/test_adv_merge_docket.py::test_crashed_worker_lease_is_recovered_after_expiry
+PASSED qa/test_adv_merge_docket.py::test_parse_error_retry_without_parser_change_loops
+PASSED qa/test_adv_merge_docket.py::test_retry_after_http_date_crashes
+PASSED qa/test_adv_merge_docket.py::test_timeouts_are_retried_then_quarantined
+PASSED qa/test_adv_merge_docket.py::test_soft_block_page_with_200_counts_as_success
+PASSED qa/test_adv_merge_docket.py::test_no_download_size_limit
+PASSED qa/test_adv_merge_docket.py::test_interrupted_download_has_no_partial_file
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[15 August 2017-2017-08-15]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[August 1, 2017-2017-08-01]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[1st August 2017-2017-08-01]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[21st March 2020-2020-03-21]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[March 21st, 2020-2020-03-21]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[2017-03-04-2017-03-04]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[04-03-2017-2017-03-04]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[4.3.2017-2017-03-04]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[24-Mar-17-2017-03-24]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[Mar 4, 2017-2017-03-04]
+PASSED qa/test_adv_parsing.py::test_to_iso_formats[23rd August, 2007-2007-08-23]
+PASSED qa/test_adv_parsing.py::test_to_iso_rejects_impossible_dates
+PASSED qa/test_adv_parsing.py::test_to_iso_excel_serial_number
+PASSED qa/test_adv_parsing.py::test_regime_boundaries[d0-SEBI_2003_Guidelines]
+PASSED qa/test_adv_parsing.py::test_regime_boundaries[d1-SEBI_2009_Regs]
+PASSED qa/test_adv_parsing.py::test_regime_boundaries[d2-SEBI_2009_Regs]
+PASSED qa/test_adv_parsing.py::test_regime_boundaries[d3-SEBI_2021_Regs]
+PASSED qa/test_adv_parsing.py::test_regime_boundaries[d4-SEBI_2021_Regs]
+PASSED qa/test_adv_parsing.py::test_regime_boundaries[d5-SEBI_2024_Amendment]
+PASSED qa/test_adv_parsing.py::test_fy_boundaries
+PASSED qa/test_adv_parsing.py::test_regime_uses_effective_date_not_order_date
+PASSED qa/test_adv_parsing.py::test_isin_validation_edges
+PASSED qa/test_adv_parsing.py::test_table_isin_with_spaces_or_lowercase_is_recovered
+PASSED qa/test_adv_parsing.py::test_normalize_drops_invalid_isin
+PASSED qa/test_adv_parsing.py::test_company_name_does_not_decide_the_type
+PASSED qa/test_adv_parsing.py::test_voluntary_doc_mentioning_nclt_in_passing_is_not_ibc
+PASSED qa/test_adv_parsing.py::test_ibc_substring_false_positive
+PASSED qa/test_adv_parsing.py::test_isin_label_lines_are_not_companies[ISIN: INE002A01018]
+PASSED qa/test_adv_parsing.py::test_isin_label_lines_are_not_companies[ISIN of the Company INE002A01018]
+PASSED qa/test_adv_parsing.py::test_isin_label_lines_are_not_companies[ISIN Code INE002A01018 Face Value Rs 10]
+PASSED qa/test_adv_parsing.py::test_isin_label_lines_are_not_companies[Scrip Code 500325 ISIN INE002A01018]
+PASSED qa/test_adv_parsing.py::test_last_traded_price_is_not_exit_price
+PASSED qa/test_adv_parsing.py::test_exit_price_parsing[Rs. 125.50-125.5]
+PASSED qa/test_adv_parsing.py::test_exit_price_parsing[\u20b9 1,234.00-1234.0]
+PASSED qa/test_adv_parsing.py::test_exit_price_parsing[125.50 per share-125.5]
+PASSED qa/test_adv_parsing.py::test_exit_price_parsing[Rs.125/--125.0]
+PASSED qa/test_adv_parsing.py::test_existing_test_order_title_uses_literal_backslash_n
+PASSED qa/test_adv_parsing.py::test_relevance_by_harvested_from_page_alone
+PASSED qa/test_adv_parsing.py::test_proposed_regex_hits_ordinary_words
+FAILED qa/test_adv_io_security.py::test_zip_bomb_like_xlsx_is_not_bounded - p...
+FAILED qa/test_adv_merge_docket.py::test_record_id_survives_a_better_source_arriving
+FAILED qa/test_adv_merge_docket.py::test_done_fetch_on_unknown_url_reports_a_status
+FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentially[500]
+FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentially[503]
+FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentially[429]
+FAILED qa/test_adv_merge_docket.py::test_retry_after_is_capped_at_120s - asse...
+FAILED qa/test_adv_merge_docket.py::test_error_after_an_earlier_5xx_loses_the_error
+8 failed, 93 passed in 3.61s
