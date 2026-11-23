@@ -1,5 +1,6 @@
 """RC-D: effective dates read from a circular's header when its table has no date column. Provenance kept
 (date_source), nothing invented, ambiguous headers flagged; delisting-reversal notices never become records."""
+import csv
 import sys
 from pathlib import Path
 
@@ -133,3 +134,27 @@ def test_ambiguous_header_flag_reaches_the_record():
 
 def test_date_source_is_exported():
     assert "date_source" in nm.PROVENANCE_FIELDS
+
+
+def test_first_leasing_bse_header_date_never_anchors_the_nse_event(tmp_path, monkeypatch):
+    """Staging finding: a BSE notice's header date (its BSE delisting, 2018-05-11) out-ranked the NSE rows and
+    split NSE's own event (letter: COMPULSORY 2018-05-30) off. NSE rows anchor; the BSE event stays BSE-only."""
+    from test_data_integrity import merge, row
+    letter = "https://nsearchives.nseindia.com/web/sites/default/files/inline-files/First%20Leasing.pdf"
+    out = merge(tmp_path, monkeypatch, [
+        row("First Leasing Company of India Ltd", effective_delisting_date="2018-05-11", delisting_type="IBC_NCLT",
+            source_url="https://beta.bseindia.com/downloads1/TradingNotice_No_20180509_3.pdf",
+            local_artifact_path="data/raw/bse.pdf", date_source="document_header"),
+        row("First Leasing Company of India Ltd.", effective_delisting_date="2018-05-30",
+            source_url="https://archives.nseindia.com/invest/content/db/DelistedCos_Buy_Sell.xls",
+            local_artifact_path="data/raw/bs.xls"),
+        row("First Leasing Company of India Ltd", order_date="2018-05-18", effective_delisting_date="2018-05-30",
+            delisting_type="COMPULSORY", source_url=letter, local_artifact_path="data/raw/l.pdf"),
+        row("First Leasing Company India Limited", nse_symbol="FIRSTLEASE", effective_delisting_date="2018-05-30",
+            delisting_type="IBC_NCLT")])
+    assert len(out) == 1, [(r["company_name"], r["effective_delisting_date"]) for r in out]
+    r = out[0]
+    assert r["effective_delisting_date"] == "2018-05-30" and r["nse_symbol"] == "FIRSTLEASE"
+    assert "bseindia" not in r["all_source_urls"]            # the BSE event is not merged into NSE's
+    bse = list(csv.DictReader((tmp_path / "bse_only_delistings.csv").open()))
+    assert [(b["effective_delisting_date"]) for b in bse] == ["2018-05-11"]

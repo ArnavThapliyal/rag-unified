@@ -36,7 +36,7 @@ MAX_EXAMPLES = 10
 NEAR_EVENT_DAYS = 1095   # two "events" of one company within 3 years: a human should look
 LABEL_NAME_RE = re.compile(r"^(?:ISIN|SYMBOL|CIN|SCRIP\s*CODE|NSE\s*SYMBOL|NAME)\b|\||\bSymbol\s*:|\bIN[E9][A-Z0-9]{8}[0-9]\b",
                            re.I)
-NAME_STOP = re.compile(r"\b(LTD|LIMITED|PVT|PRIVATE|THE|CO|COMPANY|CORPN?|CORPORATION)\b")
+NAME_STOP = re.compile(r"\b(LTD|LIMITED|PVT|PRIVATE|THE|CO|COMPANY|CORPN?|CORPORATION|OF)\b")  # "X of India" = "X India"
 
 
 def norm_name(name: str) -> str:  # same normalization as normalize_and_merge.py

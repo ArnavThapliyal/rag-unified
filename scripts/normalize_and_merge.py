@@ -41,7 +41,7 @@ from common import (
 
 CONF_RANK = {"VERIFIED_PRIMARY": 3, "CORROBORATED_SECONDARY": 2, "NEEDS_REVIEW": 1}
 TYPES = {"COMPULSORY", "VOLUNTARY_EXIT_OFFER", "VOLUNTARY_NO_EXIT", "AMALGAMATION_MERGER", "IBC_NCLT", "OTHER"}
-NAME_STOP = re.compile(r"\b(LTD|LIMITED|PVT|PRIVATE|THE|CO|COMPANY|CORPN?|CORPORATION)\b")
+NAME_STOP = re.compile(r"\b(LTD|LIMITED|PVT|PRIVATE|THE|CO|COMPANY|CORPN?|CORPORATION|OF)\b")  # "X of India" = "X India"
 MERGE_WINDOW_DAYS = 30           # same type, or one side OTHER (unspecified)
 CROSS_TYPE_WINDOW_DAYS = 7       # two specific types that disagree: only (nearly) the same date
 ORDER_TO_EFFECTIVE_DAYS = 270    # an order and the delisting it ordered (verify_records.py uses the same window)
@@ -204,8 +204,14 @@ def undated(r: dict) -> bool:
     return not r["effective_delisting_date"] and not r["order_date"]
 
 
+def nse_side(r: dict) -> bool:
+    """Not a BSE document: a BSE notice dates the BSE delisting, which may differ from NSE's."""
+    return not domain_of(r.get("source_url") or "").endswith("bseindia.com")
+
+
 def rank(r: dict) -> tuple:
-    return (CONF_RANK[r["confidence_status"]], bool(r["effective_delisting_date"]),
+    """Best source first: confidence, then non-BSE (an event is anchored on NSE's dates, never BSE's), then dated."""
+    return (CONF_RANK[r["confidence_status"]], nse_side(r), bool(r["effective_delisting_date"]),
             sum(v not in (None, "", "UNKNOWN") for k, v in r.items() if not k.startswith("_") and k != "date_source"))
 
 
