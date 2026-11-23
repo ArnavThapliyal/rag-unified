@@ -80,7 +80,8 @@ def close(issue_id: int, note: str) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--kind", choices=KINDS)
     ap.add_argument("--summary", help="one sentence: what is wrong, with counts")
     ap.add_argument("--evidence", action="append", default=[], help="artifact path, URL or record_id (repeatable)")

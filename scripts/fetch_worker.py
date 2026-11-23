@@ -189,7 +189,8 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--max-files", default="60", help="files downloaded OK this run; 0 or all = no cap")
     ap.add_argument("--max-fetch", dest="max_files", help=argparse.SUPPRESS)  # old name
     ap.add_argument("--max-docs-per-company", default="all", help="per company, all runs; 0 or all = no cap")

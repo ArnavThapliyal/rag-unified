@@ -446,7 +446,8 @@ def apply(actions: dict[str, list[Action]]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--defaults", action="store_true", help="accept every recommended option without asking")
     ap.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
     a = ap.parse_args(argv)

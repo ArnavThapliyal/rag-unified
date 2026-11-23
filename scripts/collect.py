@@ -244,7 +244,8 @@ def child_summary(path: Path) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--stage", choices=("all", "discover", "fetch", "process", "drain"), default="all")
     ap.add_argument("--phase", default="all", help="phase name from config/query_plan.json, or 'all'")
     ap.add_argument("--max-queries", type=int, default=0, help="stop after N queries (0 = no limit)")

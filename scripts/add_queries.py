@@ -70,7 +70,8 @@ def add(plan: dict, queries: list[str], year_tag: str | None, domains: list[str]
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--query", action="append", default=[])
     ap.add_argument("--year-tag")
     ap.add_argument("--add-domain", action="append", default=[])

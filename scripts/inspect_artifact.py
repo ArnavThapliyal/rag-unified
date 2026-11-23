@@ -143,7 +143,8 @@ def artifact_record(rel: str) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("path", nargs="?", type=Path)
     ap.add_argument("--lines", type=int, help=argparse.SUPPRESS)  # old option; output no longer has lines
     ap.add_argument("--zero-rows", action="store_true")

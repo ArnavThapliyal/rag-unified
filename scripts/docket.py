@@ -409,7 +409,8 @@ def open_docket() -> Docket:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--stats", action="store_true")
     ap.add_argument("--list", choices=STATUSES)
     ap.add_argument("--limit", type=int, default=20)

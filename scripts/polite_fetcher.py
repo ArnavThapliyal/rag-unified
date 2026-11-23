@@ -230,7 +230,8 @@ def fetch_urls(urls: list[str], tag: str | None, limit: int,
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--url")
     src.add_argument("--from-cache-file", type=Path)

@@ -445,7 +445,8 @@ def manifest_index() -> dict[str, dict]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--file", type=Path)
     ap.add_argument("--force", action="store_true")
     a = ap.parse_args()

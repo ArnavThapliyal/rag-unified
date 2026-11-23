@@ -35,7 +35,7 @@ def test_reads_and_edits():
     assert g.check("read_files", {"files": [{"path": f"{ROOT}/config/query_plan.json"}]}) is None
     for p in ["scripts/collect.py", "/etc/passwd", "data/raw/master_lists/x.pdf", "~/.cline/data/x"]:
         assert g.check("read_files", {"files": [{"path": p}]}), p
-    assert g.check("editor", {"path": f"{ROOT}/config/query_plan.json", "new_text": "x"}) is None
+    assert g.check("editor", {"path": f"{ROOT}/config/query_plan.json", "new_text": "x"})  # no direct edits at all
     assert g.check("editor", {"path": "config/../scripts/x.py", "new_text": "x"})
     assert g.check("apply_patch", {"input": "*** Begin Patch\n*** Update File: soul.md\n*** End Patch"})
     assert g.check("fetch_web_content", {"url": "https://x"})
@@ -63,7 +63,8 @@ def test_secrets_and_search_settings_are_off_limits():
     assert g.check("editor", {"path": plan, "new_text": '"providers": ["serper"]'})
     assert g.check("apply_patch", {"input": '*** Begin Patch\n*** Update File: config/query_plan.json\n'
                                             '+ "monthly_limit": null\n*** End Patch'})
-    assert g.check("editor", {"path": plan, "old_text": '"queries": [', "new_text": '"queries": ["nse delisting 2019",'}) is None
+    # remediation S4: queries are added only with scripts/add_queries.py, never by editing the plan
+    assert g.check("editor", {"path": plan, "old_text": '"queries": [', "new_text": '"queries": ["nse delisting 2019",'})
     assert g.check("run_commands", {"commands": [".venv/bin/python scripts/web_search.py --check"]}) is None
     assert g.check("run_commands", {"commands": [".venv/bin/python scripts/web_search.py --query x"]})
 

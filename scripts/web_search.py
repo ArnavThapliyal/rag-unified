@@ -369,7 +369,8 @@ def list_cache() -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--query", "-q")
     ap.add_argument("--pages", type=int, default=1)
     ap.add_argument("--year-tag", help="2007|2017|2020|2024|master|<year>")

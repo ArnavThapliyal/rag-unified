@@ -97,7 +97,8 @@ def run(batch: int, follow: int | None, max_companies: int | None = None, record
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--batch", type=int, default=5, help="parse once this many downloads are waiting")
     ap.add_argument("--follow", type=int, metavar="PID")
     ap.add_argument("--max-companies", default="all", help="new master records this run; 0 or all = no cap")

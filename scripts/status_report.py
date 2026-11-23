@@ -96,7 +96,8 @@ def print_indicators(meta: dict) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 allow_abbrev=False)
     ap.add_argument("--year", type=int)
     ap.add_argument("--needs-review", action="store_true", help="list NEEDS_REVIEW rows (max 25)")
     ap.add_argument("--json", action="store_true")
