@@ -222,7 +222,14 @@ def sheet_type(df: pd.DataFrame) -> str:
     return classify(df.to_string(header=False)[:20000])
 
 
-def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False) -> list[dict]:
+# A reason cell saying a debt security was redeemed (BSE's delisted list mixes bonds, NCDs, InvITs and mutual
+# fund units in): not an equity delisting.
+DEBT_REASON_RE = re.compile(r"\b(?:final\s+)?redemption\b|\bredeemed\b|\bmaturity\b|\bmatured\b|\bcall option\b",
+                            re.I)
+
+
+def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False,
+                    review: list | None = None) -> list[dict]:
     df = df.dropna(how="all").dropna(axis=1, how="all")
     if df.empty:
         return []
@@ -259,6 +266,11 @@ def rows_from_table(df: pd.DataFrame, doc_type: str, allow_people: bool = False)
         # the type comes from the reason column, else the row's other cells: never from the company name
         ident_cols = {i for i, f in mapping.items() if f in ("company_name", "nse_symbol", "isin")}
         row_text = " ".join(str(v) for i, v in enumerate(vals) if i not in ident_cols)
+        if DEBT_REASON_RE.search(str(rec.get("_reason", ""))):
+            if review is not None:
+                review.append({"extraction": "table", "reason": "debt_redemption_not_equity", "candidate_name": name,
+                               "trailing_name": None, "isin": isin, "line": str(rec.get("_reason", ""))[:300]})
+            continue
         reason_type = classify(str(rec.get("_reason", "")))
         price = parse_price(rec.get("exit_or_fair_value_inr"))
         out.append({
@@ -590,12 +602,12 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
             stats["tables_seen"] += 1
             text += df.to_string()[:20000]
         for df in sheets.values():  # a workbook mixes sheets of every type: each sheet's fallback is its own data
-            rows += rows_from_table(df, sheet_type(df), proposed) or rows_from_status_table(df)
+            rows += rows_from_table(df, sheet_type(df), proposed, stats["review"]) or rows_from_status_table(df)
     elif ext == ".csv":
         df = pd.read_csv(path, header=None, dtype=str, on_bad_lines="skip", encoding_errors="ignore")
         stats["tables_seen"] = 1
         text = df.head(50).to_string()
-        rows = rows_from_table(df, classify(df.to_string()[:20000]), proposed)
+        rows = rows_from_table(df, classify(df.to_string()[:20000]), proposed, stats["review"])
     elif ext in (".html", ".htm"):
         from bs4 import BeautifulSoup
         html = path.read_text(encoding="utf-8", errors="ignore")
@@ -609,7 +621,7 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
             tables = []
         stats["tables_seen"] = len(tables)
         for df in tables:
-            rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
+            rows += rows_from_table(df, doc_type, proposed, stats["review"]) or rows_from_status_table(df)
         if not rows:
             rows = rows_from_text(text, doc_type, stats["review"])
         if not rows:
@@ -638,7 +650,7 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
             rows = order_rows
         else:
             for df in tables:
-                rows += rows_from_table(df, doc_type, proposed) or rows_from_status_table(df)
+                rows += rows_from_table(df, doc_type, proposed, stats["review"]) or rows_from_status_table(df)
             if not rows:
                 rows = rows_from_text(text, doc_type, stats["review"])
     elif ext == ".txt":
@@ -656,6 +668,9 @@ def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
         rows = []
     if ext in (".pdf", ".html", ".htm", ".txt"):
         apply_header_dates(rows, text)
+    for r in rows:  # "Stephano(cid:415)s Finance Ltd": a glyph the PDF font did not map; a human must read it
+        if "(cid:" in (r.get("company_name") or ""):
+            r.setdefault("parse_flags", []).append("name_has_unmapped_pdf_glyph")
     if len(rows) > MAX_ROWS_PER_FILE:
         raise ParseLimit(f"{len(rows)} rows from one file (> {MAX_ROWS_PER_FILE}): not a delisting list")
     return rows, stats

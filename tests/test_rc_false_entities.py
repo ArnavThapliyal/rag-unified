@@ -147,3 +147,24 @@ def test_review_candidates_are_written_and_exported(tmp_path, monkeypatch):
     csv_text = (processed / "extraction_review.csv").read_text()
     assert "ADHARSHILA CAPITAL SERVICES LIMITED" in csv_text and "faites4 fra" in csv_text
     assert "faites4" not in (processed / "nse_delisted_master.csv").read_text().lower()
+
+
+def test_bse_debt_redemption_rows_are_not_equity_delistings():
+    import pandas as pd
+    df = pd.DataFrame([["Security Code", "Full Name", "Date of Delisting", "Reason"],
+                       ["532702", "Gujarat State Petronet Ltd.", "12 Oct 2026", "AMALGAMATION/ MERGER"],
+                       ["523628", "Poddar Housing and Development Limited", "07 Oct 2026", "Compulsory Delisting"],
+                       ["974001", "Vertis Infrastructure Trust", "25 Sep 2026", "REDEMPTION"],
+                       ["974002", "SK Finance Limited", "25 Sep 2026", "FINAL REDEMPTION"]])
+    review = []
+    rows = p.rows_from_table(df, "OTHER", review=review)
+    assert [(r["company_name"], r["delisting_type"]) for r in rows] == [
+        ("Gujarat State Petronet Ltd.", "AMALGAMATION_MERGER"), ("Poddar Housing and Development Limited", "COMPULSORY")]
+    assert [c["reason"] for c in review] == ["debt_redemption_not_equity"] * 2
+
+
+def test_unmapped_pdf_glyph_in_a_name_is_flagged(tmp_path):
+    f = tmp_path / "n.txt"
+    f.write_text("Delisting notice\nStephano(cid:415)s Finance Ltd INE002A01018\n")
+    rows, _ = p.parse_file(f)
+    assert rows and rows[0]["parse_flags"] == ["name_has_unmapped_pdf_glyph"]
