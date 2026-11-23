@@ -1,5 +1,7 @@
 # Phase 1 Remediation Report
 
+> Superseded for release status by `RELEASE_CANDIDATE_REPORT.md` (items 2, 3, 5, 6, 7 of §9 below are resolved there).
+
 | | |
 |---|---|
 | Branch | `remediation/qa-phase1` (worktree `../nse-remediation`), from baseline `35df260` |

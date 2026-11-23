@@ -1,4 +1,4 @@
-# pytest qa/ with QA_SANDBOX=/private/tmp/claude-501/-Users-arnav-Projects-Software-nse-delisted-comp/b6229518-3719-4612-a528-27f213a52c82/scratchpad/qa_sb (built by qa/make_sandbox.sh from this branch at 1c160e9); qa/ files unmodified since import
+# pytest qa/ with QA_SANDBOX built by qa/make_sandbox.sh from fede71d; qa/ unmodified
 PASSED qa/test_adv_io_security.py::test_provider_exception_is_a_runtime_error
 PASSED qa/test_adv_io_security.py::test_clean_empty_answer_is_returned_not_raised
 PASSED qa/test_adv_io_security.py::test_all_units_failing_returns_failures
@@ -100,4 +100,4 @@ FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentiall
 FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentially[429]
 FAILED qa/test_adv_merge_docket.py::test_retry_after_is_capped_at_120s - asse...
 FAILED qa/test_adv_merge_docket.py::test_error_after_an_earlier_5xx_loses_the_error
-8 failed, 93 passed in 3.61s
+8 failed, 93 passed in 3.67s
