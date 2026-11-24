@@ -6,7 +6,7 @@ API), plus any module dropped into that folder. config/query_plan.json, "search"
                                                  used up (all units benched, daily/monthly limit reached,
                                                  no key, or down)
   "provider_settings": {"serper": {"daily_limit": 50, ...}, ...}
-API keys come from the environment, ~/.config/nse-delisted-comp/keys.env or the git-ignored .env
+API keys come from the environment, ~/.config/nse-unified-pipeline/keys.env or the git-ignored .env
 (scripts/credentials.py), never from code or config.
 
 Rotation: each provider has *units* that are benched independently (SearXNG: its upstream engines, an

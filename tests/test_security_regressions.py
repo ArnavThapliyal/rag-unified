@@ -1,4 +1,4 @@
-"""Regression tests for the agent permission boundary (remediation S1-S4, see remediation/RECONCILIATION.md).
+"""Regression tests for the agent permission boundary.
 
 Design under test: the tool guard accepts only an exact grammar (programs, flags, values), refuses anything
 bash would expand or redirect, and rewrites every allowed call into `scripts/agent_exec.py <token>`, which
@@ -23,7 +23,7 @@ def cmd(c):
 # ---------- S1: pipe filters may not touch files ---------------------------------------------------------
 @pytest.mark.parametrize("c", [
     f"{PY} scripts/common.py log x | cut -c1-200 .env",
-    f"{PY} scripts/common.py log x | cut -c1-200 /Users/someone/.config/nse-delisted-comp/keys.env",
+    f"{PY} scripts/common.py log x | cut -c1-200 /home/user/.config/nse-unified-pipeline/keys.env",
     f"{PY} scripts/common.py log x | grep -eKEY .env",
     f"{PY} scripts/common.py log x | grep -r API_KEY",
     f"{PY} scripts/common.py log x | grep -R KEY",
@@ -49,7 +49,7 @@ def test_pipe_filters_cannot_read_or_write_files(c):
 @pytest.mark.parametrize("c", [
     f"{PY} scripts/common.py log $HOME",
     f'{PY} scripts/common.py log "$HOME"',
-    f"{PY} scripts/common.py log ~/.config/nse-delisted-comp/keys.env",
+    f"{PY} scripts/common.py log ~/.config/nse-unified-pipeline/keys.env",
     f"{PY} scripts/inspect_artifact.py data/raw/*",
     f"{PY} scripts/inspect_artifact.py data/raw/x?.pdf",
     f"{PY} scripts/inspect_artifact.py data/raw/{{a,b}}.pdf",

@@ -1,7 +1,10 @@
 # Python
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+data/companies.sqlite3
+data/nse_unified.sqlite3
 
 # Node (Cline CLI dev dependency)
 node_modules/

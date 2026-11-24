@@ -9,7 +9,7 @@
 #   CLINE_SANDBOX=0 scripts/run_agent.sh         # run without the OS sandbox (default on macOS: on)
 #
 # OS sandbox (macOS sandbox-exec, scripts/agent_sandbox.py): Cline and everything it starts cannot read or
-# write your home directory outside the project, ~/.cline and the runtimes; ~/.ssh, ~/.config/nse-delisted-comp
+# write your home directory outside the project, ~/.cline and the runtimes; ~/.ssh, ~/.config/nse-unified-pipeline
 # (search keys), the project .env and the keychain are denied. Agent sessions therefore search via SearXNG only
 # (CLINE_SANDBOX_ALLOW_KEYS=1 lets the sandbox read the keys file). The profile is checked before each session.
 #

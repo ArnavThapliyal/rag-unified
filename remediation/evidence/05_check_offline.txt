@@ -1,8 +1,0 @@
-pyflakes                    ok
-bash syntax                 ok
-json configs                ok
-pytest                      ok  (345 passed in 1.44s)
-dataset audit               FAIL  ({"records": 491, "errors": {"label_as_company_name": 4}, "warnings": {"no_date": 12, "order_after_effective": 1, "possible_duplicate_event": 95, "raw_files_not_downloaded": 491, "year_out_of_range": 34}, "report": "/var/folders/zc/82gmfp_x2gb70ptw4wvw16fh0000gn/T/nse_audit.fnoOMQ"})
-disk                        ok  (ok 0.0 GB data, 327.6 GB free)
-tesseract (OCR)             ok  (tesseract 5.5.4)
-no stale references         ok

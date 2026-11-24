@@ -1,4 +1,4 @@
-"""Guided first-time setup for nse-delisted-comp. Launched by ./install.sh.
+"""Guided first-time setup for nse-unified-pipeline. Launched by ./install.sh.
 
 Arrow through 9 screens; the first option on every screen is the recommended one (Enter accepts it).
 The panel under the options shows what the highlighted option will do and what is already in place.
@@ -31,7 +31,7 @@ ENV = ROOT / ".env"
 ENV_EXAMPLE = ROOT / ".env.example"
 PLAN = ROOT / "config" / "query_plan.json"
 LIMIT_DEFAULTS = {"max_files": 60, "max_companies": 25, "max_docs_per_company": 5}
-KEYS_FILE = Path.home() / ".config" / "nse-delisted-comp" / "keys.env"
+KEYS_FILE = Path.home() / ".config" / "nse-unified-pipeline" / "keys.env"
 SEARXNG_URL = "http://localhost:8082/search?q=test&format=json"
 LMSTUDIO_URL = "http://localhost:1234/v1/models"
 API_KEYS = ("SERPER_API_KEY", "BRAVE_API_KEY")
@@ -103,7 +103,7 @@ def detect() -> dict:
         "env_file": ENV.exists(),
         "env_secret": bool(env.get("SEARXNG_SECRET")),
         "env_tracked": ENV.exists() and tracked_by_git(ENV),
-        "keys": {k: ("environment" if os.environ.get(k) else "~/.config/nse-delisted-comp/keys.env" if keys.get(k)
+        "keys": {k: ("environment" if os.environ.get(k) else "~/.config/nse-unified-pipeline/keys.env" if keys.get(k)
                      else ".env" if env.get(k) else None) for k in API_KEYS},
         "brew": shutil.which("brew") is not None,
         "apt": shutil.which("apt-get") is not None,
@@ -150,7 +150,7 @@ def screens(st: dict) -> list[Screen]:
                 ("skip", "Skip (use only Serper / Brave API keys)")]),
         Screen("keys", "Search API keys (Serper.dev, Brave)", "Optional fallbacks when SearXNG's engines are banned. "
                "Typed hidden, never printed.",
-               [("keyfile", "Save to ~/.config/nse-delisted-comp/keys.env, outside the repo (recommended)"),
+               [("keyfile", "Save to ~/.config/nse-unified-pipeline/keys.env, outside the repo (recommended)"),
                 ("dotenv", "Save to the repo's .env (git-ignored)"), ("skip", "Skip for now")]),
         Screen("ocr", "OCR for scanned PDFs", "tesseract reads image-only delisting notices.",
                [("install", "Install tesseract (recommended)"), ("skip", "Skip")]),
@@ -322,7 +322,7 @@ def preview(screen: Screen, value: str, choice: dict, st: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Curses TUI (same keys as claude-code-statusline)
+# Curses TUI
 # ---------------------------------------------------------------------------
 def run_tui(choice: dict, st: dict) -> bool:
     import curses
@@ -340,7 +340,7 @@ def run_tui(choice: dict, st: dict) -> bool:
                     w.addstr(y, x, text[: max(0, wd - x - 1)], attr)
                 except curses.error:
                     pass
-        put(0, 0, " nse-delisted-comp setup ".ljust(wd - 1), curses.A_REVERSE)
+        put(0, 0, " nse-unified-pipeline setup ".ljust(wd - 1), curses.A_REVERSE)
         s = scr[idx]
         put(2, 2, f"[{idx + 1}/{len(scr)}] {s.title}", curses.A_BOLD)
         put(3, 2, s.help, curses.A_DIM)

@@ -1,9 +1,0 @@
-FAILED qa/test_adv_io_security.py::test_zip_bomb_like_xlsx_is_not_bounded - p...
-FAILED qa/test_adv_merge_docket.py::test_record_id_survives_a_better_source_arriving
-FAILED qa/test_adv_merge_docket.py::test_done_fetch_on_unknown_url_reports_a_status
-FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentially[500]
-FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentially[503]
-FAILED qa/test_adv_merge_docket.py::test_retryable_status_backs_off_exponentially[429]
-FAILED qa/test_adv_merge_docket.py::test_retry_after_is_capped_at_120s - asse...
-FAILED qa/test_adv_merge_docket.py::test_error_after_an_earlier_5xx_loses_the_error
-8 failed, 93 passed in 3.14s

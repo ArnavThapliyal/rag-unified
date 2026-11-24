@@ -85,10 +85,10 @@ def official_dates() -> dict[str, dict[str, list[date]]]:
 
 def official_reasons() -> dict[str, str]:
     """NSE symbol -> 'Type of Delisting' from delisted.xlsx (first sheet)."""
-    import pandas as pd
     p = DATA / "raw" / "master_lists" / "d07b1e746ddd066e.xlsx"
     if not p.exists():
         return {}
+    import pandas as pd
     df = pd.read_excel(p, sheet_name=0)
     df.columns = [str(c).strip().lower() for c in df.columns]
     return {str(r["symbol"]).strip(): str(r["type of delisting"]).strip() for _, r in df.iterrows()}

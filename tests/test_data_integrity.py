@@ -1,7 +1,7 @@
 """Regression tests: dates, false entities, classification, entity matching, duplicates vs distinct events,
-conflict/provenance flags, record_id stability, atomic outputs, audit (remediation D1-D18, O10, O11).
+conflict/provenance flags, record_id stability, atomic outputs, audit.
 
-The merge cases mirror the duplicate groups found in the production master (remediation/RECONCILIATION.md §1):
+The merge cases mirror real duplicate groups observed in official records:
 Buy_Sell.xls vs delisted.xlsx (same event), order vs effective date (same event), Husys (two real events),
 B S Appliances (sources disagree: flag, don't merge)."""
 import csv

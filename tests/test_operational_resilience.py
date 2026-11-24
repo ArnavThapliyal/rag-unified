@@ -1,5 +1,5 @@
 """Regression tests: domain failures and blocks, retry policy, network outages, docket starvation, company tags,
-search fallback, corrupt cache, download size cap, soft blocks, disk protection (remediation O1-O8)."""
+search fallback, corrupt cache, download size cap, soft blocks, disk protection."""
 import json
 import os
 import time

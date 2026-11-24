@@ -14,7 +14,7 @@ ok() { echo "ok${1:+  ($1)}"; }
 bad() { echo "FAIL${1:+  ($1)}"; fail=1; }
 
 step "pyflakes"
-out=$("$PY" -m pyflakes scripts tests 2>&1) && ok || { bad; echo "$out"; }
+out=$("$PY" -m pyflakes scripts src tests 2>&1) && ok || { bad; echo "$out"; }
 
 step "bash syntax"
 bash -n scripts/run_agent.sh scripts/check.sh install.sh .cline/hooks/PreToolUse.sh && ok || bad

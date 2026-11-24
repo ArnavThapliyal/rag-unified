@@ -1,4 +1,4 @@
-"""Regression tests: worker crashes, exit-code propagation, poison items, Retry-After (remediation S5-S8, O9)."""
+"""Regression tests: worker crashes, exit-code propagation, poison items, Retry-After."""
 import json
 import shutil
 import subprocess
