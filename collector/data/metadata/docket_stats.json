@@ -1,21 +1,21 @@
 {
- "generated_at": "2026-11-24T08:46:35+00:00",
- "total": 2144,
+ "generated_at": "2026-11-24T11:02:42+00:00",
+ "total": 2167,
  "by_status": {
   "dead": 13,
-  "failed": 4,
-  "parked": 1557,
-  "parsed": 570
+  "failed": 5,
+  "parked": 1573,
+  "parsed": 576
  },
  "by_kind": {
   "harvested": 1120,
-  "search": 1024
+  "search": 1047
  },
  "fetch_ready_now": 0,
  "waiting_on_blocked_domain": 4,
  "awaiting_parse": 0,
- "parsed_zero_rows_relevant": 200,
- "evidence_unfetched": 508,
+ "parsed_zero_rows_relevant": 201,
+ "evidence_unfetched": 509,
  "blocked_domains": [
   "dictionary.cambridge.org",
   "merriam-webster.com"
@@ -28,6 +28,10 @@
   {
    "domain": "dictionary.cambridge.org",
    "n": 2
+  },
+  {
+   "domain": "zhihu.com",
+   "n": 1
   }
  ],
  "dead_reasons": [

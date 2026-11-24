@@ -1,9 +1,9 @@
 {
  "nsearchives.nseindia.com": {
   "files": 332,
-  "files_with_rows": 83,
-  "rows": 516,
-  "records": 405,
+  "files_with_rows": 78,
+  "rows": 511,
+  "records": 401,
   "first_fetched": "2026-11-21T10:46:17+00:00",
   "new": false
  },
@@ -17,9 +17,9 @@
  },
  "beta.bseindia.com": {
   "files": 49,
-  "files_with_rows": 15,
-  "rows": 91,
-  "records": 11,
+  "files_with_rows": 12,
+  "rows": 76,
+  "records": 8,
   "first_fetched": "2026-11-21T10:50:53+00:00",
   "new": false
  },
@@ -27,20 +27,11 @@
   "files": 37,
   "files_with_rows": 3,
   "rows": 43,
-  "records": 2,
   "first_fetched": "2026-11-21T10:49:21+00:00",
   "new": false
  },
- "nclt.gov.in": {
-  "files": 5,
-  "files_with_rows": 1,
-  "rows": 1,
-  "records": 1,
-  "first_fetched": "2026-11-21T12:32:25+00:00",
-  "new": false
- },
  "sebi.gov.in": {
-  "files": 45,
+  "files": 51,
   "files_with_rows": 0,
   "rows": 0,
   "first_fetched": "2026-11-21T10:57:20+00:00",
@@ -58,6 +49,13 @@
   "files_with_rows": 0,
   "rows": 0,
   "first_fetched": "2026-11-22T19:02:20+00:00",
+  "new": false
+ },
+ "nclt.gov.in": {
+  "files": 5,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-21T12:32:25+00:00",
   "new": false
  },
  "kaskus.co.id": {

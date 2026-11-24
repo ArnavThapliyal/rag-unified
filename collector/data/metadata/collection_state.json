@@ -751,22 +751,22 @@
   "SEBI order delisting 2007": {
    "phase": "historical_proof",
    "year_tag": "2007",
-   "ts": "2026-11-24T08:45:34+00:00",
-   "run_id": "20261124-141533-67588",
-   "status": "engines_blocked",
-   "results": 0,
+   "ts": "2026-11-24T11:01:59+00:00",
+   "run_id": "20261124-163158-88647",
+   "status": "done",
+   "results": 30,
    "providers": [
     "searxng"
    ],
    "unresponsive_engines": [
-    "duckduckgo",
-    "qwant"
+    "yep"
    ],
-   "candidate_urls": 0,
-   "filed_new": 0,
-   "filed_pending": 0,
+   "candidate_urls": 30,
+   "filed_new": 23,
+   "filed_pending": 6,
    "cache_files": [
-    "data/search_cache/bb1b3d9d2b2c8fae.json"
+    "data/search_cache/bb1b3d9d2b2c8fae.json",
+    "data/search_cache/05c71047ed22347f.json"
    ]
   },
   "voluntary delisting exit offer public announcement 2007": {

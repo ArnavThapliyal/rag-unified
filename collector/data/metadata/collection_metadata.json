@@ -1,32 +1,32 @@
 {
- "generated_at": "2026-11-24T08:46:35+00:00",
+ "generated_at": "2026-11-24T11:02:42+00:00",
  "indicators": {
-  "records_total": 416,
-  "priority_year_records": 122,
-  "verified_primary_pct": 98.3,
-  "needs_review": 7,
+  "records_total": 409,
+  "priority_year_records": 124,
+  "verified_primary_pct": 99.5,
+  "needs_review": 2,
   "priority_grid_coverage_pct": 40.0,
   "query_plan_complete_pct": 28.2,
   "queries_done": 31,
   "queries_total": 110,
-  "fetch_success_rate_pct": 96.9,
-  "artifacts_downloaded": 570,
-  "artifacts_with_rows": 107,
-  "artifacts_zero_rows": 220,
-  "artifacts_irrelevant": 243,
+  "fetch_success_rate_pct": 96.8,
+  "artifacts_downloaded": 576,
+  "artifacts_with_rows": 98,
+  "artifacts_zero_rows": 186,
+  "artifacts_irrelevant": 292,
   "blocked_domains": 2,
   "docket": {
    "by_status": {
     "dead": 13,
-    "failed": 4,
-    "parked": 1557,
-    "parsed": 570
+    "failed": 5,
+    "parked": 1573,
+    "parsed": 576
    },
    "fetch_ready_now": 0,
    "awaiting_parse": 0,
    "waiting_on_blocked_domain": 4,
-   "evidence_unfetched": 508,
-   "parsed_zero_rows_relevant": 200,
+   "evidence_unfetched": 509,
+   "parsed_zero_rows_relevant": 201,
    "historical": {
     "window": [
      2006,
@@ -38,29 +38,29 @@
     "with_supporting_docs": 0
    }
   },
-  "isin_completeness_pct": 1.2,
+  "isin_completeness_pct": 0.2,
   "last_run": {
-   "run_id": "20261124-141533-67588",
-   "started_at": "2026-11-24T08:45:33+00:00",
+   "run_id": "20261124-163158-88647",
+   "started_at": "2026-11-24T11:01:58+00:00",
    "status": "completed",
    "stop_reason": "max_queries_reached",
-   "duration_s": 61.8,
-   "queries_done": 2,
-   "fetched_ok": 2,
-   "quarantined": 5,
-   "new_records": 7
+   "duration_s": 44.0,
+   "queries_done": 1,
+   "fetched_ok": 6,
+   "quarantined": 1,
+   "new_records": 0
   },
-  "agent_sessions": 12,
+  "agent_sessions": 1,
   "proposed_delisting_leads": 14,
-  "bse_only_delistings": 115,
+  "bse_only_delistings": 107,
   "source_domains": 27,
   "new_source_domains": 15,
   "new_domains_with_rows": [],
-  "audit_errors": 4,
-  "audit_warnings": 102,
+  "audit_errors": 0,
+  "audit_warnings": 89,
   "disk": {
    "data_gb": 1.0,
-   "free_gb": 344.1,
+   "free_gb": 336.5,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -133,23 +133,23 @@
    "merriam-webster.com"
   ],
   "docket": {
-   "generated_at": "2026-11-24T08:46:35+00:00",
-   "total": 2144,
+   "generated_at": "2026-11-24T11:02:42+00:00",
+   "total": 2167,
    "by_status": {
     "dead": 13,
-    "failed": 4,
-    "parked": 1557,
-    "parsed": 570
+    "failed": 5,
+    "parked": 1573,
+    "parsed": 576
    },
    "by_kind": {
     "harvested": 1120,
-    "search": 1024
+    "search": 1047
    },
    "fetch_ready_now": 0,
    "waiting_on_blocked_domain": 4,
    "awaiting_parse": 0,
-   "parsed_zero_rows_relevant": 200,
-   "evidence_unfetched": 508,
+   "parsed_zero_rows_relevant": 201,
+   "evidence_unfetched": 509,
    "blocked_domains": [
     "dictionary.cambridge.org",
     "merriam-webster.com"
@@ -162,6 +162,10 @@
     {
      "domain": "dictionary.cambridge.org",
      "n": 2
+    },
+    {
+     "domain": "zhihu.com",
+     "n": 1
     }
    ],
    "dead_reasons": [
@@ -195,11 +199,11 @@
   }
  },
  "fetch": {
-  "attempts": 590,
-  "ok": 572,
-  "quarantined": 18,
-  "success_rate_pct": 96.9,
-  "total_mb": 994.9,
+  "attempts": 597,
+  "ok": 578,
+  "quarantined": 19,
+  "success_rate_pct": 96.8,
+  "total_mb": 995.99,
   "by_domain": {
    "nsearchives.nseindia.com": {
     "ok": 334,
@@ -221,8 +225,8 @@
     "quarantined": 1
    },
    "sebi.gov.in": {
-    "ok": 45,
-    "bytes": 50511884
+    "ok": 51,
+    "bytes": 51603673
    },
    "ibbi.gov.in": {
     "ok": 22,
@@ -320,21 +324,25 @@
     "ok": 1,
     "bytes": 4860
    },
+   "zhihu.com": {
+    "quarantined": 1,
+    "bytes": 650
+   },
    "static.nseindia.com": {
     "quarantined": 4,
     "bytes": 0
    }
   },
   "by_http_status": {
-   "200": 572,
+   "200": 578,
    "404": 8,
    "None": 4,
-   "403": 6
+   "403": 7
   },
   "by_content_type": {
-   "text/html": 110,
-   "application/pdf": 447,
-   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 6,
+   "text/html": 113,
+   "application/pdf": 450,
+   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 7,
    "application/x-zip-compressed": 20,
    "unknown": 4,
    "application/vnd.ms-excel": 1,
@@ -342,20 +350,20 @@
   }
  },
  "artifacts": {
-  "total": 570,
+  "total": 576,
   "by_bucket": {
    "archive_2006_2026": 21,
-   "master_lists": 361,
-   "priority_2007": 9,
+   "master_lists": 362,
+   "priority_2007": 14,
    "priority_2017": 74,
    "priority_2020": 89,
    "priority_2024": 16
   },
-  "parsed": 570,
-  "rows_extracted": 892
+  "parsed": 576,
+  "rows_extracted": 871
  },
  "records": {
-  "total": 416,
+  "total": 409,
   "by_year": {
    "2006": 3,
    "2007": 7,
@@ -375,31 +383,30 @@
    "2021": 47,
    "2022": 21,
    "2023": 9,
-   "2024": 2,
-   "2025": 2,
+   "2024": 4,
+   "2025": 3,
    "2026": 4,
-   "unknown": 12
+   "unknown": 2
   },
   "by_type": {
-   "VOLUNTARY_NO_EXIT": 109,
-   "COMPULSORY": 173,
-   "IBC_NCLT": 122,
-   "AMALGAMATION_MERGER": 1,
-   "VOLUNTARY_EXIT_OFFER": 4,
-   "OTHER": 7
+   "OTHER": 23,
+   "COMPULSORY": 156,
+   "VOLUNTARY_NO_EXIT": 106,
+   "IBC_NCLT": 121,
+   "VOLUNTARY_EXIT_OFFER": 3
   },
   "by_confidence": {
-   "NEEDS_REVIEW": 7,
-   "VERIFIED_PRIMARY": 409
+   "NEEDS_REVIEW": 2,
+   "VERIFIED_PRIMARY": 407
   },
   "by_regime": {
-   "unknown": 12,
+   "unknown": 2,
    "SEBI_2003_Guidelines": 14,
    "SEBI_2009_Regs": 328,
    "SEBI_2021_Regs": 55,
-   "SEBI_2024_Amendment": 7
+   "SEBI_2024_Amendment": 10
   },
-  "priority_year_records": 122,
+  "priority_year_records": 124,
   "priority_grid": {
    "2007": {
     "COMPULSORY": 0,
@@ -409,21 +416,21 @@
     "IBC_NCLT": 0
    },
    "2017": {
-    "COMPULSORY": 60,
+    "COMPULSORY": 56,
     "VOLUNTARY_EXIT_OFFER": 0,
     "VOLUNTARY_NO_EXIT": 5,
     "AMALGAMATION_MERGER": 0,
     "IBC_NCLT": 11
    },
    "2020": {
-    "COMPULSORY": 6,
+    "COMPULSORY": 4,
     "VOLUNTARY_EXIT_OFFER": 0,
     "VOLUNTARY_NO_EXIT": 9,
     "AMALGAMATION_MERGER": 0,
     "IBC_NCLT": 9
    },
    "2024": {
-    "COMPULSORY": 2,
+    "COMPULSORY": 4,
     "VOLUNTARY_EXIT_OFFER": 0,
     "VOLUNTARY_NO_EXIT": 0,
     "AMALGAMATION_MERGER": 0,
@@ -433,9 +440,9 @@
   "priority_grid_cells_filled": 8,
   "priority_grid_cells_total": 20,
   "field_completeness_pct": {
-   "isin": 1.2,
+   "isin": 0.2,
    "nse_symbol": 97.8,
-   "effective_delisting_date": 94.2,
+   "effective_delisting_date": 96.8,
    "order_date": 15.9,
    "exit_or_fair_value_inr": 0.2
   },
@@ -464,13 +471,11 @@
   ]
  },
  "audit": {
-  "errors": {
-   "label_as_company_name": 4
-  },
+  "errors": {},
   "warnings": {
-   "no_date": 12,
+   "no_date": 2,
    "order_after_effective": 1,
-   "possible_duplicate_event": 15,
+   "possible_duplicate_event": 12,
    "review_flags": 21,
    "source_conflicts": 53
   }
@@ -739,173 +744,31 @@
    "fetched_ok": 2,
    "quarantined": 5,
    "new_records": 7
+  },
+  {
+   "run_id": "20261124-163158-88647",
+   "started_at": "2026-11-24T11:01:58+00:00",
+   "status": "completed",
+   "stop_reason": "max_queries_reached",
+   "duration_s": 44.0,
+   "queries_done": 1,
+   "fetched_ok": 6,
+   "quarantined": 1,
+   "new_records": 0
   }
  ],
  "agent_sessions": [
   {
-   "file": "logs/agent_sessions/agent-20261121-160540.jsonl",
-   "started_at": "2026-11-21T10:35:42.987Z",
-   "finish_reason": "aborted",
-   "iterations": 6,
-   "tool_calls": 7,
-   "tools": {
-    "read_files": 1,
-    "run_commands": 1,
-    "start_background_command": 1,
-    "list_skills": 1,
-    "list_agent_presets": 1,
-    "get_skill": 1,
-    "save_handoff": 1
-   },
-   "input_tokens": 58630,
-   "output_tokens": 499
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261121-161338.jsonl",
-   "started_at": "2026-11-21T10:43:42.121Z",
-   "finish_reason": "running_or_killed",
-   "iterations": null,
-   "tool_calls": 41,
-   "tools": {
-    "read_files": 2,
-    "run_commands": 35,
-    "start_background_command": 3,
-    "get_background_command": 1
-   },
-   "input_tokens": null,
-   "output_tokens": null
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261121-165019.jsonl",
-   "started_at": "2026-11-21T11:20:21.250Z",
-   "finish_reason": "aborted",
-   "iterations": 7,
-   "tool_calls": 8,
-   "tools": {
-    "read_files": 1,
-    "run_commands": 7
-   },
-   "input_tokens": 97624,
-   "output_tokens": 403
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261121-165741.jsonl",
-   "started_at": "2026-11-21T11:27:42.689Z",
-   "finish_reason": "running_or_killed",
-   "iterations": null,
-   "tool_calls": 27,
-   "tools": {
-    "read_files": 4,
-    "run_commands": 23
-   },
-   "input_tokens": null,
-   "output_tokens": null
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261121-173337.jsonl",
-   "started_at": "2026-11-21T12:03:39.692Z",
-   "finish_reason": "running_or_killed",
-   "iterations": null,
-   "tool_calls": 30,
-   "tools": {
-    "read_files": 2,
-    "run_commands": 28
-   },
-   "input_tokens": null,
-   "output_tokens": null
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261121-181334.jsonl",
-   "started_at": "2026-11-21T12:43:36.669Z",
-   "finish_reason": "completed",
-   "iterations": 7,
-   "tool_calls": 7,
-   "tools": {
-    "read_files": 2,
-    "run_commands": 5
-   },
-   "input_tokens": 115073,
-   "output_tokens": 1049
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261121-185002.jsonl",
-   "started_at": "2026-11-21T13:20:04.097Z",
-   "finish_reason": "completed",
-   "iterations": 13,
-   "tool_calls": 14,
-   "tools": {
-    "read_files": 2,
-    "run_commands": 11,
-    "search_codebase": 1
-   },
-   "input_tokens": 251680,
-   "output_tokens": 1812
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261121-192012.jsonl",
-   "started_at": "2026-11-21T13:50:13.719Z",
+   "file": "logs/agent_sessions/agent-20261124-162459.jsonl",
+   "started_at": "2026-11-24T10:55:02.398Z",
    "finish_reason": "completed",
    "iterations": 9,
    "tool_calls": 8,
    "tools": {
-    "read_files": 2,
-    "run_commands": 6
+    "run_commands": 8
    },
-   "input_tokens": 229936,
-   "output_tokens": 1750
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261122-061121.jsonl",
-   "started_at": "2026-11-22T00:41:23.237Z",
-   "finish_reason": "completed",
-   "iterations": 32,
-   "tool_calls": 36,
-   "tools": {
-    "read_files": 5,
-    "run_commands": 31
-   },
-   "input_tokens": 976940,
-   "output_tokens": 3875
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261122-071420.jsonl",
-   "started_at": "2026-11-22T01:44:22.486Z",
-   "finish_reason": "completed",
-   "iterations": 8,
-   "tool_calls": 7,
-   "tools": {
-    "read_files": 1,
-    "run_commands": 6
-   },
-   "input_tokens": 146622,
-   "output_tokens": 803
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261122-075322.jsonl",
-   "started_at": "2026-11-22T02:23:24.258Z",
-   "finish_reason": "completed",
-   "iterations": 7,
-   "tool_calls": 6,
-   "tools": {
-    "read_files": 1,
-    "run_commands": 5
-   },
-   "input_tokens": 118293,
-   "output_tokens": 825
-  },
-  {
-   "file": "logs/agent_sessions/agent-20261123-002818.jsonl",
-   "started_at": "2026-11-22T18:58:20.695Z",
-   "finish_reason": "running_or_killed",
-   "iterations": null,
-   "tool_calls": 39,
-   "tools": {
-    "read_files": 3,
-    "run_commands": 35,
-    "get_skill": 1
-   },
-   "input_tokens": null,
-   "output_tokens": null
+   "input_tokens": 130480,
+   "output_tokens": 594
   }
  ]
 }
