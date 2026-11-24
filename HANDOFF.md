@@ -36,7 +36,7 @@ A first larger run was done on scraped test data and stopped part-way.
 
 Bug found and fixed in that run: MPS device memory grew without bound until every embedding call failed. The embedder now pads batches to a small set of fixed shapes on MPS (commit `73dcac0`).
 
-Still open from that run: scanned PDFs are very slow, a zip archive ties up one worker, and killing the main process can leave worker processes behind (check with `pgrep -fl multiprocessing.spawn`).
+Still open from that run: scanned PDFs are very slow and a zip archive ties up one worker. (Fixed on `unified-pipeline`, 2026-11-24: killing the main process left worker processes behind; children now exit by themselves within ~2 s.)
 
 ## Where to read
 - `README.md`: what it does, how to run it.
@@ -89,3 +89,22 @@ Still open from that run: scanned PDFs are very slow, a zip archive ties up one 
 4. Look at the result: `uv run python view_db.py "$O"`.
 5. For a real delivery: `uv run python main.py <folder> --dry-run`, then without `--dry-run`.
 6. Tell Claude: "Read HANDOFF.md and NEXT_STEPS_PLAN.md, then continue with the follow-ups from the test run."
+
+
+## Unified pipeline (branch `unified-pipeline`, 2026-11-24)
+
+Sanidhya's Unified_Pipeline merged the collector with a quant package. It is split: the collector keeps collection and
+the universe DB (repo rag-collector, also branch `unified-pipeline`), this repo gets the quant stage and ingests the
+collector's outbox batches. Plan: `/Users/arnav/Projects/Software/RAG_PLAN.md`; inventory of his changes:
+`/Users/arnav/Projects/Software/UNIFIED_PIPELINE_CHANGES.md`.
+
+| Added | Where |
+|---|---|
+| Step contract (shared, identical file) | `pipeline/stepkit.py` |
+| Batch verification, ledger, retries, universe install | `pipeline/batches.py` |
+| Step CLI | `pipeline/steps.py` |
+| Continuous mode | `pipeline/watch.py`, `main.py --watch` |
+| Quant stage | `pipeline/quant/` (store, z_factor: his code; sync: adapters) |
+| Orphan watchdog in child processes | `pipeline/indexer.py` |
+
+Next: rag-unified (a new repo) runs an orchestrator agent over both repos' steps.

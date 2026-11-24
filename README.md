@@ -4,6 +4,10 @@ The **Processor** stage of a three-part RAG system (Source → Processor → LLM
 
 It takes a folder of purchased files in mixed formats, parses, cleans, chunks and embeds them with `BAAI/bge-m3`, and appends the result to a LanceDB table that the LLM stage reads. Acquiring the data (Source) and answering questions (LLM) live elsewhere.
 
+Documents also arrive continuously from [rag-collector](https://github.com/ArnavThapliyal/rag-collector) (the Source:
+NSE delisting documents) through its outbox; `main.py --watch` ingests each batch as it appears. A quant stage turns
+ingested price/market-cap rows into point-in-time Z-factors. See [Unified pipeline](#unified-pipeline-collector-batches-steps-quant).
+
 ```mermaid
 flowchart LR
     root["ROOT folder<br/>(any layout)"] --> discover["discover<br/>Path.rglob"]
@@ -96,6 +100,63 @@ Nothing fails when metadata is missing or malformed; the field is simply null.
 
 Common vendor spellings are mapped (`ticker` → `symbol`, `url` → `source_url`, `roles` → `allowed_roles`, and so on). A key that exactly matches one of the financial columns (for example `isin`, `close`, `roe_pct`) fills that column. Anything unrecognised is kept in `metadata_json`.
 
+## Unified pipeline: collector batches, steps, quant
+
+### Continuous ingestion from rag-collector
+
+```bash
+uv run python main.py --watch                         # outbox: COLLECTOR_OUTBOX (default ../rag-collector/data/export)
+uv run python main.py --watch /path/to/outbox --once  # what is pending, then exit
+COLLECTOR_OUTBOX=/data/outbox uv run python main.py --watch --poll 30
+```
+
+rag-collector writes one immutable batch per export: `files/` (documents + `<name>.meta.json` sidecars in the keys
+above: `source_url`, `doc_type`, `vendor`, `symbol`/`nse_symbol`/`isin`, `published_at`, plus `collector_*` provenance
+that lands in `metadata_json`), `universe.sqlite3` (point-in-time universe snapshot), `manifest.json` and `READY`
+(written last). The processor:
+
+- reads only batches with `READY`, and verifies the manifest hash, contract version, paths and every file's sha256
+  before ingesting; a batch that fails verification is rejected and recorded, never ingested;
+- never writes into the outbox; its own ledger `data/processed_batches.jsonl` records every attempt;
+- retries a batch with failed files (already indexed documents are skipped by `doc_id`) up to `BATCH_MAX_ATTEMPTS`;
+- installs the universe snapshot to `data/universe/universe.sqlite3` with SQLite's backup API (newest batch wins);
+- after new batches runs `quant-sync`, and `quant-zfactor` when new market rows arrived.
+
+Stop with Ctrl-C, SIGTERM or `touch data/STOP`. A SIGTERM during an ingest terminates the worker processes and leaves
+the batch unrecorded, so it is picked up again. Child processes exit on their own if the main process is killed.
+Each step result is appended to `data/logs/watch.jsonl`.
+
+### Steps
+
+Every stage is also a step with one JSON result on stdout (contract: `pipeline/stepkit.py`, identical to
+rag-collector's; exit 0 ok/noop/partial, 1 failed, 2 blocked, 75 retry later), so rag-unified can run each one:
+
+```bash
+uv run python -m pipeline.steps list
+uv run python -m pipeline.steps status          # LanceDB rows, outbox ready/pending, ledger, universe, quant
+uv run python -m pipeline.steps ingest --next   # or --all, or --batch <outbox>/<id>
+uv run python -m pipeline.steps ingest-dir /path/to/purchased
+uv run python -m pipeline.steps quant-sync
+uv run python -m pipeline.steps quant-zfactor --target-min-cr 3500 --target-max-cr 12500
+uv run python -m pipeline.steps quant-bracket --schedule        # or --date 2010-06-01
+uv run python -m pipeline.steps health
+```
+
+`ingest` and `ingest-dir` share one lock (one LanceDB writer at a time); `quant-sync` and `quant-zfactor` share another.
+
+### Quant stage (`pipeline/quant/`)
+
+Sanidhya's point-in-time store and Z-factor engine from Unified_Pipeline, moved without logic changes:
+
+- `quant-sync` upserts the universe snapshot's entities and delisting events into `data/quant.sqlite3`, and reads
+  the typed rows (`trade_date`, `close`, `market_cap_cr`, `quarter_ending`, ...) that record-mode tabular ingestion
+  wrote to `documents` since the last sync, into `daily_market_data` / `quarterly_fundamentals`.
+- `quant-zfactor` computes cross-sectional Z-scores of log market cap per date with zero lookahead, size brackets
+  (MEGA..MICRO), and the target bracket (default ₹3,500–12,500 Cr, translated to each date). Delisted companies drop
+  out after their delisting date. Results go to the quant DB and the `quant_factors` LanceDB table.
+- Without price files carrying `market_cap_cr`, `quant-zfactor` is a `noop` (`no_price_rows` / `no_market_cap_cr_values`).
+  Price files reach the processor as purchased data (`ingest-dir`) or through a collector batch.
+
 ## The LanceDB contract
 
 | Item | Value |
@@ -108,6 +169,7 @@ Common vendor spellings are mapped (`ticker` → `symbol`, `url` → `source_url
 | `content_kind` | `prose` or `table` (tables stay separable for a later relational store) |
 | `allowed_roles` | top-level nullable list of strings (read by the OPA policies) |
 | Financial columns | 50 nullable typed columns (prices, fundamentals, shareholding, announcements) |
+| `quant_factors` table | derived, no vectors: `isin`, `nse_symbol`, `trade_date`, `market_cap_cr`, `z_factor_mcap`, percentile, rank, size bracket, target-bracket flags; rewritten by `quant-zfactor` |
 
 LanceDB does not store the metric in the table schema. It is applied when an index is built and when a query runs, so readers must search with `metric("cosine")` (see `VECTOR_INDEX_KWARGS` in `pipeline/schema.py`).
 

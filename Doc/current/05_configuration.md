@@ -122,3 +122,18 @@ Scanned PDFs dominate run time. These settings trade quality for speed:
 ## System dependency
 
 `python-magic` needs the libmagic library: `brew install libmagic` on macOS, `apt-get install libmagic1` on Debian/Ubuntu.
+
+## Unified pipeline (collector batches, steps, quant)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `COLLECTOR_OUTBOX` | `../rag-collector/data/export` | rag-collector's outbox that `--watch` and `steps ingest` read |
+| `BATCH_LEDGER` | `data/processed_batches.jsonl` | one line per batch attempt (status, files, chunks) |
+| `BATCH_MAX_ATTEMPTS` | `3` | attempts for a batch with failed files before it is given up |
+| `WATCH_POLL_SECONDS` | `60` | seconds between outbox checks in `--watch` |
+| `STEP_LOCK_DIR` | `data/locks` | per-step lock files |
+| `STOP_FILE` | `data/STOP` | touch to stop `--watch` after the current batch |
+| `UNIVERSE_DB` | `data/universe/universe.sqlite3` | latest universe snapshot from a collector batch |
+| `QUANT_DB` | `data/quant.sqlite3` | quant stage store (`quant.state.json` next to it holds the sync watermark) |
+| `QUANT_VALUE_FIELD` | `market_cap_cr` | the column Z-factors are computed on |
+| `QUANT_TABLE` | `quant_factors` | LanceDB table with the Z-factor results |
