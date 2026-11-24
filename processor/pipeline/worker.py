@@ -22,9 +22,9 @@ import itertools
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple
 
-from config.settings import EMBED_BATCH_SIZE, SCRATCH_DIR
+from config.settings import CONFIG_DIR, DENYLIST_FILE, EMBED_BATCH_SIZE, SCRATCH_DIR
 from pipeline.chunker import SizeFn, chunk_document, token_counter
 from pipeline.cleaner import clean_blocks
 from pipeline.metadata import MetadataResolver, build_source_document
@@ -42,7 +42,11 @@ STATUS_EMPTY = "empty"                    # readable, but nothing to index
 STATUS_DUPLICATE = "skipped_duplicate"    # same bytes already in the table or seen earlier in this run
 STATUS_UNSUPPORTED = "skipped_unsupported"
 STATUS_FAILED = "failed"
-STATUSES = (STATUS_OK, STATUS_EMPTY, STATUS_DUPLICATE, STATUS_UNSUPPORTED, STATUS_FAILED)
+STATUS_OUT_OF_SCOPE = "skipped_out_of_scope"  # triage: an IPO offer document, never parsed (see triage.py)
+STATUS_DENYLISTED = "skipped_denylisted"      # doc_id on the purge denylist (processor.purge)
+STATUSES = (STATUS_OK, STATUS_EMPTY, STATUS_DUPLICATE, STATUS_UNSUPPORTED, STATUS_OUT_OF_SCOPE, STATUS_DENYLISTED,
+            STATUS_FAILED)
+SKIPPED = (STATUS_DUPLICATE, STATUS_UNSUPPORTED, STATUS_EMPTY, STATUS_OUT_OF_SCOPE, STATUS_DENYLISTED)
 
 ItemKey = Tuple[str, str]  # (delivered path, display name)
 Message = Tuple[Any, ...]
@@ -58,6 +62,8 @@ class ItemResult:
     chunks: int = 0  # emitted by the worker; replaced by rows written once stored
     warnings: List[str] = field(default_factory=list)
     missing: Tuple[str, ...] = ()  # vendor metadata fields that were absent
+    # PDFs: {"total", "ocr", "unindexed"}: pages, pages recovered by OCR, low-text pages left without text
+    pages: Dict[str, int] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -83,6 +89,7 @@ class WorkerContext:
         self._size_fn = size_fn
         self._parser = parser
         self.batch_size = max(1, batch_size)
+        self.denied: FrozenSet[str] = read_denylist()
 
     @property
     def size_fn(self) -> SizeFn:
@@ -100,19 +107,37 @@ class WorkerContext:
         return self._parser
 
 
+def read_denylist(path: Optional[Path] = None) -> FrozenSet[str]:
+    """doc_ids (one per line, '#' comments) that must never be indexed again. Two files: DENYLIST_FILE (local,
+    written by processor.purge) and config/denylist.txt (tracked: decisions shared with every machine that
+    ingests the same batches)."""
+    files = [Path(path)] if path else [DENYLIST_FILE, CONFIG_DIR / "denylist.txt"]
+    out = set()
+    for f in files:
+        try:
+            lines = f.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            continue
+        out.update(i for i in (line.split("#", 1)[0].strip() for line in lines) if i)
+    return frozenset(out)
+
+
 def _missing_metadata(doc: SourceDocument) -> Tuple[str, ...]:
     return tuple(name for name in ("symbol", "doc_type", "allowed_roles") if getattr(doc, name) in (None, "", []))
 
 
-def _document_chunks(item: RoutedFile, ctx: WorkerContext, warnings: List[str]) -> Iterator[Chunk]:
+def _document_chunks(item: RoutedFile, ctx: WorkerContext, out: "ItemResult") -> Iterator[Chunk]:
     result = ctx.parser.parse(item.path)
-    warnings.extend(result.warnings)
+    out.warnings.extend(result.warnings)
+    if result.page_count:
+        out.pages = {"total": result.page_count, "ocr": result.ocr_pages,
+                     "unindexed": max(0, result.low_text_pages - result.ocr_pages)}
     blocks, _removed = clean_blocks(result.blocks, result.page_count)
     return iter(chunk_document(blocks, size_fn=ctx.size_fn))
 
 
-def _tabular_chunks(item: RoutedFile, ctx: WorkerContext, warnings: List[str]) -> Iterator[Chunk]:
-    return read_table_chunks(item.path, item.source_type, size_fn=ctx.size_fn, warnings=warnings)
+def _tabular_chunks(item: RoutedFile, ctx: WorkerContext, out: "ItemResult") -> Iterator[Chunk]:
+    return read_table_chunks(item.path, item.source_type, size_fn=ctx.size_fn, warnings=out.warnings)
 
 
 def _tag_table(chunk: Chunk, doc_id: str) -> Chunk:
@@ -134,13 +159,17 @@ def _process_item(item: RoutedFile, delivered: Path, ctx: WorkerContext) -> Iter
         doc = build_source_document(item, ctx.resolver)  # metadata never raises; an unreadable file does
         result.doc_id = doc.doc_id
         result.missing = _missing_metadata(doc)
+        if doc.doc_id in ctx.denied:
+            result.status, result.reason = STATUS_DENYLISTED, "on the purge denylist"
+            yield (MSG_DONE, result)
+            return
         if ctx.is_known(doc.doc_id):
             result.status, result.reason = STATUS_DUPLICATE, "already in the table"
             yield (MSG_DONE, result)
             return
 
         produce = _document_chunks if item.handler == HANDLER_DOCUMENT else _tabular_chunks
-        chunks = (_tag_table(c, doc.doc_id) for c in produce(item, ctx, result.warnings))
+        chunks = (_tag_table(c, doc.doc_id) for c in produce(item, ctx, result))
         while True:
             batch = list(itertools.islice(chunks, ctx.batch_size))
             if not batch:

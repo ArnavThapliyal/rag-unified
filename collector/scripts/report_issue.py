@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from common import atomic_write_text, LOGS, agent_session, emit, log, now_iso, read_jsonl
 
 ISSUES = LOGS / "issues.jsonl"
-KINDS = ("zero_rows", "bad_rows", "audit_error", "fetch", "script_error", "coverage_gap", "other")
+KINDS = ("zero_rows", "bad_rows", "audit_error", "fetch", "script_error", "coverage_gap", "out_of_scope", "other")
 
 
 def load() -> list[dict]:

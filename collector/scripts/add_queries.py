@@ -13,13 +13,15 @@ the plan. Append-only: it never changes or removes existing queries, phases or o
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import re
 import sys
 
-from common import CONFIG, emit, log
+from common import CONFIG, atomic_write_text, emit, log
 
 PLAN = CONFIG / "query_plan.json"
+PLAN_LOCK = CONFIG / ".query_plan.lock"  # serializes read-modify-write: Cline may run several calls at once
 MAX_QUERIES, MAX_DOMAINS = 8, 3
 YEAR_TAG_RE = re.compile(r"^(19[89]\d|20[0-4]\d|master)$")
 HOST_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$")
@@ -69,28 +71,29 @@ def add(plan: dict, queries: list[str], year_tag: str | None, domains: list[str]
     return out
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
                                  allow_abbrev=False)
     ap.add_argument("--query", action="append", default=[])
     ap.add_argument("--year-tag")
     ap.add_argument("--add-domain", action="append", default=[])
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if not a.query and not a.add_domain:
         ap.error("give --query (with --year-tag) and/or --add-domain")
     if len(a.query) > MAX_QUERIES or len(a.add_domain) > MAX_DOMAINS:
         emit({"error": f"at most {MAX_QUERIES} queries and {MAX_DOMAINS} domains per call"})
         return 2
-    plan = json.loads(PLAN.read_text(encoding="utf-8"))
-    try:
-        out = add(plan, a.query, a.year_tag, a.add_domain)
-    except ValueError as e:
-        emit({"error": str(e)})
-        return 2
+    with open(PLAN_LOCK, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        try:
+            out = add(plan, a.query, a.year_tag, a.add_domain)
+        except ValueError as e:
+            emit({"error": str(e)})
+            return 2
+        if out["added_queries"] or out["added_domains"]:
+            atomic_write_text(PLAN, json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
     if out["added_queries"] or out["added_domains"]:
-        tmp = PLAN.with_suffix(".tmp")
-        tmp.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        tmp.replace(PLAN)
         log(f"agent added {len(out['added_queries'])} queries, {len(out['added_domains'])} domains to the plan",
             kind="agent_queries_added", **out)
     emit(out)

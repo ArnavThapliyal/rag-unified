@@ -61,3 +61,5 @@ access = "background"
 args = { "--full" = "flag" }
 [steps."processor.quant-zfactor"]
 access = "background"
+[steps."processor.purge"]
+access = "user"

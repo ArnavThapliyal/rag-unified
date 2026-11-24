@@ -212,7 +212,8 @@ def ingest_batch(batch_dir: Path, run_pipeline: Callable[[Path], Dict[str, Any]]
         reason=f"{failed} file(s) failed" if failed else "",
         files_in_manifest=len(manifest.get("files", [])),
         **{k: summary.get(k) for k in ("files_found", "files_indexed", "files_failed", "files_skipped",
-                                        "chunks_written", "failed_files", "run_id") if k in summary},
+                                        "chunks_written", "failed_files", "out_of_scope_files", "pages_unindexed",
+                                        "triage", "memory", "run_id") if k in summary},
         finished_at=_now(),
     )
     if summary.get("finalize_error"):

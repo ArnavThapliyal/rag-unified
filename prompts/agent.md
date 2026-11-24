@@ -68,6 +68,11 @@ files, new companies, documents per company); they are the user's settings, neve
    - Processor: a ledger entry with `status: failed` or `gave_up`, or `files_failed` > 0 → report once
      (`--kind other --summary "processor: batch <id> <what failed>" --evidence <batch id>`). Don't retry it yourself
      beyond what the steps do (a partial batch is retried automatically).
+   - In `./rag status`, the processor's `last_ingest` → `out_of_scope_files` not empty (IPO prospectuses / DRHPs the processor skipped) →
+     report once: `--kind out_of_scope --summary "<N> offer documents skipped in batch <id>" --evidence <batch id>`.
+     Never purge anything yourself; the user decides. `pages_unindexed` with big counts → report once (`--kind other`).
+   - The processor's `memory` → `notes` in `./rag status` (an LLM still loaded before an ingest, workers that would or would not fit) →
+     mention them in your milestone log line. Never change worker settings yourself.
    - Anything else that looks wrong (records drop without explanation, junk company names in the master,
      a domain blocked, a script printing a traceback) → one `./rag report_issue` call with the right `--kind`.
    - A `disk_warning` appears in the output → mention it in your milestone log line; keep going.

@@ -27,7 +27,7 @@ import ocr
 
 from common import (
     MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, atomic_write_text, confidence_for_url, emit, event, isin_equity,
-    isin_valid, log, read_jsonl,
+    isin_valid, log, read_jsonl, scope_target,
 )
 
 warnings.filterwarnings("ignore")
@@ -397,6 +397,16 @@ def rows_from_text(text: str, doc_type: str, review: list | None = None) -> list
 
 
 DELIST_RE = re.compile(r"delist", re.I)
+# IPO / relisting offer documents (DRHP, RHP, prospectus) mention an old delisting in their company history but
+# are hundreds of pages about the new issue: never a delisting record. Not the delisting "letter of offer".
+# Same rule as processor/pipeline/triage.py: "red herring prospectus" anywhere, or a capitalised PROSPECTUS /
+# INITIAL PUBLIC OFFER cover title; a passing "in the Prospectus dated ..." (Reg 30 disclosures) is not one.
+OFFER_DOC_RE = re.compile(r"red\s+herring\s+prospectus", re.I)
+COVER_TITLE_RE = re.compile(r"\bPROSPECTUS\b|INITIAL PUBLIC OFFER")
+
+
+def is_offer_document(text_head: str) -> bool:
+    return bool(OFFER_DOC_RE.search(text_head) or COVER_TITLE_RE.search(text_head[:3000]))
 CONTENT_SIGNAL_RE = re.compile(r"delist|withdrawn from (?:the )?(?:admission|dealings)|exit offer", re.I)
 # Lists of companies *proposed* to be delisted ("approved-delisting-proposals" are not proposals any more).
 PROPOSED_RE = re.compile(r"proposed|show.?cause|to.?be.?delisted", re.I)
@@ -579,6 +589,8 @@ def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: 
         return True, "url"
     if path.suffix.lower() in (".html", ".htm"):  # page bodies include site-wide nav menus: trust the title only
         return (True, "title") if DELIST_RE.search(stats.get("title", "")) else (False, "html_title_unrelated")
+    if is_offer_document(stats.get("text_head", "")):  # the URL did not say delisting; the document is an IPO
+        return False, "offer_document"
     if DELIST_RE.search(harvested_from or ""):  # linked from a delisting page: the document must say so too
         head = stats.get("text_head", "")
         if CONTENT_SIGNAL_RE.search(head):
@@ -589,6 +601,18 @@ def is_relevant(path: Path, src: str | None, harvested_from: str | None, stats: 
     if DELIST_RE.search(stats.get("text_head", "")):
         return True, "content"
     return False, f"no_delisting_signal ({where[-60:]})"
+
+
+# Never corpus material, whatever scope.target says: site chrome and how-to procedures.
+_NEVER_IN_CORPUS = ("non_listing_page", "procedural_document")
+
+
+def corpus_relevance(reason: str, target: str) -> str:
+    """Label of a document that gives no delisting rows. "irrelevant:*" is not exported to the processor. With
+    scope.target listed / both it still goes to the corpus as "corpus_<target>:<reason>" (no rows either way)."""
+    if target in ("listed", "both") and reason not in _NEVER_IN_CORPUS:
+        return f"corpus_{target}:{reason}"
+    return f"irrelevant:{reason}"
 
 
 def parse_file(path: Path, proposed: bool = False) -> tuple[list[dict], dict]:
@@ -702,6 +726,7 @@ def main() -> int:
     errors_path = PARSED / "_errors.json"
     known = json.loads(errors_path.read_text(encoding="utf-8")) if errors_path.exists() else {}
     version = parser_version()
+    target = scope_target()
     relevance_path = PARSED / "_relevance.json"
     relevance = json.loads(relevance_path.read_text(encoding="utf-8")) if relevance_path.exists() else {}
     # candidates an extractor refused (OCR garbage, a name after the ISIN, court captions): kept for a human
@@ -716,6 +741,9 @@ def main() -> int:
         out = PARSED / f"{p.parent.name}__{p.stem}.jsonl"
         if out.exists() and not a.force and out.stat().st_mtime >= p.stat().st_mtime:
             summary["skipped_up_to_date"] += 1
+            label = relevance.get(rel) or ""
+            if label.startswith(("irrelevant:", "corpus_")):  # scope.target may have changed since: relabel
+                relevance[rel] = corpus_relevance(label.split(":", 1)[1], target)
             continue
         k = known.get(rel)
         if k and not a.force and k.get("mtime") == p.stat().st_mtime and k.get("parser") == version:
@@ -735,7 +763,7 @@ def main() -> int:
         m = idx.get(rel, {})
         src = m.get("url")
         relevant, reason = is_relevant(p, src, m.get("harvested_from"), stats)
-        relevance[rel] = reason if relevant else f"irrelevant:{reason}"
+        relevance[rel] = reason if relevant else corpus_relevance(reason, target)
         if not relevant:
             rows = []
             summary["irrelevant_files"] += 1

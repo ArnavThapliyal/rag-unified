@@ -97,7 +97,11 @@ MP_START_METHOD = "spawn"
 # Parsing/chunking workers. Reserve two cores: one for the main process and
 # one for the single embedding process, which owns the device.
 # 0 runs everything inline in one process (tests, debugging).
-NUM_WORKERS = _env("NUM_WORKERS", max(1, (os.cpu_count() or 4) - 2), int)
+# Hard ceiling on parse/chunk workers, whatever NUM_WORKERS or --workers ask for: each docling worker holds
+# 1-3 GB and can grow past 5 GB on large PDFs, and the embedder and LM Studio need memory too. 12 workers on a
+# 48 GB Mac pushed it 31 GB into swap (2026-11-24).
+MAX_WORKERS = max(1, _env("MAX_WORKERS", 4, int))
+NUM_WORKERS = min(MAX_WORKERS, _env("NUM_WORKERS", max(1, (os.cpu_count() or 4) - 2), int))
 # A worker that reports nothing for this long is killed and its file marked failed. 0 disables.
 WORKER_STALL_TIMEOUT_SECONDS = _env("WORKER_STALL_TIMEOUT_SECONDS", 1800, int)
 
@@ -115,7 +119,9 @@ VECTOR_INDEX_MIN_ROWS = _env("VECTOR_INDEX_MIN_ROWS", 50_000, int)
 # OCR uses docling's RapidOCR default model (English + Chinese); Hindi is not covered.
 COMPUTE_BUDGET: Dict[str, object] = {
     "enable_ml_ocr": _env_bool("ENABLE_ML_OCR", True),
-    "max_pages_for_ocr": _env("MAX_PAGES_FOR_OCR", 50, int),
+    # OCR reads only the low-text pages (in page ranges), so the cost is per OCR page (~5.5 s on CPU), not
+    # a second parse of the whole file: a 140-page scan (125 OCR pages) takes about 12 minutes on one worker.
+    "max_pages_for_ocr": _env("MAX_PAGES_FOR_OCR", 150, int),
     "min_chars_per_page_before_ocr": _env("MIN_CHARS_PER_PAGE_BEFORE_OCR", 25, int),
     "table_structure_mode": _env("TABLE_STRUCTURE_MODE", "accurate", str),  # fast | accurate
 }
@@ -125,6 +131,11 @@ COMPUTE_BUDGET: Dict[str, object] = {
 # embedding process is the only user of the MPS/CUDA device.
 PARSER_DEVICE = _env("PARSER_DEVICE", "cpu", str)  # cpu | auto | mps | cuda
 PARSER_THREADS = _env("PARSER_THREADS", 1, int)
+# PDFs longer than this are converted in windows of this many pages: a worker's memory stays bounded by the
+# window instead of growing with the document (a 430-page DRHP peaked at 11.5 GB in one conversion).
+PDF_WINDOW_PAGES = max(1, _env("PDF_WINDOW_PAGES", 40, int))
+# Skip IPO offer documents (DRHP / RHP / prospectus) before parsing: out of scope for a delisting corpus.
+SCOPE_SKIP_OFFER_DOCUMENTS = _env_bool("SCOPE_SKIP_OFFER_DOCUMENTS", True)
 
 # Zip handling limits (type_router).
 ZIP_MAX_MEMBERS = _env("ZIP_MAX_MEMBERS", 5_000, int)
@@ -139,6 +150,8 @@ ZIP_MAX_DEPTH = _env("ZIP_MAX_DEPTH", 3, int)
 _COLLECTOR_DIR = next((BASE_DIR.parent / d for d in ("collector", "rag-collector") if (BASE_DIR.parent / d).is_dir()),
                       BASE_DIR.parent / "collector")
 COLLECTOR_OUTBOX = Path(_env("COLLECTOR_OUTBOX", str(_COLLECTOR_DIR / "data" / "export")))
+DENYLIST_FILE = Path(_env("DENYLIST_FILE", str(DATA_DIR / "denylist.txt")))  # doc_ids never indexed again
+TRIAGE_DIR = Path(_env("TRIAGE_DIR", str(DATA_DIR / "triage")))  # one <run_id>.csv per ingest run
 BATCH_LEDGER = Path(_env("BATCH_LEDGER", str(DATA_DIR / "processed_batches.jsonl")))  # one line per batch attempt
 BATCH_MAX_ATTEMPTS = _env("BATCH_MAX_ATTEMPTS", 3, int)  # a batch with failed files is retried this often
 WATCH_POLL_SECONDS = _env("WATCH_POLL_SECONDS", 60, int)

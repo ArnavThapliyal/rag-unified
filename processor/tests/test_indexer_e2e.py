@@ -207,3 +207,13 @@ def test_stalled_worker_that_ignores_sigterm_is_killed(tree, tmp_path, monkeypat
     summary = indexer.index_files(files, tree)
     assert summary["files_failed"] == 1
     assert not [p for p in mp.active_children() if p.name.startswith("worker")]
+
+
+def test_worker_count_is_hard_capped(tmp_path, monkeypatch):
+    # 12 docling workers (cpu_count - 2) pushed a 48 GB Mac 31 GB into swap: --workers can't exceed MAX_WORKERS
+    import config.settings as settings
+    assert 1 <= settings.NUM_WORKERS <= settings.MAX_WORKERS
+    monkeypatch.setattr(indexer_mod, "MAX_WORKERS", 4)
+    assert Indexer(workers=12, scratch_dir=tmp_path).workers == 4
+    assert Indexer(workers=2, scratch_dir=tmp_path).workers == 2
+    assert Indexer(workers=0, scratch_dir=tmp_path).workers == 0

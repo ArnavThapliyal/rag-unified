@@ -86,6 +86,38 @@ def test_relevance_gate():
                              {"title": "Listing compliance", "text_head": "menu: Delisting"})[0]
     assert p.is_relevant(pdf, "https://www.sebi.gov.in/x.pdf", None,
                          {"title": "", "text_head": "order regarding compulsory delisting"})[0]
+    # a DRHP whose company history mentions an old delisting is an IPO document, not a delisting record
+    drhp = {"title": "", "text_head": "DRAFT RED HERRING PROSPECTUS ... our equity shares were voluntarily "
+                                      "delisted from Bombay Stock Exchange"}
+    assert p.is_relevant(pdf, "https://www.sebi.gov.in/filings/x.pdf", None, drhp) == (False, "offer_document")
+    assert p.is_relevant(pdf, "https://www.sebi.gov.in/x.pdf", "https://www.bseindia.com/delisting/list", drhp) \
+        == (False, "offer_document")
+    # a Reg 30 disclosure that refers to "the Prospectus dated ..." in passing is not an offer document
+    assert not p.is_offer_document("Disclosure under Regulation 30 ... classified as Promoter in the Prospectus dated")
+    # the delisting exit-offer "letter of offer" stays relevant
+    assert p.is_relevant(pdf, "https://www.sebi.gov.in/x.pdf", None,
+                         {"title": "", "text_head": "LETTER OF OFFER for the delisting of equity shares"})[0]
+
+
+def test_scope_target_decides_what_reaches_the_corpus_never_the_rows():
+    assert p.corpus_relevance("offer_document", "delisted") == "irrelevant:offer_document"
+    assert p.corpus_relevance("offer_document", "listed") == "corpus_listed:offer_document"
+    assert p.corpus_relevance("no_delisting_signal (x)", "both") == "corpus_both:no_delisting_signal (x)"
+    for never in ("non_listing_page", "procedural_document"):
+        assert p.corpus_relevance(never, "both") == f"irrelevant:{never}"
+
+
+def test_scope_target_config(tmp_path, monkeypatch):
+    import json as _json
+    import common
+
+    monkeypatch.setattr(common, "CONFIG", tmp_path)
+    (tmp_path / "query_plan.json").write_text(_json.dumps({}))
+    assert common.scope_target() == "delisted"
+    (tmp_path / "query_plan.json").write_text(_json.dumps({"scope": {"target": "both"}}))
+    assert common.scope_target() == "both"
+    (tmp_path / "query_plan.json").write_text(_json.dumps({"scope": {"target": "everything"}}))
+    assert common.scope_target() == "delisted"
 
 
 def test_proposed_lists_are_detected():

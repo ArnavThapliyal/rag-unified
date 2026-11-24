@@ -1,0 +1,40 @@
+# doc_ids never indexed (pipeline/worker.py read_denylist). Copied from data/denylist.txt after
+# processor.purge, so every machine that ingests the same batches skips them. One per line, '#' comments.
+0d186e245557252af6fdc2be75ee6408  # 2026-11-24T19:52:09+00:00 7cd6e72df866a2c4.pdf IPO offer document (DRHP/RHP/prospectus), not a delisting target
+8bf6abaabb92b69343dc4aaa9a7299c4  # 2026-11-24T19:52:09+00:00 d147f5b5cb51a89b.pdf IPO offer document (DRHP/RHP/prospectus), not a delisting target
+eaa8c4becda79264eb696d03f93cd05a  # 2026-11-24T19:52:09+00:00 681fb861bec268f1.pdf IPO offer document (DRHP/RHP/prospectus), not a delisting target
+c3058a4ccea8f061f12e4fe3d9e0bd72  # 2026-11-24T19:57:56+00:00 00c03d8c6378be5d.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+2a5c59dddb67e57d62269e4cb5c3bfc7  # 2026-11-24T19:57:56+00:00 936b217b0abf5866.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+c26647581dc10812a9b2abf19bf85667  # 2026-11-24T19:57:56+00:00 de857d0cdb151d0f.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+8a67123034c96918209cfd8d59921fe9  # 2026-11-24T19:57:56+00:00 1be975fb6b7fd710.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+689a6b66439a53e703541cd1be206e3d  # 2026-11-24T19:57:56+00:00 b7f01871d8540865.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+cecdaab087d8200de5b29e763ec5c447  # 2026-11-24T19:57:56+00:00 b1b4fd2e6a121c93.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+8a2c54fb27ad57c07c596876bf0f6ab1  # 2026-11-24T19:57:56+00:00 69505b9f7ef547b4.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+a8383a14c9bd7d92f822fbfd8f86ed48  # 2026-11-24T19:57:56+00:00 979305c4ee11bba1.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+4f8eb8b9ef31d3776d0454d635f48e6f  # 2026-11-24T19:57:56+00:00 5226c795257eb1d7.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+09273bffd5ce3a2ca3750c34bbb90d9b  # 2026-11-24T19:57:56+00:00 8d6f37fdabd7654f.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+deaa8771122ddcb1859785debd5d220b  # 2026-11-24T19:57:56+00:00 46bf77b411fe988a.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+a8f88d3a54452db4b0ba8df046850bc8  # 2026-11-24T19:57:56+00:00 1c39539c96acc4ac.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+8bb341fbb1a8767c938bbe5f2c261270  # 2026-11-24T19:57:56+00:00 7833eff2fb492032.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+5ebe178a5e7e241b756f8cc92979ccc7  # 2026-11-24T19:57:56+00:00 27be9f6b63acf40a.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+fc5a235bfc2aceb8a4596edda45c1d16  # 2026-11-24T19:57:56+00:00 55768890f62cde80.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+521f70f11c13f513bbd69d5b9729cd1b  # 2026-11-24T19:57:56+00:00 960ab3b66e6a48ec.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+2e9722cd9295a90ec1bc738d298138b4  # 2026-11-24T19:57:56+00:00 3b729989d8f97e08.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+6fd1ddb6f2767368b959c09c170fdd77  # 2026-11-24T19:57:56+00:00 e8e16e603c4d2d52.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+01b73a1d193cec53793b6a530b8a3d6e  # 2026-11-24T19:57:56+00:00 8c773dc2e2d6b123.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+23f2c4e042f8b1546c63218b6ce02f0c  # 2026-11-24T19:57:56+00:00 9b1be894e11e837d.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+fee71d51f0526303cdd2eddca3bed682  # 2026-11-24T19:57:56+00:00 4d33b287375558fa.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+132a5f77f6bd5f63c04c64f8c18d4399  # 2026-11-24T19:57:56+00:00 84a552a55bbc3465.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+bfae57ec11e60ce9b125d29c8b2fe1aa  # 2026-11-24T19:57:56+00:00 748dc935ef9b7b9c.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+397b3c5495c6a1c34a287c38b396ac03  # 2026-11-24T19:57:56+00:00 3cb3e13378bacebf.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+92112a93972616a109b9f0cb324d5c62  # 2026-11-24T19:57:56+00:00 db70da45a31286c8.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+0e9a8487a013f43dc83001b798ed25cd  # 2026-11-24T19:57:56+00:00 541ff724f876bb6e.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+437f712399fcb100e2e79dd718ba794e  # 2026-11-24T19:57:56+00:00 f575069f2c9b20cd.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+6f13248d362b4a495ff290562c5d524e  # 2026-11-24T19:57:56+00:00 280d3d8bb52773fa.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+dbf0b88f37afed68beb9fe57b79e8267  # 2026-11-24T19:57:56+00:00 166dc56a197143b5.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+9133a1b193b6b2010e45eacb2171fad7  # 2026-11-24T19:57:56+00:00 d57af1e010398f19.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+b23d4ce8c2f0fcc6ef6b0095bcc810a6  # 2026-11-24T19:57:56+00:00 b449b9d404246c04.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+65593353003c930fa3972cd77c01b285  # 2026-11-24T19:57:56+00:00 1ead0036de761184.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+3a53ef8414d7a73ac229f57990f7a51a  # 2026-11-24T19:57:56+00:00 5b9dca138a6400c1.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+bb6d92e512909cbe533278b2fac1453b  # 2026-11-24T19:57:56+00:00 d328ff46d83285ee.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept
+94abc9c14c026369ac5da49611598d07  # 2026-11-24T19:57:56+00:00 b924c42855a43f74.pdf Hindi/Marathi newspaper copy of an NSE IPN/FPN notice, unreadable text (or unrelated); English copy kept

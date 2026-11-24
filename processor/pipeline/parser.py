@@ -10,7 +10,9 @@ Page headers/footers live in docling's furniture layer and are not returned.
 
 OCR is on demand: PDFs are parsed first without OCR, pages that came back with
 almost no text are counted, and only if there are some (and few enough to fit
-the budget) is the document re-converted with OCR enabled.
+the budget) are those page ranges converted again with OCR enabled; the rest of
+the document is not re-read. PDFs longer than PDF_WINDOW_PAGES are converted in
+page windows so a worker's memory does not grow with the document.
 
 Each Parser owns heavyweight docling converters, built lazily on first use, so
 create one per worker process and never share it across processes.
@@ -25,7 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from docling_core.types.doc import DocItemLabel, ListItem, SectionHeaderItem, TableItem, TextItem
 
-from config.settings import COMPUTE_BUDGET, PARSER_DEVICE, PARSER_THREADS
+from config.settings import COMPUTE_BUDGET, PARSER_DEVICE, PARSER_THREADS, PDF_WINDOW_PAGES
 from pipeline.schema import (
     BLOCK_CAPTION, BLOCK_CODE, BLOCK_FOOTNOTE, BLOCK_HEADER, BLOCK_LIST_ITEM,
     BLOCK_PARAGRAPH, BLOCK_TABLE, Block, ParseResult, TableData,
@@ -49,31 +51,70 @@ class Parser:
         if not path.is_file():
             raise FileNotFoundError(f"Input file not found: {path}")
 
-        doc = self._converter(use_ocr=False).convert(path, raises_on_error=True).document
-        blocks, warnings = self._extract_blocks(doc)
-        page_count = doc.num_pages() or None
+        if path.suffix.lower() != ".pdf":
+            doc = self._converter(use_ocr=False).convert(path, raises_on_error=True).document
+            blocks, warnings = self._extract_blocks(doc)
+            return ParseResult(blocks=blocks, page_count=doc.num_pages() or None, warnings=warnings)
+
+        total = _pdf_page_count(path)
+        blocks, warnings, page_count = self._convert_windows(path, total, use_ocr=False)
         ocr_pages = 0
+        low_pages = self._low_text_pages(blocks, page_count) if page_count else []
+        if low_pages and self.compute_budget.get("enable_ml_ocr"):
+            budget = int(self.compute_budget.get("max_pages_for_ocr", 0))
+            if len(low_pages) > budget:
+                warnings.append(
+                    f"{len(low_pages)} page(s) have little extractable text but exceed the OCR budget "
+                    f"of {budget}; left un-OCRed"
+                )
+            else:
+                logger.info(f"{path.name}: OCR pass for {len(low_pages)} low-text page(s)")
+                blocks, ocr_pages = self._ocr_pages(path, blocks, low_pages, warnings)
 
-        if path.suffix.lower() == ".pdf" and page_count and self.compute_budget.get("enable_ml_ocr"):
-            low_pages = self._low_text_pages(blocks, page_count)
-            if low_pages:
-                budget = int(self.compute_budget.get("max_pages_for_ocr", 0))
-                if len(low_pages) > budget:
-                    warnings.append(
-                        f"{len(low_pages)} page(s) have little extractable text but exceed the OCR budget "
-                        f"of {budget}; left un-OCRed"
-                    )
-                else:
-                    logger.info(f"{path.name}: OCR pass for {len(low_pages)} low-text page(s)")
-                    ocr_doc = self._converter(use_ocr=True).convert(path, raises_on_error=True).document
-                    ocr_blocks, ocr_warnings = self._extract_blocks(ocr_doc)
-                    if _text_length(ocr_blocks) > _text_length(blocks):
-                        blocks, ocr_pages = ocr_blocks, len(low_pages)
-                        warnings.extend(ocr_warnings)
-                    else:
-                        warnings.append("OCR pass found no additional text; kept the original parse")
+        return ParseResult(blocks=blocks, page_count=page_count, ocr_pages=ocr_pages,
+                           low_text_pages=len(low_pages), warnings=warnings)
 
-        return ParseResult(blocks=blocks, page_count=page_count, ocr_pages=ocr_pages, warnings=warnings)
+    def _convert_windows(self, path: Path, total: Optional[int], use_ocr: bool,
+                         ranges: Optional[List[Tuple[int, int]]] = None) -> Tuple[List[Block], List[str], Optional[int]]:
+        """Convert `ranges` (default: the whole file, in PDF_WINDOW_PAGES windows when it is longer than that).
+        docling keeps absolute page numbers with page_range, so the windows' blocks simply concatenate."""
+        converter = self._converter(use_ocr=use_ocr)
+        if ranges is None:
+            if not total or total <= PDF_WINDOW_PAGES:
+                doc = converter.convert(path, raises_on_error=True).document
+                blocks, warnings = self._extract_blocks(doc)
+                return blocks, warnings, doc.num_pages() or total
+            ranges = [(a, min(a + PDF_WINDOW_PAGES - 1, total)) for a in range(1, total + 1, PDF_WINDOW_PAGES)]
+        blocks: List[Block] = []
+        warnings: List[str] = []
+        for a, b in ranges:
+            doc = converter.convert(path, raises_on_error=True, page_range=(a, b)).document
+            part, part_warnings = self._extract_blocks(doc)
+            blocks.extend(part)
+            warnings.extend(part_warnings)
+            del doc  # free the window's pages before the next one
+        return blocks, warnings, total
+
+    def _ocr_pages(self, path: Path, blocks: List[Block], low_pages: List[int],
+                   warnings: List[str]) -> Tuple[List[Block], int]:
+        """OCR only the runs of low-text pages; a run's OCR blocks replace its original blocks when they carry more
+        text. Returns the blocks in page order and how many pages were taken from OCR."""
+        runs = _page_runs(low_pages)
+        ocr_blocks, ocr_warnings, _ = self._convert_windows(path, None, use_ocr=True, ranges=runs)
+        taken: set = set()
+        for a, b in runs:
+            new = [x for x in ocr_blocks if x.page_number is not None and a <= x.page_number <= b]
+            old = [x for x in blocks if x.page_number is not None and a <= x.page_number <= b]
+            if _text_length(new) > _text_length(old):
+                taken.update(range(a, b + 1))
+        if not taken:
+            warnings.append("OCR pass found no additional text; kept the original parse")
+            return blocks, 0
+        warnings.extend(ocr_warnings)
+        kept = [x for x in blocks if x.page_number not in taken]
+        added = [x for x in ocr_blocks if x.page_number in taken]
+        merged = sorted(kept + added, key=lambda x: (x.page_number is None, x.page_number or 0))  # stable sort
+        return merged, len(taken & set(low_pages))
 
     # ---- converters ------------------------------------------------------------
 
@@ -211,3 +252,26 @@ def _looks_like_header(row: List[str]) -> bool:
 
 def _text_length(blocks: List[Block]) -> int:
     return sum(len(b.content) for b in blocks)
+
+
+def _pdf_page_count(path: Path) -> Optional[int]:
+    try:
+        import pypdfium2 as pdfium
+        doc = pdfium.PdfDocument(str(path))
+        try:
+            return len(doc)
+        finally:
+            doc.close()
+    except Exception:  # docling reports a broken file properly; just don't window it
+        return None
+
+
+def _page_runs(pages: List[int], gap: int = 2) -> List[Tuple[int, int]]:
+    """[3, 4, 5, 7, 20] -> [(3, 7), (20, 20)]: nearby pages share one conversion, capped at PDF_WINDOW_PAGES."""
+    runs: List[Tuple[int, int]] = []
+    for p in sorted(set(pages)):
+        if runs and p - runs[-1][1] <= gap and p - runs[-1][0] < PDF_WINDOW_PAGES:
+            runs[-1] = (runs[-1][0], p)
+        else:
+            runs.append((p, p))
+    return runs

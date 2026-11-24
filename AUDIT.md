@@ -46,6 +46,9 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
 | After the Neon fixes: `./rag loop --once … --export-batch 2` (temporary outbox + DATA_DIR) | export capped at 3 batches by `--max-pending` (was 20), all 3 ingested, quant-sync ok, exit 0; two concurrent `processor.status` calls both ok |
 | After the ultrareview fixes (`audit/neon`): `scripts/check.sh --offline` | all ok: collector 354 tests, processor 125 passed / 3 skipped, agent + unified 279, dataset audit 0 errors, sandbox probe ok |
 | Real-data step runs, isolated outboxes (`audit_runs/`, not tracked; bge-m3 on CPU) | export 5 real PDFs → ingest 5 files / 142 chunks → second ingest noop → quant-sync (3,654 entities, 457 events) → zfactor / bracket noop (no prices); 3 batches through `main.py --watch --once`, exit 0; the same batch re-ingested with `--workers 2` writes 0 chunks (dedup by doc_id) |
+| Full agent-mode E2E (2026-11-24): `./rag loop --once`, Cline + qwen3.8-27b, sandbox on | agent session completed (8 queries, 38 files, 0 new records, issues #8–#10 filed); export 332 documents; ingest ok: 291 indexed + 41 already stored, 0 failed, 13,874 chunks, 45.8 min, bge-m3 on MPS; quant-sync ok, zfactor noop (no prices), second ingest noop. Bugs found and fixed: `add_queries` race corrupted `query_plan.json` (flock + atomic write); `status_report` traceback on a closed pipe; 12 docling workers + a loaded LLM swapped the 48 GB Mac to 31 GB (hard `MAX_WORKERS` cap) |
+| Benchmark after the changes (same batch, scratch DATA_DIR) | 22.8 min (was 45.8): triage skipped 3 IPO offer documents (1,441 pages); peak worker 5.9 GB (was 13.8); 284 files in both runs give identical chunks except the 140-page scan (31 → 248 chunks, its 125 scanned pages now OCRed). `audit_runs/perf/baseline_20261124.*`, `new_20261125.*` |
+| After the changes: `scripts/check.sh --offline --e2e`, `RUN_SLOW=1` parser tests | all ok: collector 357, processor 139 + 2 model-backed, agent + unified 281, ruff clean; e2e export → ingest → noop → quant-sync ok |
 
 ## 4. What changed when the repos were combined
 
@@ -78,22 +81,30 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
 
 ## 5. Open items
 
-1. **Z-factors need price data.** quant-sync / quant-zfactor return `noop` (`no_price_rows`) until price or
-   fundamentals files with `market_cap_cr` are ingested; the collector does not gather prices.
-2. **First real fill of the vector DB.** `collector/data/export/` and `processor/data/lancedb` in this checkout are
-   empty; the first `./rag loop` exports the 327 relevant documents (≈370 MB of clones) and ingests them (expect
-   tens of minutes on MPS).
-3. **Not yet run end to end:** a full agent-mode `./rag loop` cycle (real collection session, then export and
-   ingest), live search/collection driven by the agent, and the MPS embedding path in a real run (the `audit_runs/`
-   checks used CPU). The pieces were run separately (section 3).
-4. **The old repos are frozen, not retired.** `nse-delisted-comp` is now `rag-collector` (local folder and
+1. **The production vector DB is built elsewhere** (M5 Max, see [HANDOFF.md](HANDOFF.md)); this checkout's
+   LanceDB holds the E2E batch minus the purged documents (6,065 rows).
+2. **Not built from the E2E plan:** a memory admission check per file, worker recycling after N files, more
+   parser threads for big files, and a separate OCR backfill step. Windowed parsing bounds worker memory and
+   page-range OCR made a 150-page budget affordable, so they were not needed for this corpus. `scope.target`
+   listed / both only widens what reaches the corpus; there are no listed-company query templates yet.
+3. **OCR: TEMPORARY PASS (2026-11-25), to revisit.** Accepted on "it works" evidence only, for time: the
+   model-backed OCR test (`RUN_SLOW=1 tests/test_parser_pdf.py`) passes and the 140-page scan was fully OCRed
+   (125 pages, 31 → 248 chunks). Not checked: OCR text quality (no ground truth compared), Hindi/Marathi
+   (RapidOCR has English + Chinese models only; those newspaper copies are denylisted instead), speed (~5.5 s
+   per page on CPU, single thread; ocrmac / Apple Vision not benchmarked), and the 18 pages of
+   `f9a1855a64859d43.pdf` OCR returned nothing for.
+4. **Z-factors: wired, not exercised on real data.** Target bracket 3,500–12,500 cr (default; calibrated z
+   0.535–1.054, NSE prior). quant-sync / quant-zfactor / quant-bracket run and return `noop` (`no_price_rows`)
+   because no price or `market_cap_cr` rows exist yet; the unit tests (`test_z_factor_brackets.py`,
+   `test_quant_store.py`) cover the math.
+5. **The old repos are frozen, not retired.** `nse-delisted-comp` is now `rag-collector` (local folder and
    GitHub, renamed 2026-11-24; its QA/remediation worktrees were removed, their branches kept). It and
    `rag-processor` still have their `unified-pipeline` branches, unpushed. Their committed `data/metadata` in
    `rag-collector@2e00307` is stale (416 records); here it is regenerated (409, matching the audit).
-5. The `.rego` OPA policies under `processor/tests/` belong to the LLM stage; they are kept and run by CI unchanged.
-6. CI on Linux skips the macOS sandbox tests; the sandbox is only verified locally.
-7. Every export batch carries a full universe snapshot, even when the universe did not change (small, but
+6. The `.rego` OPA policies under `processor/tests/` belong to the LLM stage; they are kept and run by CI unchanged.
+7. CI on Linux skips the macOS sandbox tests; the sandbox is only verified locally.
+8. Every export batch carries a full universe snapshot, even when the universe did not change (small, but
    repeated); the processor installs only the newest. Shipping it only when the fingerprint changes would save space.
-8. Deferred from the Neon review: the process worker can't see that its fetch worker sibling has exited (a zombie)
+9. Deferred from the Neon review: the process worker can't see that its fetch worker sibling has exited (a zombie)
    while discovery is still running, so the last parse batch waits for discovery (M-5). `agent_exec.py` does not tear down its
    child when Cline kills it after 30 s (L-2; agent-access steps finish well within that).

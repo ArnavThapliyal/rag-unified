@@ -373,6 +373,12 @@ class Docket:
                     out["rows"] += n
                 else:
                     out["waiting"] += 1
+            # a re-parse or a scope.target change relabels files parsed earlier: export reads this column
+            for r in db.execute("SELECT url, local_path, relevance FROM items WHERE status='parsed'").fetchall():
+                new = relevance.get(r["local_path"])
+                if new is not None and new != r["relevance"]:
+                    db.execute("UPDATE items SET relevance=?, updated_at=? WHERE url=?", (new, now, r["url"]))
+                    out["relabelled"] = out.get("relabelled", 0) + 1
         return out
 
     # --- reporting / maintenance ----------------------------------------------------------------

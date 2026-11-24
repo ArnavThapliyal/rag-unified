@@ -327,6 +327,22 @@ from the window that are gone (404 / 410) are looked up in the Wayback Machine a
 instead. The dashboard's "Historical focus" line shows companies in the window, proven / unproven, and how many
 have supporting documents.
 
+### Scope: delisted, listed or both
+
+`scope.target` in `config/query_plan.json` (`scripts/common.py` `scope_target()`) says which companies the corpus
+is about:
+
+| target | documents exported to the processor | IPO offer documents (DRHP / RHP / prospectus) | historical delisting phases |
+|---|---|---|---|
+| `delisted` (default) | only those with a delisting signal (url, title, linked page or text) | rejected (`irrelevant:offer_document`) | run |
+| `listed` | every fetched document except site pages and procedures (`corpus_listed:*`) | kept | off |
+| `both` | either | kept | run |
+
+Delisting rows (the master CSV) still come only from delisting documents, whatever the target. For `listed`,
+the searches you add with `./rag add_queries` decide which companies are found. The export manifest carries
+`scope_target`, so the processor skips offer documents only for a `delisted` batch. Changing the target relabels
+already-parsed files on the next process run.
+
 ### Disk-space warnings
 
 You'll see `!! DISK WARNING: data/ has grown to 5.1 GB …` in the terminal and get a macOS notification. When that happens, free up space, or raise `disk.warn_data_gb` in `config/query_plan.json` to keep going. If free space drops below `disk.min_free_gb` (20 GB), the run stops with `stop_reason: low_disk_space`, the agent finishes, and `run_agent.sh` won't start again until there's room. The dashboard always shows a `Disk:` line. The biggest folder is `data/raw/`, which you can delete once records are extracted (the dataset keeps `source_url` for every row).

@@ -51,3 +51,4 @@ data/processed/ocr/
 .env
 .env.*
 !.env.example
+config/.query_plan.lock
