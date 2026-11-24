@@ -1,0 +1,25 @@
+# Keep code, bulky / raw material and the vector DB out of the agent's context
+collector/scripts/
+collector/src/
+collector/tests/
+collector/vendor/
+collector/.venv/
+collector/node_modules/
+collector/data/raw/
+collector/data/search_cache/
+collector/data/quarantine/
+collector/data/processed/parsed/
+collector/data/processed/ocr/
+collector/data/export/
+collector/data/docket.sqlite*
+collector/logs/agent_sessions/
+processor/
+unified/
+agent/
+tests/
+logs/bg/
+
+# Secrets (search API keys)
+.env
+.env.*
+!.env.example

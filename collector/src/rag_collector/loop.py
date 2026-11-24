@@ -2,8 +2,9 @@
 
 Each cycle:
   1. collection segment
-       --mode agent          scripts/run_agent.sh: the Cline agent chooses queries/gaps and drives collect.py
-                             (its own supervisor restarts crashed sessions and waits out search cooldowns)
+       --mode agent          an agent session (rag-unified's agent/run_agent.sh, or --agent-cmd): the Cline agent
+                             chooses queries/gaps and drives collect.py (its supervisor restarts crashed sessions
+                             and waits out search cooldowns)
        --mode deterministic  `steps collect --max-queries N` (no LLM; follows config/query_plan.json)
   2. universe-sync   (deterministic, never the agent's decision)
   3. export          (deterministic; repeated while more documents are waiting)
@@ -23,10 +24,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from rag_collector import paths
 from rag_collector.stepkit import now_iso
@@ -87,8 +90,12 @@ class Loop:
 
     def segment(self) -> dict:
         if self.a.mode == "agent":
-            self.say("collection segment: agent session (scripts/run_agent.sh)")
-            code, _ = self.run(["bash", str(paths.root() / "scripts" / "run_agent.sh")], capture=False)
+            agent = self.agent_cmd()
+            if agent is None:
+                return {"step": "agent", "status": "blocked",
+                        "reason": "no agent runner (rag-unified's agent/run_agent.sh); use --agent-cmd or --mode deterministic"}
+            self.say(f"collection segment: agent session ({agent})")
+            code, _ = self.run(["bash", str(agent)], capture=False)
             # run_agent.sh exits 0 when the agent completed its plan, 130 when interrupted, else 1;
             # the collector's own run summaries say what happened
             if code == 130 or self.stopping:
@@ -104,6 +111,13 @@ class Loop:
                     "reason": f"run_agent.sh exit {code}", "counts": {"new_records": new}}
         args = ["--max-queries", str(self.a.max_queries)] if self.a.max_queries else []
         return self.step("collect", *args)
+
+    def agent_cmd(self) -> Path | None:
+        """The agent session runner: --agent-cmd, else $RAG_AGENT_CMD, else rag-unified's agent/run_agent.sh."""
+        for c in (self.a.agent_cmd, os.environ.get("RAG_AGENT_CMD"), paths.root().parent / "agent" / "run_agent.sh"):
+            if c and Path(c).is_file():
+                return Path(c).resolve()
+        return None
 
     @staticmethod
     def last_run_summary() -> dict | None:
@@ -154,6 +168,11 @@ class Loop:
             return "continue", self.a.busy_pause_min, "collected new data"
         return "continue", self.a.idle_min, "nothing new"
 
+    @staticmethod
+    def decision(action: str, pause_min: float, why: str) -> None:
+        """--once: the cycle's decision as the last stdout line, for a scheduler (rag-unified's ./rag loop)."""
+        print(json.dumps({"loop_decision": action, "pause_min": pause_min, "why": why}), flush=True)
+
     def main(self) -> int:
         signal.signal(signal.SIGINT, self.on_signal)
         signal.signal(signal.SIGTERM, self.on_signal)
@@ -167,12 +186,15 @@ class Loop:
             failures = failures + 1 if action == "failed" else 0
             if action == "stop":
                 self.say(f"stopping: {why}")
+                if self.a.once:
+                    self.decision(action, 0, why)
                 return 0 if why == "stop requested" else 1
             if failures >= self.a.max_failures:
                 self.say(f"stopping: {failures} failed cycles in a row ({why})")
                 return 1
             if self.a.once:
                 self.say(f"--once: done ({why})")
+                self.decision(action, pause_min, why)
                 return 1 if action == "failed" else 0
             self.pause(pause_min, why)
         self.say("stopped")
@@ -190,7 +212,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--network-retry-min", type=float, default=10)
     ap.add_argument("--failure-pause-min", type=float, default=5)
     ap.add_argument("--max-failures", type=int, default=3)
-    ap.add_argument("--once", action="store_true", help="run one cycle and exit")
+    ap.add_argument("--once", action="store_true", help="run one cycle and exit (last line: the decision as JSON)")
+    ap.add_argument("--agent-cmd", help="agent session runner (default: $RAG_AGENT_CMD or ../agent/run_agent.sh)")
     return Loop(ap.parse_args(argv)).main()
 
 

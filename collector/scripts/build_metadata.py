@@ -165,7 +165,7 @@ def run_history(limit: int = 30) -> list[dict]:
 
 
 def agent_sessions(limit: int = 30) -> list[dict]:
-    """Summarise Cline --json session logs written by scripts/run_agent.sh."""
+    """Summarise Cline --json session logs written by the agent session runner (rag-unified's agent/run_agent.sh)."""
     out = []
     for p in sorted(AGENT_SESSIONS.glob("*.jsonl"))[-limit:]:
         tools, first_ts, result = Counter(), None, {}

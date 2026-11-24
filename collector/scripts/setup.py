@@ -157,9 +157,9 @@ def screens(st: dict) -> list[Screen]:
         Screen("agent", "Agent (Cline CLI)", "Runs the collection unattended with a local LM Studio model.",
                [("install", "npm install (Cline pinned to 3.0.75) (recommended)"),
                 ("skip", "Skip (run scripts/collect.py without the agent)")]),
-        Screen("model", "Agent model (LM Studio)", "Saved as CLINE_MODEL in .env; scripts/run_agent.sh uses it.",
+        Screen("model", "Agent model (LM Studio)", "Saved as CLINE_MODEL in collector/.env; ./rag agent uses it.",
                [(MODELS[0], f"{MODELS[0]} (recommended)"), (MODELS[1], MODELS[1]),
-                ("keep", f"Keep current ({cur_model})" if cur_model else "Don't set (run_agent.sh default)")]),
+                ("keep", f"Keep current ({cur_model})" if cur_model else "Don't set (./rag agent default)")]),
         Screen("limits", "Run limits", "Caps per collection run (run_limits in config/query_plan.json; "
                "collect.py flags override them).",
                [("capped", "Capped: 60 files, 25 companies, 5 documents per company per run (recommended)"),
@@ -491,8 +491,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     rc = apply(actions)
     if rc == 0:
-        _err("\n✓ setup done. Start the agent with scripts/run_agent.sh, or one run without it with "
-             ".venv/bin/python scripts/collect.py --max-queries 5")
+        _err("\n✓ collector set up. Next: (cd ../processor && uv sync), then from the repo root ./rag doctor and "
+             "./rag loop (or one collection run without the agent: .venv/bin/python scripts/collect.py --max-queries 5)")
     return rc
 
 

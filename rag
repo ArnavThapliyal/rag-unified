@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# rag-unified entry point: ./rag help
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+PY="$ROOT/collector/.venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3.11 || command -v python3)"
+unset VIRTUAL_ENV PYTHONHOME
+export PYTHONPATH="$ROOT"
+cd "$ROOT" && exec "$PY" -m unified "$@"

@@ -1,11 +1,12 @@
-# rag-processor
+# processor (rag-unified)
 
-The **Processor** stage of a three-part RAG system (Source → Processor → LLM).
+The **Processor** half of [rag-unified](../README.md) (collector → processor → LLM). Its Python package is
+`rag-processor`; from the repo root, `./rag step processor.<step>` runs its steps and `./rag loop` runs its watcher.
 
 It takes a folder of purchased files in mixed formats, parses, cleans, chunks and embeds them with `BAAI/bge-m3`, and appends the result to a LanceDB table that the LLM stage reads. Acquiring the data (Source) and answering questions (LLM) live elsewhere.
 
-Documents also arrive continuously from [rag-collector](https://github.com/ArnavThapliyal/rag-collector) (the Source:
-NSE delisting documents) through its outbox; `main.py --watch` ingests each batch as it appears. A quant stage turns
+Documents also arrive continuously from the [collector](../collector/README.md) (the Source: NSE delisting
+documents) through its outbox (`../collector/data/export/`); `main.py --watch` ingests each batch as it appears. A quant stage turns
 ingested price/market-cap rows into point-in-time Z-factors. See [Unified pipeline](#unified-pipeline-collector-batches-steps-quant).
 
 ```mermaid
@@ -37,7 +38,7 @@ All pipeline stages are implemented and covered by tests.
 | LanceDB `documents` table (1024-dim, cosine, 50 financial columns), append-only | Done |
 | Multiprocessing: CPU parse/chunk workers and one embedding process | Done |
 
-Not yet done: a run over real purchased data, and tuning of chunk sizes against retrieval quality. A first partial run on scraped test data is described in [NEXT_STEPS_PLAN.md](NEXT_STEPS_PLAN.md), section 4, together with what it showed about speed.
+Not yet done: a run over real purchased data, and tuning of chunk sizes against retrieval quality. Open items for the whole pipeline: [../AUDIT.md](../AUDIT.md). The earlier planning notes (`NEXT_STEPS_PLAN.md`, `HANDOFF.md`, `refactoring_flags.md`) are in git history.
 
 ## Setup
 
@@ -102,15 +103,15 @@ Common vendor spellings are mapped (`ticker` → `symbol`, `url` → `source_url
 
 ## Unified pipeline: collector batches, steps, quant
 
-### Continuous ingestion from rag-collector
+### Continuous ingestion from the collector
 
 ```bash
-uv run python main.py --watch                         # outbox: COLLECTOR_OUTBOX (default ../rag-collector/data/export)
+uv run python main.py --watch                         # outbox: COLLECTOR_OUTBOX (default ../collector/data/export)
 uv run python main.py --watch /path/to/outbox --once  # what is pending, then exit
 COLLECTOR_OUTBOX=/data/outbox uv run python main.py --watch --poll 30
 ```
 
-rag-collector writes one immutable batch per export: `files/` (documents + `<name>.meta.json` sidecars in the keys
+The collector writes one immutable batch per export: `files/` (documents + `<name>.meta.json` sidecars in the keys
 above: `source_url`, `doc_type`, `vendor`, `symbol`/`nse_symbol`/`isin`, `published_at`, plus `collector_*` provenance
 that lands in `metadata_json`), `universe.sqlite3` (point-in-time universe snapshot), `manifest.json` and `READY`
 (written last). The processor:
@@ -129,7 +130,7 @@ Each step result is appended to `data/logs/watch.jsonl`.
 ### Steps
 
 Every stage is also a step with one JSON result on stdout (contract: `pipeline/stepkit.py`, identical to
-rag-collector's; exit 0 ok/noop/partial, 1 failed, 2 blocked, 75 retry later), so rag-unified can run each one:
+the collector's; exit 0 ok/noop/partial, 1 failed, 2 blocked, 75 retry later), so `./rag step processor.<step>` runs each one:
 
 ```bash
 uv run python -m pipeline.steps list
@@ -192,7 +193,7 @@ uv run pytest               # fast tests; the embedding model is stubbed, nothin
 RUN_SLOW=1 uv run pytest    # also the docling PDF/OCR tests and the real bge-m3 test (downloads models once)
 ```
 
-The `.rego` files under `tests/` are OPA policies for the LLM side and are run by `.github/workflows/opatest.yml`. They are kept here because the schema's `allowed_roles` column must stay compatible with them.
+The `.rego` files under `tests/` are OPA policies for the LLM side and are run by `../.github/workflows/opatest.yml`. They are kept here because the schema's `allowed_roles` column must stay compatible with them.
 
 ## Documentation
 
@@ -204,6 +205,4 @@ The `.rego` files under `tests/` are OPA policies for the LLM side and are run b
 | [Doc/current/04_processing_stages.md](Doc/current/04_processing_stages.md) | Process layout, parser, cleaner, chunker, tabular, embedder, store |
 | [Doc/current/05_configuration.md](Doc/current/05_configuration.md) | Settings and environment variables |
 | [Doc/current/06_development.md](Doc/current/06_development.md) | Repo layout, tests, conventions |
-| [NEXT_STEPS_PLAN.md](NEXT_STEPS_PLAN.md) | What was implemented, and what remains |
-| [HANDOFF.md](HANDOFF.md) | Session-to-session progress notes |
-| [refactoring_flags.md](refactoring_flags.md) | The original audit and approved plan |
+| [../AUDIT.md](../AUDIT.md) | Audit of the combined pipeline: what each step does, what was checked, what is open |

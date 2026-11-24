@@ -1,6 +1,6 @@
 """Turn Cline's `--json` event stream (stdin) into short human-readable progress lines.
 
-Used by scripts/run_agent.sh; the raw stream is saved separately to logs/agent_sessions/.
+Used by rag-unified's agent/run_agent.sh; the raw stream is saved separately to logs/agent_sessions/.
 Also appends milestone lines (tool calls, completion) to logs/agent_run.log.
 """
 from __future__ import annotations

@@ -1,14 +1,16 @@
-# rag-collector — NSE Delisted Companies Archive
+# collector — NSE Delisted Companies Archive (rag-unified)
 
-**rag-collector** is the Source stage of a three-part RAG system: **rag-collector** (collect, verify, export) →
-[rag-processor](https://github.com/ArnavThapliyal/rag-processor) (parse, chunk, embed into LanceDB, quant stage) → LLM.
+The **collector** is the Source half of [rag-unified](../README.md): **collector/** (collect, verify, export) →
+[processor/](../processor/README.md) (parse, chunk, embed into LanceDB, quant stage) → LLM. Its Python package is
+`rag-collector`. The agent that drives it lives at the top of the repo (`../agent/`, `../prompts/agent.md`); run
+everything from the repo root with `./rag` (see [../README.md](../README.md) and [../ARCHITECTURE.md](../ARCHITECTURE.md)).
 It is a local-first research pipeline for building a verified, source-cited dataset of companies delisted from the **National Stock Exchange of India (NSE)**, 2006–2026. Four years get deep coverage: **2007, 2017, 2020, 2024**.
 
 The **Cline** agent runs unattended on a local model (LM Studio, `qwen/qwen3.8-27b`). Python scripts do all the searching, fetching, parsing and merging, and they log every step. The agent reads only short JSON summaries, decides what to do next, and keeps going without asking for approval.
 
-Full specification: [`instructions.md`](instructions.md). What came in from Sanidhya's Unified_Pipeline and where each
-part went: [`docs/UNIFIED_PIPELINE_CHANGES.md`](docs/UNIFIED_PIPELINE_CHANGES.md). The QA and remediation reports of
-November 2026 (`qa/`, `remediation/`, `AUDIT.md`) are in git history (`git show 0713c59:remediation/RELEASE_CANDIDATE_REPORT.md`).
+The combined audit is [`../AUDIT.md`](../AUDIT.md). Earlier documents are in git history: the November 2026 QA and
+remediation reports (`git show 0713c59:remediation/RELEASE_CANDIDATE_REPORT.md`), the specification `instructions.md`
+and the Unified_Pipeline import notes `docs/UNIFIED_PIPELINE_CHANGES.md`.
 
 ---
 
@@ -60,8 +62,7 @@ The only file the agent edits is `config/query_plan.json`, to append searches to
 ## Steps, continuous mode and the outbox
 
 Every stage is a **step** that can run on its own and prints one JSON result (contract in
-[`src/rag_collector/stepkit.py`](src/rag_collector/stepkit.py), shared with rag-processor so a later orchestrator,
-rag-unified, can drive both):
+[`src/rag_collector/stepkit.py`](src/rag_collector/stepkit.py), shared with the processor so `./rag step collector.<step>` can drive both):
 
 ```bash
 .venv/bin/rag-collector-step list            # or: .venv/bin/python -m rag_collector.steps list
@@ -72,7 +73,7 @@ rag-unified, can drive both):
 .venv/bin/rag-collector-step drain           # fetch + process, no searching
 .venv/bin/rag-collector-step collect --max-queries 5   # all three in one run
 .venv/bin/rag-collector-step universe-sync   # rebuild data/nse_unified.sqlite3 (noop when inputs unchanged)
-.venv/bin/rag-collector-step export          # new relevant documents -> outbox batch for rag-processor
+.venv/bin/rag-collector-step export          # new relevant documents -> outbox batch for the processor
 .venv/bin/rag-collector-step audit           # read-only data-quality audit
 ```
 
@@ -86,18 +87,20 @@ rag-unified, can drive both):
 Each step holds a per-step lock (`data/metadata/locks/`); discover/fetch/process/drain/collect share one lock because
 they share the docket. `status` also refreshes `data/metadata/` (through `status_report.py`).
 
-**Continuous mode** runs collection cycle after cycle: an agent session (`scripts/run_agent.sh`) or a deterministic
-`collect` run, then `universe-sync` and `export`, then a pause chosen from the step results (search cooldown, idle,
-network retry). Stop it with Ctrl-C, SIGTERM or `touch data/metadata/STOP`; cycles are logged to `logs/continuous.jsonl`.
+**Continuous mode** runs collection cycle after cycle: an agent session (rag-unified's `agent/run_agent.sh`) or a
+deterministic `collect` run, then `universe-sync` and `export`, then a pause chosen from the step results (search
+cooldown, idle, network retry). Stop it with Ctrl-C, SIGTERM or `touch data/metadata/STOP`; cycles are logged to
+`logs/continuous.jsonl`. In rag-unified, `./rag loop` runs these cycles one at a time next to the processor's watcher
+(and pauses collection when the processor falls behind); `scripts/run_continuous.sh` is the collector on its own.
 
 ```bash
-scripts/run_continuous.sh                                    # agent mode (needs LM Studio + SearXNG)
-scripts/run_continuous.sh --mode deterministic --max-queries 10 --idle-min 60
-scripts/run_continuous.sh --once                             # one cycle
-RAG_COLLECTOR_OUTBOX=/path/rag-processor/inbox scripts/run_continuous.sh   # export somewhere else
+../rag loop                                                  # the whole pipeline (from the repo root: ./rag loop)
+scripts/run_continuous.sh --mode deterministic --max-queries 10 --idle-min 60   # collector only, no LLM
+scripts/run_continuous.sh --once                             # one cycle (agent mode: ../agent/run_agent.sh)
+RAG_COLLECTOR_OUTBOX=/path/inbox scripts/run_continuous.sh   # export somewhere else
 ```
 
-**The outbox** (`data/export/`, or `$RAG_COLLECTOR_OUTBOX`) is how documents reach rag-processor:
+**The outbox** (`data/export/`, or `$RAG_COLLECTOR_OUTBOX`) is how documents reach the processor:
 
 ```text
 data/export/<YYYYMMDD-HHMMSS>/
@@ -126,8 +129,8 @@ SME lists with the delisting outputs into a point-in-time universe: who was list
 ## Setup (one-time)
 
 ```bash
-git clone https://github.com/ArnavThapliyal/rag-collector.git
-cd rag-collector && ./install.sh
+git clone https://github.com/ArnavThapliyal/rag-unified.git
+cd rag-unified/collector && ./install.sh
 ```
 
 `install.sh` checks the prerequisites (Python 3.11+, and warns about missing git, Docker, npm, Homebrew or
@@ -210,11 +213,13 @@ cline cli                   ok  (3.0.75)
 ### Terminal 1: the agent
 
 ```bash
-cd /Users/arnav/Projects/Software/rag-collector
-scripts/run_agent.sh            # one agent run; scripts/run_continuous.sh keeps going and exports
+cd /Users/arnav/Projects/Software/rag-unified
+./rag agent                     # one agent run (agent/run_agent.sh); ./rag loop keeps going, exports and ingests
 ```
 
-This launches Cline in unattended mode (`--json`, auto-approve) with [`prompts/autonomous_collection.md`](prompts/autonomous_collection.md). It cycles through:
+This launches Cline in unattended mode (`--json`, auto-approve) in the repo root with
+[`../prompts/agent.md`](../prompts/agent.md); every tool call goes through `../agent/tool_guard.py` and the agent
+runs only `./rag …` commands. It cycles through:
 
 - **Harvest:** fetch any backlog of linked documents.
 - **Query:** run the next 8 pending queries.
@@ -229,21 +234,21 @@ The terminal shows one line per action:
 ```text
 ■ agent-20261121-160000 — raw log: logs/agent_sessions/agent-20261121-160000.jsonl
   💬 Harvest backlog is 142; draining it first.
-  ▶ [3] run_commands: .venv/bin/python scripts/job.py start --harvest-only --max-files 40
-  ▶ [4] run_commands: .venv/bin/python scripts/status_report.py --json
+  ▶ [3] run_commands: ./rag job start --harvest-only --max-files 40
+  ▶ [4] run_commands: ./rag status
 ■ session finished: completed after 61 iterations, 88 tool calls, …
 ```
 
 Options:
 
 ```bash
-CLINE_TIMEOUT=14400 scripts/run_agent.sh                       # stop after 4 h
-CLINE_MODEL=google/gemma-4-26b-a4b scripts/run_agent.sh        # different LM Studio model
-CLINE_EXTRA_ARGS="--thinking low" scripts/run_agent.sh         # extra Cline flags
-scripts/run_agent.sh prompts/my_task.md                        # different task prompt
+CLINE_TIMEOUT=14400 ./rag agent                       # stop after 4 h
+CLINE_MODEL=google/gemma-4-26b-a4b ./rag agent        # different LM Studio model
+CLINE_EXTRA_ARGS="--thinking low" ./rag agent         # extra Cline flags
+./rag agent prompts/my_task.md                        # different task prompt (path from the repo root)
 ```
 
-> **Note:** Cline kills any shell command after 30 seconds (its `bashTimeoutMs`, which the CLI can't change). The agent therefore starts collections with `scripts/job.py start …` and polls `scripts/job.py wait 1`, `wait 2`, …, so long runs survive the timeout. The counter is there because Cline's loop detection aborts a session after 5 identical tool calls in a row. `run_agent.sh` also restarts a session whose run didn't finish `completed` (aborted, mistake limit), not just one that exited non-zero.
+> **Note:** Cline kills any shell command after 30 seconds (its `bashTimeoutMs`, which the CLI can't change). The agent therefore starts collections with `./rag job start …` and polls `./rag job wait 1`, `wait 2`, …, so long runs survive the timeout. The counter is there because Cline's loop detection aborts a session after 5 identical tool calls in a row. `agent/run_agent.sh` also restarts a session whose run didn't finish `completed` (aborted, mistake limit), not just one that exited non-zero.
 
 **Without the agent** (deterministic, no LLM), `collect.py` runs the plan by itself:
 
@@ -338,7 +343,7 @@ Searches go through pluggable providers ([`scripts/search_providers/`](scripts/s
 
 The next provider is used only when the previous one is used up: all its units benched, its daily or monthly limit reached (`provider_settings.<name>.daily_limit` / `monthly_limit`), no key, or down. A clean "no results" answer is final, so paid APIs are not spent on it. A provider without a key is skipped, so the repo works with SearXNG alone.
 
-**API keys** are never in code or config. `scripts/credentials.py` looks them up in this order: the environment, the file named by `NSE_KEYS_FILE`, `~/.config/rag-collector/keys.env` (outside the repo, recommended), then the git-ignored `.env` (template: `.env.example`). A `.env` that is tracked by git is refused. `run_agent.sh` strips `*API_KEY*` variables from the agent's environment, so for agent runs put keys in one of the files. On macOS, `run_agent.sh` also runs Cline inside an OS sandbox (`scripts/agent_sandbox.py`, `sandbox-exec`): Cline and every process it starts can't read or write your home directory outside the project, `~/.cline` and the runtimes, and `~/.ssh`, `~/.config/rag-collector`, the project `.env` and the keychain are denied. So agent sessions search through SearXNG only; `CLINE_SANDBOX_ALLOW_KEYS=1` lets the sandbox read the keys file (a guard bypass could then read it too), `CLINE_SANDBOX=0` turns the sandbox off. Direct runs of `collect.py` by you are not sandboxed and use the keys as before. The tool guard (`scripts/tool_guard.py`) is an allowlist grammar, not a blacklist: every command is parsed into a plan of agent scripts with their exact allowed flags plus stdin-only filters, anything bash would expand (`$`, `~`, globs, backslashes) is refused, and every allowed call is rewritten to `scripts/agent_exec.py`, which re-validates it and runs it without a shell (filters are done in Python). The agent can't edit any file; the plan changes only through `scripts/add_queries.py`, and run caps can only be tightened.
+**API keys** are never in code or config. `scripts/credentials.py` looks them up in this order: the environment, the file named by `NSE_KEYS_FILE`, `~/.config/rag-collector/keys.env` (outside the repo, recommended), then the git-ignored `.env` (template: `.env.example`). A `.env` that is tracked by git is refused. `../agent/run_agent.sh` strips `*API_KEY*` variables from the agent's environment, so for agent runs put keys in one of the files. On macOS, it also runs Cline inside an OS sandbox (`../agent/sandbox.py`, `sandbox-exec`): Cline and every process it starts can't read or write your home directory outside the rag-unified checkout, `~/.cline` and the runtimes, and `~/.ssh`, `~/.config/rag-collector`, the project `.env` and the keychain are denied. So agent sessions search through SearXNG only; `CLINE_SANDBOX_ALLOW_KEYS=1` lets the sandbox read the keys file (a guard bypass could then read it too), `CLINE_SANDBOX=0` turns the sandbox off. Direct runs of `collect.py` by you are not sandboxed and use the keys as before. The tool guard (`../agent/tool_guard.py`) is an allowlist grammar, not a blacklist: every command is parsed into a plan of `./rag` tools and commands with their exact allowed flags plus stdin-only filters, anything bash would expand (`$`, `~`, globs, backslashes) is refused, and every allowed call is rewritten to `../agent/agent_exec.py`, which re-validates it and runs it without a shell (filters are done in Python). The agent can't edit any file; the plan changes only through `./rag add_queries` (`scripts/add_queries.py`), and run caps can only be tightened.
 
 ```bash
 mkdir -p ~/.config/rag-collector && chmod 700 ~/.config/rag-collector
@@ -353,7 +358,7 @@ chmod 600 ~/.config/rag-collector/keys.env
 - A unit that answers *too many requests* is benched 60 min, *CAPTCHA* 6 h, *access denied* (or a rejected API key) 12 h, *quota* exhausted 24 h, other errors 2 h (`search.cooldown_min`).
 - A unit whose answers contain no relevant result 3 times in a row (empty, or junk like Bing returning gaming forums) is benched 6 h.
 - Queries are 20–40 s apart.
-- When every provider is used up, `collect.py` stops with `search_engines_suspended` and the query stays pending; `run_agent.sh` waits until the first one is back (`search_cooldown_min_left` in `collect.py --dry-run`) and starts a fresh session, up to `CLINE_MAX_COOLDOWNS` (12) times. Harvest-only runs keep working.
+- When every provider is used up, `collect.py` stops with `search_engines_suspended` and the query stays pending; `agent/run_agent.sh` waits until the first one is back (`search_cooldown_min_left` in `collect.py --dry-run`) and starts a fresh session, up to `CLINE_MAX_COOLDOWNS` (12) times. Harvest-only runs keep working.
 
 SearXNG engines are enabled in [`searxng/settings.yml`](searxng/settings.yml) (`engines:` list; `docker compose restart` after editing). Their bans are per IP: if all engines are banned at once, only an API provider or waiting helps.
 
@@ -401,7 +406,7 @@ tail -f ~/.lmstudio/server-logs/$(date +%Y-%m)/$(date +%F).1.log   # LM Studio s
 | `logs/agent_sessions/<session>.jsonl` | Cline's full raw event stream (its reasoning, tool calls, outputs, token usage) | No (large) |
 | `data/raw/master_lists/`, `priority_<year>/`, `archive_2006_2026/` | Downloaded documents | No (can be regenerated) |
 | `data/nse_unified.sqlite3` | Point-in-time universe DB (`universe-sync`); `data/metadata/universe_sync.json` has its input fingerprint | No (rebuilt from the CSVs) |
-| `data/export/<batch>/` | Outbox batches for rag-processor; `data/export/export_state.json` lists what was exported | No |
+| `data/export/<batch>/` | Outbox batches for the processor; `data/export/export_state.json` lists what was exported | No |
 | `logs/continuous.jsonl` | One line per continuous-mode cycle: every step's status, reason and counts | No |
 | `data/search_cache/`, `data/quarantine/`, `data/processed/parsed/` | Search results, failed downloads, per-file candidate rows | No |
 
@@ -414,14 +419,14 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | Item              | Where                                 | Notes                                                                                                                                                                                  |
 | ----------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Query plan        | `config/query_plan.json`              | Phases, queries, pages per query, `fetch_domains`, `fetch_limit_per_query`, `harvest_limit_per_page`, `block_domain_after_failures`. The agent adds queries to an `agent_added` phase. |
-| Agent task        | `prompts/autonomous_collection.md`    | The loop, stop conditions and hard rules for unattended runs                                                                                                                           |
-| Agent rules       | `.cline/rules/01-nse-research.md`     | Loaded automatically by Cline for every task                                                                                                                                           |
-| Agent persona     | `soul.md`                             | Accuracy over volume, never invent fields, every row cites a source                                                                                                                    |
-| Skills            | `skills/` (linked as `.cline/skills`) | `searxng-discovery`, `nse-document-parser`, `dataset-auditor`                                                                                                                          |
-| Hidden from agent | `.clineignore`                        | `vendor/`, `.venv/`, `src/`, raw data, caches, quarantine, parsed rows, the outbox                                                                                                     |
+| Agent task        | `../prompts/agent.md`                 | The loop, stop conditions and hard rules for unattended runs                                                                                                                           |
+| Agent rules       | `../.cline/rules/01-rag-agent.md`     | Loaded automatically by Cline for every task                                                                                                                                           |
+| Agent persona     | `../soul.md`                          | Accuracy over volume, never invent fields, every row cites a source                                                                                                                    |
+| Skills            | `../skills/` (as `../.cline/skills`)  | `searxng-discovery`, `nse-document-parser`, `dataset-auditor`                                                                                                                          |
+| Hidden from agent | `../.clineignore`                     | code, `.venv/`, raw data, caches, quarantine, parsed rows, the outbox, the processor                                                                                                   |
 | Trusted domains   | `scripts/common.py`                   | `PRIMARY_DOMAINS` (NSE, SEBI, BSE → `VERIFIED_PRIMARY`), `SECONDARY_DOMAINS` (news and legal sites → `CORROBORATED_SECONDARY`)                                                         |
 | Parser rules      | `scripts/parse_nse_records.py`        | `HEADER_MAP`, `TYPE_KEYWORDS`, `rows_from_order`, `PROPOSED_RE`                                                                                                                        |
-| LM Studio         | `scripts/run_agent.sh`                | Cline `lmstudio` provider, `localhost:1234/v1`, model from `CLINE_MODEL`                                                                                                               |
+| LM Studio         | `../agent/run_agent.sh`               | Cline `lmstudio` provider, `localhost:1234/v1`, model from `CLINE_MODEL`                                                                                                               |
 | Cline CLI         | `package.json`                        | Pinned to `3.0.75`, with npm `overrides` for vulnerable dependencies (`npm audit`: 0 critical). **Never run** `npm audit fix --force`, because it downgrades Cline to 3.0.3.           |
 | SearXNG           | Docker container `searxng`            | `search.formats: [html, json]` added. The original config is backed up as `settings.yml.bak`.                                                                                          |
 
@@ -432,8 +437,8 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | Script | Purpose |
 |---|---|
 | `scripts/run_continuous.sh` | Continuous mode: collection segment → universe-sync → export, forever (`src/rag_collector/loop.py`) |
-| `scripts/steps.py`, `rag-collector-step` | The step CLI (`src/rag_collector/steps.py`); the agent may run only `list`, `status`, `audit` |
-| `scripts/run_agent.sh` | Launch Cline unattended. Checks that SearXNG and LM Studio are up, logs the session, prints the dashboard at the end. |
+| `rag-collector-step` | The step CLI (`src/rag_collector/steps.py`); from the repo root `./rag step collector.<step>` |
+| `scripts/agent_supervisor.py` | What `../agent/run_agent.sh` does after a session (restart / cooldown / stop), from structured state only |
 | `install.sh`, `scripts/setup.py` | Guided first-time setup (recommended option first on every screen; `--defaults`, `--dry-run`) |
 | `scripts/collect.py` | The resumable run: Discovery here, with the fetch and process workers alongside (`--stage all\|discover\|fetch\|process\|drain`) |
 | `scripts/run_limits.py` | Caps and run modes (`run_limits` in the config, collect.py flags), the shared stop file |
@@ -443,7 +448,7 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | `scripts/process_worker.py` | Parses / OCRs downloads in batches, merges records, marks docket items parsed |
 | `scripts/ocr.py` | OCR for scanned PDFs (tesseract on pages rendered by pypdfium2, first 12 pages, cached). Used automatically by the parser; `python scripts/ocr.py <pdf>` prints the text. Needs `brew install tesseract`. |
 | `scripts/report_issue.py` | Records an anomaly for you to review (`--kind`, `--summary`, `--evidence`; `--list` shows open ones). The agent's only response to problems. |
-| `scripts/job.py` | Runs `collect.py` as a detached background job (`start`, `wait`, `status`, `stop`). The agent uses it because Cline kills shell commands after 30 s. |
+| `scripts/job.py` | Runs `collect.py` as a detached background job (`start`, `wait`, `status`, `stop`). The agent uses it (`./rag job …`) because Cline kills shell commands after 30 s. |
 | `scripts/status_report.py` | Dashboard: indicator bars, year × type grid, gaps. Supports `--watch N`, `--json`, `--year`, `--needs-review`. |
 | `scripts/build_metadata.py` | Rebuilds `data/metadata/` (runs automatically) |
 | `scripts/web_search.py` | One search through the providers, cached; `--engines` / `--check` show provider state. |
@@ -455,7 +460,7 @@ To trace any record back to its source: `source_url` → `local_artifact_path` �
 | `scripts/inspect_artifact.py` | Bounded excerpt of a downloaded file, or `--zero-rows` to list files that gave no rows |
 | `scripts/agent_progress.py` | Turns Cline's JSON stream into the readable terminal lines |
 | `scripts/audit_dataset.py` | Data-quality audit (duplicate ids, bad ISINs, off-topic sources, missing artifacts, no-date rows, suspicious names) |
-| `scripts/check.sh` | Repo health check: pyflakes, pytest, configs, audit, disk, stale references, services |
+| `scripts/check.sh` | Collector health check: pyflakes, pytest, configs, audit, disk, stale references, services (`../scripts/check.sh` runs it with everything else) |
 | `scripts/common.py` | Paths, logging and events, domain rules. `python scripts/common.py log "msg"` adds a milestone. |
 
 ---
@@ -512,23 +517,20 @@ None of these is built yet. They are possible next steps.
 
 ```text
 .
-├── instructions.md, soul.md, README.md, docs/
+├── README.md
 ├── pyproject.toml, src/rag_collector/  # step CLI, universe DB, outbox export, continuous loop
 ├── nse_delisted_master.csv          # schema reference
 ├── requirements.txt, requirements-dev.txt, package.json   # Python deps; pytest/pyflakes; Cline CLI
 ├── docker-compose.yml, searxng/settings.yml, .env.example   # local SearXNG (secret in git-ignored .env)
 ├── tests/                           # pytest suite (offline)
 ├── config/query_plan.json           # what to search, in order
-├── prompts/autonomous_collection.md # unattended agent task
-├── .cline/rules/, .cline/skills → skills/, .clineignore
-├── skills/                          # agent skill guides
-├── scripts/                         # pipeline + agent launcher
+├── scripts/                         # pipeline scripts and the agent's collector tools (prompts, guard, sandbox: ../)
 ├── data/
 │   ├── search_cache/  raw/  quarantine/
 │   ├── processed/                   # dataset, priority audit, leads, parsed/
 │   └── metadata/                    # collection metadata, artifact inventory, dataset audit, resumable state
 │   ├── nse_unified.sqlite3          # universe DB (git-ignored)
-│   ├── export/                      # outbox batches for rag-processor (git-ignored)
+│   ├── export/                      # outbox batches for the processor (git-ignored)
 ├── logs/                            # fetch_manifest, events, agent_run.log, runs/, agent_sessions/, continuous.jsonl
 └── vendor/cline/                    # reference clone (git-ignored)
 ```

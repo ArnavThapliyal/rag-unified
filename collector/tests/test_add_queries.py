@@ -1,7 +1,6 @@
 import pytest
 
 import add_queries as aq
-import tool_guard as g
 
 
 @pytest.fixture(autouse=True)
@@ -35,8 +34,3 @@ def test_year_tag_required_and_checked():
     for tag in (None, "2008; rm", "1850"):
         with pytest.raises(ValueError):
             aq.add(plan(), ["SEBI order delisting 2008"], tag, [])
-
-
-def test_agent_may_run_it():
-    assert g.check("run_commands", {"commands": [
-        '.venv/bin/python scripts/add_queries.py --year-tag 2008 --query "SEBI order delisting 2008"']}) is None

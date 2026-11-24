@@ -127,7 +127,7 @@ Scanned PDFs dominate run time. These settings trade quality for speed:
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `COLLECTOR_OUTBOX` | `../rag-collector/data/export` | rag-collector's outbox that `--watch` and `steps ingest` read |
+| `COLLECTOR_OUTBOX` | `../collector/data/export` (else `../rag-collector/data/export`) | the collector's outbox that `--watch` and `steps ingest` read |
 | `BATCH_LEDGER` | `data/processed_batches.jsonl` | one line per batch attempt (status, files, chunks) |
 | `BATCH_MAX_ATTEMPTS` | `3` | attempts for a batch with failed files before it is given up |
 | `WATCH_POLL_SECONDS` | `60` | seconds between outbox checks in `--watch` |

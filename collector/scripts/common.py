@@ -31,7 +31,7 @@ AGENT_LOG = LOGS / "agent_run.log"
 EVENTS = LOGS / "events.jsonl"
 RUNS = LOGS / "runs"
 AGENT_SESSIONS = LOGS / "agent_sessions"
-CURRENT_SESSION = AGENT_SESSIONS / "current"  # written by scripts/run_agent.sh while a session runs
+CURRENT_SESSION = AGENT_SESSIONS / "current"  # written by agent/run_agent.sh (rag-unified) while a session runs
 METADATA = DATA / "metadata"
 CONFIG = ROOT / "config"
 

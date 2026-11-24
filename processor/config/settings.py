@@ -135,7 +135,10 @@ ZIP_MAX_DEPTH = _env("ZIP_MAX_DEPTH", 3, int)
 
 # ---- unified pipeline: collector outbox, step locks, quant stage ---------------
 # rag-collector's outbox of READY batches (data/export/ in the collector checkout next to this one)
-COLLECTOR_OUTBOX = Path(_env("COLLECTOR_OUTBOX", str(BASE_DIR.parent / "rag-collector" / "data" / "export")))
+# rag-unified layout (../collector) first, else a sibling rag-collector checkout
+_COLLECTOR_DIR = next((BASE_DIR.parent / d for d in ("collector", "rag-collector") if (BASE_DIR.parent / d).is_dir()),
+                      BASE_DIR.parent / "collector")
+COLLECTOR_OUTBOX = Path(_env("COLLECTOR_OUTBOX", str(_COLLECTOR_DIR / "data" / "export")))
 BATCH_LEDGER = Path(_env("BATCH_LEDGER", str(DATA_DIR / "processed_batches.jsonl")))  # one line per batch attempt
 BATCH_MAX_ATTEMPTS = _env("BATCH_MAX_ATTEMPTS", 3, int)  # a batch with failed files is retried this often
 WATCH_POLL_SECONDS = _env("WATCH_POLL_SECONDS", 60, int)

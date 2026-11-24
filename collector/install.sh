@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# First-time setup for rag-collector:
+# First-time setup for the collector half of rag-unified:
 #
-#   git clone https://github.com/ArnavThapliyal/rag-collector.git
-#   cd rag-collector && ./install.sh                 # guided (arrow keys; Enter = recommended)
+#   git clone https://github.com/ArnavThapliyal/rag-unified.git
+#   cd rag-unified/collector && ./install.sh         # guided (arrow keys; Enter = recommended)
 #   ./install.sh --defaults                           # accept every recommended option
 #   ./install.sh --dry-run                            # show what would happen, change nothing
 #
@@ -18,7 +18,7 @@ die()  { printf '\033[38;5;196m✗\033[0m %s\n' "$1" >&2; exit 1; }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 cd "$ROOT"
-[ -f scripts/setup.py ] || die "run this from the rag-collector root (scripts/setup.py not found)"
+[ -f scripts/setup.py ] || die "run this from rag-unified/collector (scripts/setup.py not found)"
 
 # --- prerequisites ---------------------------------------------------------
 command -v python3 >/dev/null 2>&1 || die "python3 (3.11+) is required: https://www.python.org/downloads/"

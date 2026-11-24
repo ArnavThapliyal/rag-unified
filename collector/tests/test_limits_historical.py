@@ -12,7 +12,6 @@ import historical
 import polite_fetcher
 import process_worker
 import run_limits
-import tool_guard
 
 KNOWN = ["nseindia.com"]
 POLICY = {"open_web": True, "known": KNOWN, "deny": [],
@@ -254,9 +253,3 @@ def test_discovery_files_official_first_with_the_company_and_honours_stop(dk, tm
     assert [tuple(r) for r in rows] == [("https://www.nseindia.com/order.pdf", "pending", "abc"),
                                         ("https://economictimes.indiatimes.com/news.html", "parked", "abc")]
     assert step["stop_reason"] == "max_files_reached" and step["queries_done"] == 1
-
-
-def test_agent_may_not_change_limits_or_focus():
-    plan = f"{tool_guard.ROOT}/config/query_plan.json"
-    for txt in ['"max_files": 100000', '"mode": "unlimited"', '"years_ago": [1, 2]']:
-        assert tool_guard.check("editor", {"path": plan, "new_text": txt}), txt

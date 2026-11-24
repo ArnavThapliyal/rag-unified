@@ -14,7 +14,8 @@ prompts/ .cline/ skills/ soul.md   what the agent reads
 
 The two halves keep their own Python environments (the collector is light; the processor needs
 docling/torch/bge-m3) and talk only through files: the collector writes immutable batches to
-`collector/data/export/`, the processor reads them. See [ARCHITECTURE.md](ARCHITECTURE.md).
+`collector/data/export/`, the processor reads them. See [ARCHITECTURE.md](ARCHITECTURE.md); what was checked
+and what is still open: [AUDIT.md](AUDIT.md).
 
 ## Install
 

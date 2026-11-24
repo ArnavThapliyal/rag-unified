@@ -1,4 +1,5 @@
-"""What scripts/run_agent.sh does after a Cline session ends, decided from structured state only:
+"""What the agent session runner (rag-unified's agent/run_agent.sh) does after a Cline session ends,
+decided from structured state only:
 
 - Cline's exit status (passed in);
 - Cline's own `run_result` event: a top-level JSON line of the session log with "type": "run_result", read for

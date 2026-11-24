@@ -17,7 +17,7 @@ step "pyflakes"
 out=$("$PY" -m pyflakes scripts src tests 2>&1) && ok || { bad; echo "$out"; }
 
 step "bash syntax"
-bash -n scripts/run_agent.sh scripts/check.sh install.sh .cline/hooks/PreToolUse.sh && ok || bad
+bash -n scripts/check.sh scripts/run_continuous.sh install.sh && ok || bad
 
 step "json configs"
 "$PY" -c "import json; [json.load(open(p)) for p in ('config/query_plan.json', 'package.json')]" && ok || bad
@@ -40,7 +40,7 @@ v=$(tesseract --version 2>/dev/null | head -1) && ok "$v" || bad "brew install t
 
 step "no stale references"
 hits=$(grep -rIil "roo code\|\.roo/\|rooignore\|nse-delisted-comp\|nse-unified-pipeline\|company_pipeline\|company-pipeline" \
-  --exclude-dir={vendor,node_modules,.venv,.git,.pytest_cache,data,logs,docs} --exclude=test_agent_prompts.py . 2>/dev/null \
+  --exclude-dir={vendor,node_modules,.venv,.git,.pytest_cache,data,logs,docs} . 2>/dev/null \
   | grep -v '^./scripts/check.sh$')
 [ -z "$hits" ] && ok || bad "$hits"
 

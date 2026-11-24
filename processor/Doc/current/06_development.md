@@ -36,9 +36,6 @@ tests/
   stub_embedder.py          deterministic stand-in for the embedding model
   *.rego                    OPA policies owned by the LLM stage
 Doc/current/                this documentation
-NEXT_STEPS_PLAN.md          implemented work and what remains
-HANDOFF.md                  progress notes between sessions
-refactoring_flags.md        original audit and plan
 ```
 
 ## Tests
@@ -65,7 +62,7 @@ RUN_SLOW=1 uv run pytest    # plus docling on real PDFs (text + scanned) and the
 
 End-to-end tests replace the model with `tests/stub_embedder.py`, which returns a fixed unit vector per text. The multi-process test starts real worker and embedder processes with `spawn`.
 
-CI: `.github/workflows/pipeline-test.yml` runs `ruff` and the fast tests. `.github/workflows/opatest.yml` runs the OPA policy tests.
+CI: `../.github/workflows/ci.yml` runs `ruff` and the fast tests (job `processor`). `../.github/workflows/opatest.yml` runs the OPA policy tests.
 
 ## Conventions
 

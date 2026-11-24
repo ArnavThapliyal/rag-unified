@@ -7,7 +7,7 @@ Lookup order for a name such as SERPER_API_KEY (first hit wins):
 4. .env in the project root (git-ignored; refused if it is ever tracked by git).
 
 Key files use `NAME=value` lines; `#` comments, blank lines, `export ` prefixes and quotes are fine.
-scripts/run_agent.sh removes *API_KEY* variables from the agent's environment, so for unattended runs
+The agent session runner (rag-unified's agent/run_agent.sh) removes *API_KEY* variables from the agent's environment, so for unattended runs
 put the keys in one of the files: the pipeline scripts read them, the agent cannot (tool guard).
 """
 from __future__ import annotations

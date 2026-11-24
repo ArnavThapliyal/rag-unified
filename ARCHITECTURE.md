@@ -39,15 +39,18 @@ failed files is retried (up to 3 attempts); indexed documents are skipped by doc
 - `steps.toml`: the registry. Each step: repo, command, a one-line description, `access` (who may run it) and,
   for the agent, the arguments it may pass with their ranges.
   - `agent`: fast and read-only, the agent runs it directly (`./rag step`), e.g. status, list, quant-bracket.
-  - `agent-background`: takes minutes; the agent starts it with `./rag start` (commands are killed after 30 s)
+  - `background`: takes minutes; the agent starts it with `./rag start` (commands are killed after 30 s)
     and reads the result later with `./rag runs`, e.g. processor.ingest, quant-sync, universe-sync, export.
   - `user`: only from your terminal, e.g. processor.ingest-dir (any path) and the collector's collect stages,
     which the agent runs through the capped `./rag job start` instead.
 - `./rag` runs each step with its own repo's interpreter and working directory and passes the JSON through.
-- `./rag start` / `./rag runs`: background step runs, one per step at a time, results in `logs/runs/`.
+- `./rag start` / `./rag runs`: background step runs, one per step at a time and at most 3 in all, state and
+  output in `logs/bg/`.
 - `./rag loop`: the scheduler. The processor's `--watch` runs the whole time; collector cycles (agent session or
   deterministic collection, then universe-sync, then export) run one after another. If more than
-  `--max-pending` batches are waiting for the processor, collection pauses until it catches up (backpressure).
+  `--max-pending` (default 3) batches are waiting for the processor, collection pauses until it catches up
+  (backpressure). The collector's own loop (`rag_collector.loop --once`) decides each cycle's pause and prints it as
+  its last line; a watcher that exits is restarted (`--max-restarts`).
   Every decision comes from step results, never from model text. Log: `logs/loop.jsonl`.
 
 ## agent/ (one agent for the whole pipeline)

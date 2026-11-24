@@ -260,9 +260,9 @@ def test_step_cli_prints_only_one_json_object(tmp_path):
 
 def test_stepkit_is_identical_to_the_collectors():
     """The contract file must not drift between the repos (rag-unified reads both)."""
-    for name in ("rag-collector", "nse-delisted-comp"):
+    for name in ("collector", "rag-collector", "nse-delisted-comp"):
         other = REPO.parent / name / "src" / "rag_collector" / "stepkit.py"
         if other.exists():
             assert other.read_bytes() == (REPO / "pipeline" / "stepkit.py").read_bytes()
             return
-    pytest.skip("rag-collector checkout not found next to this repo")
+    pytest.skip("collector checkout not found next to this repo")

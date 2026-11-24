@@ -244,7 +244,7 @@ class FakeLoop(Loop):
         import argparse
         super().__init__(argparse.Namespace(mode="deterministic", max_queries=1, export_batch=10, idle_min=30,
                                             busy_pause_min=1, network_retry_min=10, failure_pause_min=5,
-                                            max_failures=3, once=True))
+                                            max_failures=3, once=True, agent_cmd=None))
         self.seg, self.others, self.calls = seg, others or {}, []
         self.log_path = Path(os.environ.get("TMPDIR", "/tmp")) / f"loop-test-{os.getpid()}.jsonl"
 
@@ -289,3 +289,34 @@ def test_stop_file_stops_the_loop(repo):
     paths.stop_file().touch()
     action, _, why = lp.cycle(1)
     assert action == "stop" and why == "stop requested"
+
+
+def test_once_prints_the_decision_for_a_scheduler(repo, capsys, monkeypatch):
+    lp = FakeLoop({"step": "collect", "status": "noop"})
+    monkeypatch.setattr("signal.signal", lambda *a: None)
+    lp.log_path = paths.root() / "logs" / "continuous.jsonl"
+    assert lp.main() == 0
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert json.loads(last) == {"loop_decision": "continue", "pause_min": 30, "why": "nothing new"}
+
+
+def test_once_prints_stop_decisions_too(repo, capsys, monkeypatch):
+    lp = FakeLoop({"step": "collect", "status": "blocked", "reason": "low_disk_space"})
+    monkeypatch.setattr("signal.signal", lambda *a: None)
+    lp.log_path = paths.root() / "logs" / "continuous.jsonl"
+    assert lp.main() == 1
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["loop_decision"] == "stop"
+
+
+def test_agent_mode_without_a_runner_is_blocked(repo, tmp_path, monkeypatch):
+    lp = FakeLoop({})
+    lp.a.mode = "agent"
+    monkeypatch.delenv("RAG_AGENT_CMD", raising=False)
+    monkeypatch.setattr(paths, "root", lambda: tmp_path / "collector")
+    assert Loop.segment(lp)["status"] == "blocked"
+    runner = tmp_path / "agent" / "run_agent.sh"
+    runner.parent.mkdir()
+    runner.write_text("exit 0\n")
+    assert lp.agent_cmd() == runner.resolve()             # rag-unified layout: ../agent/run_agent.sh
+    lp.a.agent_cmd = str(tmp_path / "missing.sh")
+    assert lp.agent_cmd() == runner.resolve()             # a missing --agent-cmd falls through

@@ -25,11 +25,10 @@ import hashlib
 import json
 import logging
 import math
-import os
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 # Reduce noisy loggers during checking
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
@@ -198,7 +197,7 @@ def inspect_single_file(path: Path) -> None:
     # 3. Parsing & Structure Extraction
     print("\n[STAGE 3: PARSER EXECUTION & HEALTH]")
     from pipeline.type_router import HANDLER_DOCUMENT, HANDLER_TABULAR, open_routed
-    from pipeline.schema import CONTENT_KIND_TABLE, Block, TableData
+    from pipeline.schema import CONTENT_KIND_TABLE
     from config.settings import SCRATCH_DIR
 
     with open_routed(path, SCRATCH_DIR) as routed:
@@ -252,10 +251,10 @@ def inspect_single_file(path: Path) -> None:
                         print(f"    Table Chunks           : {len(table_chunks)}")
                         print(f"    Token Stats (Min/Avg/Max): {min(lengths)} / {sum(lengths)//len(lengths)} / {max(lengths)} tokens")
                         
-                        over_chunks = [i for i, l in enumerate(lengths) if l > CHUNK_SIZE_TOKENS]
+                        over_chunks = [i for i, n in enumerate(lengths) if n > CHUNK_SIZE_TOKENS]
                         if over_chunks:
                             print(f"    ⚠️  {len(over_chunks)} chunk(s) exceed CHUNK_SIZE_TOKENS ({CHUNK_SIZE_TOKENS})")
-                        trunc_chunks = [i for i, l in enumerate(lengths) if l > EMBED_MAX_SEQ_LENGTH]
+                        trunc_chunks = [i for i, n in enumerate(lengths) if n > EMBED_MAX_SEQ_LENGTH]
                         if trunc_chunks:
                             print(f"    🚨 CRITICAL FAULT: {len(trunc_chunks)} chunk(s) exceed model limit ({EMBED_MAX_SEQ_LENGTH}) and will be truncated!")
 
@@ -287,7 +286,7 @@ def inspect_single_file(path: Path) -> None:
                             print(f"        - {w}")
                     if chunks:
                         first = chunks[0]
-                        print(f"    Sample Table Preview (Chunk 0):")
+                        print("    Sample Table Preview (Chunk 0):")
                         print("\n".join("      " + line for line in first.text.split("\n")[:8]))
                         if len(chunks) > 5000:
                             print(f"    ⚠️  Large table ({len(chunks)} chunks). Ingest will require partial transaction ledger.")
@@ -302,7 +301,7 @@ def scan_directory(dir_path: Path, db_path: Optional[Path] = None) -> None:
     print("=" * 80)
 
     from pipeline.pipeline import discover_files
-    from pipeline.type_router import open_routed, HANDLER_DOCUMENT, HANDLER_TABULAR, HANDLER_UNSUPPORTED
+    from pipeline.type_router import open_routed, HANDLER_DOCUMENT, HANDLER_UNSUPPORTED
     from config.settings import SCRATCH_DIR
 
     files = discover_files(dir_path)
@@ -466,7 +465,6 @@ def audit_lancedb(db_path: Path) -> None:
     discontinuous = 0
     for doc_id, indices in doc_chunks.items():
         sorted_indices = sorted(indices)
-        expected = list(range(len(sorted_indices)))
         # Only verify if we likely have all chunks or beginning
         if sorted_indices[0] == 0:
             for i, idx in enumerate(sorted_indices):
