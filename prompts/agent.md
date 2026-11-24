@@ -31,7 +31,11 @@ The plan runs historical phases first (the window is in `./rag collect --dry-run
 `historical_proof` (official delisting orders, notices and lists for each window year), then
 `historical_company_proof` (one company at a time: find official or archive proof of its delisting), then
 `historical_company_support` (for proven companies: exit offer / announcement, the order, the last annual report).
-Official and archive (web.archive.org) records are fetched before news. When you add gap queries, prefer
+Official and archive (web.archive.org) records are fetched before news.
+`scope_target` in the dry-run output is the user's setting (never change it): `delisted` (all of the above),
+`listed` (only the `listed` / `listed_added` phases: annual reports, results, announcements of NSE/BSE-listed
+companies) or `both` (delisted and listed queries alternate). Only with `listed` or `both`, add listed-company gap
+queries with `./rag add_queries --scope listed --year-tag <year> --query "..."`. When you add gap queries, prefer
 the window years and official / archive wording over recent news. Each run has caps (`limits` in the output:
 files, new companies, documents per company); they are the user's settings, never change them.
 

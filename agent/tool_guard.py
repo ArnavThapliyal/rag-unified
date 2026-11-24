@@ -226,7 +226,8 @@ def _common(args):
 
 
 def _add_queries(args):
-    o = options(args, {"--year-tag": _text(10), "--query": (_text(200), 8), "--add-domain": (_text(253), 3)})
+    o = options(args, {"--year-tag": _text(10), "--query": (_text(200), 8), "--add-domain": (_text(253), 3),
+                       "--scope": _text(10)})
     if "--query" not in o and "--add-domain" not in o:
         raise Bad("./rag add_queries --year-tag Y --query Q [...] and/or --add-domain D")
 

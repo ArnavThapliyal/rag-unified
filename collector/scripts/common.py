@@ -282,11 +282,15 @@ def scope_target() -> str:
                         delisting phases run.
     listed:             any document from the searched/fetched sources is kept (offer documents included); the
                         historical delisting phases do not run, so the queries you add decide what is found.
-    both:               documents of either kind; the historical delisting phases run too."""
-    try:
-        t = (json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8")).get("scope") or {}).get("target")
-    except (OSError, json.JSONDecodeError, AttributeError):
-        t = None
+    both:               documents of either kind; the historical delisting phases run too.
+    Phases carry "scope": "delisted" (the default) or "listed"; only the target's phases are searched.
+    RAG_SCOPE_TARGET=<target> overrides the config for one run (e.g. RAG_SCOPE_TARGET=both ./rag loop --once)."""
+    t = os.environ.get("RAG_SCOPE_TARGET") or None
+    if t is None:
+        try:
+            t = (json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8")).get("scope") or {}).get("target")
+        except (OSError, json.JSONDecodeError, AttributeError):
+            t = None
     if t is None:
         return "delisted"
     if t not in SCOPE_TARGETS:

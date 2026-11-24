@@ -60,6 +60,10 @@ here (was 45.8 min before the changes, with the IPO documents and without window
 - **Z-factors** use the target bracket **3,500–12,500 cr** (the default of `processor.quant-zfactor`). They stay
   `noop` until price / `market_cap_cr` rows are ingested; this batch has none.
 
+- **Collecting more** (delisted, listed or both companies) needs the collector, SearXNG and LM Studio: see
+  "First run, step by step" and "Delisted, listed or both" in README.md. This batch was collected with
+  `scope.target` delisted.
+
 ## Things you will see in the logs
 
 - `reading_order_rb ... something went wrong`: docling falls back to its default reading order; the file is fine.
