@@ -3,7 +3,7 @@
   "files": 332,
   "files_with_rows": 83,
   "rows": 516,
-  "records": 453,
+  "records": 401,
   "first_fetched": "2026-11-21T10:46:17+00:00",
   "new": false
  },
@@ -19,7 +19,7 @@
   "files": 49,
   "files_with_rows": 15,
   "rows": 91,
-  "records": 11,
+  "records": 8,
   "first_fetched": "2026-11-21T10:50:53+00:00",
   "new": false
  },
@@ -27,7 +27,6 @@
   "files": 37,
   "files_with_rows": 3,
   "rows": 43,
-  "records": 2,
   "first_fetched": "2026-11-21T10:49:21+00:00",
   "new": false
  },
@@ -35,7 +34,6 @@
   "files": 5,
   "files_with_rows": 1,
   "rows": 1,
-  "records": 1,
   "first_fetched": "2026-11-21T12:32:25+00:00",
   "new": false
  },

@@ -3,12 +3,11 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nse-unified-pipeline"
-version = "0.2.0"
-description = "Unified NSE quantitative market-data, qualitative document, delisted-company archive, and Z-factor standardization pipeline."
+name = "rag-collector"
+version = "0.3.0"
+description = "Source stage of the RAG system: discovers, fetches, parses and reconciles NSE delisting documents, keeps a point-in-time universe DB, and exports immutable outbox batches for rag-processor."
 requires-python = ">=3.11"
 dependencies = [
-    "PyMuPDF>=1.24",
     "requests>=2.31",
     "beautifulsoup4>=4.12",
     "lxml>=5.0",
@@ -20,17 +19,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ocr = [
-    "Pillow>=10.0",
-    "pytesseract>=0.3.10",
-]
 dev = [
     "pytest>=8.0",
     "pyflakes>=3.2",
 ]
 
 [project.scripts]
-company-pipeline = "company_pipeline.cli:main"
+rag-collector = "rag_collector.cli:main"
+rag-collector-step = "rag_collector.steps:main"
+rag-collector-loop = "rag_collector.loop:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

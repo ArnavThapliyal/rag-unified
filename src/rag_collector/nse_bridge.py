@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from company_pipeline.storage import CompanyStore
+from rag_collector.universe import UniverseStore
 
 _DATE_FORMATS = ("%Y-%m-%d", "%d-%b-%Y", "%d-%b-%y", "%d-%m-%Y")
 
@@ -75,7 +75,7 @@ def _read_clean_csv(path: Path) -> list[dict[str, str]]:
 
 def sync_archive_to_store(
     repo_root: str | Path,
-    store: CompanyStore,
+    store: UniverseStore,
     include_bse_only: bool = False,
 ) -> dict[str, int]:
     """Import NSE active listings, delistings, pre-2006 exits, and leads into SQLite."""
@@ -224,7 +224,7 @@ def sync_archive_to_store(
 
 
 def _ingest_delisting_row(
-    store: CompanyStore,
+    store: UniverseStore,
     row: Mapping[str, str],
     *,
     listing_status: str,

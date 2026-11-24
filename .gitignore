@@ -3,8 +3,8 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-data/companies.sqlite3
 data/nse_unified.sqlite3
+data/.nse_unified.sqlite3.*.tmp
 
 # Node (Cline CLI dev dependency)
 node_modules/
@@ -31,6 +31,13 @@ logs/agent_sessions/*
 !logs/agent_sessions/.gitkeep
 logs/jobs/
 data/metadata/job.json
+
+# Continuous mode / step layer: outbox batches for rag-processor, step locks, stop flag, cycle log
+data/export/
+data/metadata/locks/
+data/metadata/STOP
+data/metadata/universe_sync.json
+logs/continuous.jsonl
 
 # OS
 .DS_Store
