@@ -34,7 +34,7 @@ import requests
 
 import credentials
 import search_providers
-from common import atomic_write_text, CONFIG, METADATA, SEARCH_CACHE, USER_AGENT, domain_matches, emit, log, now_iso, \
+from common import atomic_write_text, file_lock, CONFIG, METADATA, SEARCH_CACHE, USER_AGENT, domain_matches, emit, log, now_iso, \
     polite_sleep, sha256_text
 from search_providers.base import Answer, SearchProvider
 
@@ -168,6 +168,7 @@ class Search:
     def __init__(self, settings: dict | None = None, registry: dict | None = None):
         self.s = settings or search_settings()
         self.state = load_state()
+        self._state_sig = self._disk_sig()
         registry = registry if registry is not None else search_providers.load_all()
         self.providers: list[SearchProvider] = []
         self.unknown = [n for n in self.s["providers"] if n not in registry]
@@ -178,9 +179,43 @@ class Search:
                     for p in self.providers}
         self.down: dict[str, str] = {}  # provider -> error, for this process
 
+    @staticmethod
+    def _disk_sig() -> tuple[int, int, int] | None:
+        try:
+            st = ENGINE_STATE.stat()
+            return (st.st_ino, st.st_mtime_ns, st.st_size)
+        except OSError:
+            return None
+
+    def _lock_path(self):
+        return ENGINE_STATE.parent / f".{ENGINE_STATE.name}.lock"
+
+    def _sync_from_disk_locked(self) -> None:
+        sig = self._disk_sig()
+        if sig is None or sig == self._state_sig:
+            return
+        disk = load_state()
+        if "_usage" in disk and isinstance(disk["_usage"], dict):
+            self.state["_usage"] = disk["_usage"]
+        for p in self.providers:
+            if p.name in disk and isinstance(disk[p.name], dict):
+                dst = self.state.setdefault(p.name, {})
+                dst.clear()
+                dst.update(disk[p.name])
+                for u in p.units():
+                    dst.setdefault(u, dict(NEW_UNIT))
+        self._state_sig = sig
+
     def save(self) -> None:
         ENGINE_STATE.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(ENGINE_STATE, json.dumps(self.state, indent=1))
+        self._state_sig = self._disk_sig()
+
+    def _refund_spend(self, p: SearchProvider) -> None:
+        u = self.usage(p.name)
+        u["today"] = max(0, u["today"] - 1)
+        u["this_month"] = max(0, u["this_month"] - 1)
+        u["total"] = max(0, u["total"] - 1)
 
     # --- budgets ---------------------------------------------------------------------------------
     def usage(self, name: str) -> dict:
@@ -273,22 +308,31 @@ class Search:
                 continue
             rot, tried, last = self.rot[p.name], set(), None
             for attempt in range(2):  # SearXNG: if the first engines give nothing, try the next ones once
-                units = rot.pick(p.units_per_query, exclude=tried)
-                if not units or self.budget_until(p):
-                    break
+                with file_lock(self._lock_path()):
+                    self._sync_from_disk_locked()
+                    units = rot.pick(p.units_per_query, exclude=tried)
+                    if not units or self.budget_until(p):
+                        break
+                    self.spend(p)
+                    self.save()
                 if attempt:
                     polite_sleep()
                 tried.update(units)
                 try:
                     ans = p.search(session, query, page, units)
                 except Exception as e:  # provider down / network: next provider, don't bench its units
+                    with file_lock(self._lock_path()):
+                        self._sync_from_disk_locked()
+                        self._refund_spend(p)
+                        self.save()
                     self.down[p.name] = errors[p.name] = p.redact(f"{type(e).__name__}: {e}")[:200]
                     log(f"search provider {p.name} failed: {self.down[p.name]}", level="ERROR",
                         kind="search_provider_error", provider=p.name)
                     break
-                self.spend(p)
-                rot.record(units, ans.results, ans.failures)
-                self.save()
+                with file_lock(self._lock_path()):
+                    self._sync_from_disk_locked()
+                    rot.record(units, ans.results, ans.failures)
+                    self.save()
                 if ans.results:
                     return ans, p.name, units
                 if set(units) - {u for u, _ in ans.failures}:

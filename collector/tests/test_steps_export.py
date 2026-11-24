@@ -405,3 +405,15 @@ def test_job_holds_the_collect_lock(tmp_path, monkeypatch):
     finally:
         os.close(fd)
         os.kill(r["pid"], 9)
+
+
+def test_a_collect_run_blocked_by_another_is_retry_later(monkeypatch):
+    """collect.py exits 75 with stop_reason collection_running when another collection holds its lock: the step
+    contract's retry_later (the agent and the loop wait), never a failure."""
+    from rag_collector import steps as st
+
+    monkeypatch.setattr(st, "_run_json", lambda cmd, timeout=None: (
+        75, {"status": "busy", "stop_reason": "collection_running", "error": "another collection run is already active"},
+        ""))
+    res = st.collect_step(next(iter(st.COLLECT_STAGES)), [])
+    assert res["status"] == "retry_later" and res["reason"] == "collection_running"

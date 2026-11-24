@@ -34,18 +34,25 @@ def ocr_pdf_detail(pdf: Path, max_pages: int = MAX_PAGES) -> tuple[str, list[str
     PAGE_TIMEOUT_S) is skipped and reported; the others are kept. Only a complete, error-free OCR is cached, so
     a failure is retried next time instead of being remembered as an empty document."""
     cached = cache_path(pdf)
-    if cached.exists():
+    if cached.exists() and (not pdf.exists() or cached.stat().st_mtime_ns >= pdf.stat().st_mtime_ns):
         return cached.read_text(encoding="utf-8"), []
     if not available():
         return "", []
-    import pypdfium2 as pdfium
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        return "", ["pypdfium2 is not installed"]
 
     texts, errors = [], []
     doc = pdfium.PdfDocument(str(pdf))
     try:
         with tempfile.TemporaryDirectory() as tmp:
             for i in range(min(len(doc), max_pages)):
-                img = doc[i].render(scale=DPI / 72).to_pil().convert("L")
+                page = doc[i]
+                try:
+                    img = page.render(scale=DPI / 72).to_pil().convert("L")
+                finally:
+                    page.close()
                 png = Path(tmp) / f"p{i}.png"
                 img.save(png)
                 try:

@@ -5,6 +5,7 @@ CLI: `python scripts/common.py log "message"` appends a milestone to logs/agent_
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -13,7 +14,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -97,12 +100,41 @@ def agent_session() -> str | None:
         return os.environ.get("NSE_AGENT_SESSION")
 
 
+@contextmanager
+def file_lock(lock_path: Path):
+    """Exclusive advisory flock for serializing read-modify-write state updates across processes/threads."""
+    lock_path = Path(lock_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield handle
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_append_line(path: Path, line: str) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = line.encode("utf-8")
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            view = memoryview(data)
+            written = 0
+            while written < len(data):
+                written += os.write(fd, view[written:])
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
 def log(msg: str, level: str = "INFO", script: str | None = None, kind: str = "log", **fields) -> None:
     """Human-readable line in logs/agent_run.log plus a structured event in logs/events.jsonl."""
-    AGENT_LOG.parent.mkdir(parents=True, exist_ok=True)
     name = script or Path(sys.argv[0]).stem
-    with AGENT_LOG.open("a", encoding="utf-8") as f:
-        f.write(f"{now_iso()} [{level}] [{run_id()}] {name}: {msg}\n")
+    _atomic_append_line(AGENT_LOG, f"{now_iso()} [{level}] [{run_id()}] {name}: {msg}\n")
     event(kind, script=name, level=level, msg=msg, **fields)
 
 
@@ -168,13 +200,14 @@ def raw_dir_for_tag(year_tag: str | None) -> Path:
 
 
 def atomic_write_text(path: Path, text: str) -> None:
-    """Write a whole file so readers see the old or the new content, never a partial one: a temp file in the
-    same directory, fsync, then os.replace. On failure the old file is untouched and the temp file removed."""
+    """Write a whole file so readers see the old or the new content, never a partial one: a unique temp file
+    in the same directory, fsync, then os.replace. Safe across both processes and threads."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.{os.getpid()}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(tmp_name)
     try:
-        with tmp.open("w", encoding="utf-8", newline="") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
@@ -203,9 +236,7 @@ def cleanup_partials(dirs, older_than_s: float = 3600) -> int:
 
 
 def append_jsonl(path: Path, obj: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    _atomic_append_line(path, json.dumps(obj, ensure_ascii=False) + "\n")
 
 
 def read_jsonl(path: Path) -> list[dict]:

@@ -19,7 +19,9 @@ other stages stop at their next step.
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 from common import CONFIG
@@ -108,5 +110,19 @@ class StopFile:
             return None
 
     def stop(self, reason: str) -> None:
-        if self.path and not self.reason():
-            self.path.write_text(reason, encoding="utf-8")
+        if not self.path:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
+        tmp = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(reason)
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                os.link(tmp, self.path)
+            except FileExistsError:
+                pass
+        finally:
+            tmp.unlink(missing_ok=True)

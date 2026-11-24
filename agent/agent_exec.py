@@ -14,6 +14,7 @@ import binascii
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -55,9 +56,27 @@ def run_first(argv: list[str]) -> tuple[int, str]:
     else:  # scripts/<name>.py: a collector tool
         cmd, cwd = [python(), str(COLLECTOR / argv[0]), *argv[1:]], COLLECTOR
         env.pop("PYTHONPATH", None)
-    r = subprocess.run(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                       env=env)
-    return r.returncode, r.stdout.decode("utf-8", errors="replace")
+    proc = subprocess.Popen(
+        cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        env=env, start_new_session=True,
+    )
+    prev_term = signal.getsignal(signal.SIGTERM)
+    prev_int = signal.getsignal(signal.SIGINT)
+
+    def _forward(signum, _frame):
+        try:
+            os.killpg(proc.pid, signum)
+        except OSError:
+            pass
+
+    signal.signal(signal.SIGTERM, _forward)
+    signal.signal(signal.SIGINT, _forward)
+    try:
+        out_bytes, _ = proc.communicate()
+    finally:
+        signal.signal(signal.SIGTERM, prev_term)
+        signal.signal(signal.SIGINT, prev_int)
+    return proc.returncode, (out_bytes or b"").decode("utf-8", errors="replace")
 
 
 # ---------- filters --------------------------------------------------------------------------------------------
@@ -116,7 +135,10 @@ def filter_lines(words: list[str], lines: list[str]) -> tuple[list[str], int]:
             rx = rf"\b(?:{rx})\b"
         if "x" in seen:
             rx = rf"(?:{rx})\Z"
-        cre = re.compile(rx, flags)
+        try:
+            cre = re.compile(rx, flags)
+        except re.error as e:
+            return [f"grep: invalid pattern: {e}"], 2
         hit = [i for i, ln in enumerate(lines) if (cre.match(ln) if "x" in seen else cre.search(ln))]
         if "v" in seen:
             hit = [i for i in range(len(lines)) if i not in set(hit)]

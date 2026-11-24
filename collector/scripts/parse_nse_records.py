@@ -26,8 +26,8 @@ import pandas as pd
 import ocr
 
 from common import (
-    MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, atomic_write_text, confidence_for_url, emit, event, isin_equity,
-    isin_valid, log, read_jsonl, scope_target,
+    MANIFEST, NON_LISTING_RE, PARSED, PROCEDURAL_RE, RAW, ROOT, atomic_write_text, confidence_for_url, emit, event,
+    file_lock, isin_equity, isin_valid, log, read_jsonl, scope_target,
 )
 
 warnings.filterwarnings("ignore")
@@ -473,14 +473,15 @@ def rows_from_order(text: str, review: list | None = None) -> list[dict]:
     # compulsory decision, else the last delisting sentence.
     decision = next((d for d in found if d.group(1)), found[-1] if found else None)
     eff = EFFECTIVE_RE.search(decision.group(0)) if decision else None
-    isin = next((i for i in ISIN_RE.finditer(text.upper()) if isin_valid(i.group(0))), None)
+    valid_isins = [i.group(0) for i in ISIN_RE.finditer(text.upper()) if isin_valid(i.group(0))]
+    isin_val = next((x for x in valid_isins if isin_equity(x)), valid_isins[0] if valid_isins else None)
     dtype = classify(decision.group(0)) if decision else classify(head)
     if decision and (decision.group(1) or COMPULSORY_REG_RE.search(decision.group(0))):
         dtype = "COMPULSORY"
     return [{
         "company_name": name,
         "nse_symbol": symbol,
-        "isin": isin.group(0) if isin else None,
+        "isin": isin_val,
         "order_date": to_iso(dates[-1]) if dates else None,
         "effective_delisting_date": to_iso(eff.group(1)) if eff else None,
         "exit_or_fair_value_inr": None,
@@ -712,6 +713,16 @@ def manifest_index() -> dict[str, dict]:
     return {e["local_path"]: e for e in read_jsonl(MANIFEST) if e.get("local_path")}
 
 
+def _load_json_dict(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
                                  allow_abbrev=False)
@@ -720,18 +731,25 @@ def main() -> int:
     a = ap.parse_args()
 
     PARSED.mkdir(parents=True, exist_ok=True)
+    with file_lock(PARSED / ".parse.lock"):
+        summary = _run_parse(a)
+    emit(summary)
+    return 0
+
+
+def _run_parse(a) -> dict:
     files = [a.file if a.file.is_absolute() else ROOT / a.file] if a.file else \
         sorted(p for p in RAW.rglob("*") if p.is_file() and not p.name.startswith("."))
     idx = manifest_index()
     errors_path = PARSED / "_errors.json"
-    known = json.loads(errors_path.read_text(encoding="utf-8")) if errors_path.exists() else {}
+    known = _load_json_dict(errors_path)
     version = parser_version()
     target = scope_target()
     relevance_path = PARSED / "_relevance.json"
-    relevance = json.loads(relevance_path.read_text(encoding="utf-8")) if relevance_path.exists() else {}
+    relevance = _load_json_dict(relevance_path)
     # candidates an extractor refused (OCR garbage, a name after the ISIN, court captions): kept for a human
     review_path = PARSED / "_review.json"
-    review = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
+    review = _load_json_dict(review_path)
     summary = {"files_seen": len(files), "parsed": 0, "skipped_up_to_date": 0, "rows": 0,
                "irrelevant_files": 0, "zero_row_files": [], "no_text": [], "errors": [], "known_errors": [],
                "ocr_page_errors": []}
@@ -803,8 +821,7 @@ def main() -> int:
     summary["zero_row_files"] = summary["zero_row_files"][:20]
     log(f"parsed={summary['parsed']} rows={summary['rows']} errors={len(summary['errors'])}",
         kind="parse", files=summary["parsed"], rows=summary["rows"], errors=len(summary["errors"]))
-    emit(summary)
-    return 0
+    return summary
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ import run_limits
 from common import atomic_write_text, ROOT, check_disk, emit, log
 
 POLL_S = 10
+SCRIPT_TIMEOUT_S = 1800
 
 
 def alive(pid: int | None) -> bool:
@@ -37,7 +38,11 @@ def alive(pid: int | None) -> bool:
 
 
 def run_script(name: str) -> dict:
-    r = subprocess.run([sys.executable, str(ROOT / "scripts" / name)], capture_output=True, text=True, cwd=ROOT)
+    try:
+        r = subprocess.run([sys.executable, str(ROOT / "scripts" / name)], capture_output=True, text=True,
+                           cwd=ROOT, timeout=SCRIPT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{name} timed out after {SCRIPT_TIMEOUT_S}s")
     lines = [ln for ln in r.stdout.strip().splitlines() if ln.startswith("{")]
     if r.returncode != 0 or not lines:
         raise RuntimeError(f"{name} failed (exit {r.returncode}): {r.stderr.strip()[-300:]}")
@@ -53,7 +58,7 @@ def process_once(dk: docket.Docket) -> dict:
 
 
 def run(batch: int, follow: int | None, max_companies: int | None = None, records_before: int | None = None,
-        stop: run_limits.StopFile | None = None) -> dict:
+        stop: run_limits.StopFile | None = None, follow_marker: Path | None = None) -> dict:
     """max_companies: stop the run (stop file) once the master has grown by that many records."""
     stop = stop or run_limits.StopFile(None)
     dk = docket.open_docket()
@@ -63,7 +68,7 @@ def run(batch: int, follow: int | None, max_companies: int | None = None, record
     try:
         while True:
             waiting = dk.fetched_count()
-            upstream = alive(follow)
+            upstream = alive(follow) and (follow_marker is None or follow_marker.exists())
             if waiting and (waiting >= batch or not upstream):
                 if check_disk(disk_state)["level"] == "critical":   # parsing and OCR write files too
                     out["stop_reason"] = "low_disk_space"
@@ -105,6 +110,7 @@ def main() -> int:
                                  allow_abbrev=False)
     ap.add_argument("--batch", type=int, default=5, help="parse once this many downloads are waiting")
     ap.add_argument("--follow", type=int, metavar="PID")
+    ap.add_argument("--follow-marker", type=Path, metavar="FILE", help="upstream alive only while FILE exists")
     ap.add_argument("--max-companies", default="all", help="new master records this run; 0 or all = no cap")
     ap.add_argument("--records-before", type=int, help="master size when the run started")
     ap.add_argument("--stop-file", type=Path)
@@ -112,7 +118,7 @@ def main() -> int:
     a = ap.parse_args()
     common.graceful_sigterm()
     out = run(a.batch, a.follow, run_limits.parse_cap(a.max_companies), a.records_before,
-              run_limits.StopFile(a.stop_file))
+              run_limits.StopFile(a.stop_file), follow_marker=a.follow_marker)
     if a.summary_out:
         atomic_write_text(a.summary_out, json.dumps(out, indent=1, default=str))
     emit(out)

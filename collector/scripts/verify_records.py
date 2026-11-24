@@ -63,12 +63,13 @@ def load_listed() -> dict[str, dict]:
         p = REFERENCE / fname
         if not p.exists():
             continue
-        for r in csv.DictReader(p.open(encoding="utf-8-sig")):
-            r = {k.strip().upper().replace("_", " "): (v or "").strip() for k, v in r.items() if k}
-            e = {"symbol": r.get("SYMBOL"), "name": r.get("NAME OF COMPANY"), "isin": r.get("ISIN NUMBER"),
-                 "listed": listed_date(r.get("DATE OF LISTING", "")), "board": board}
-            for k in (f"S:{e['symbol']}", f"I:{e['isin']}", f"N:{norm_name(e['name'])}"):
-                idx.setdefault(k, e)
+        with p.open(encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                r = {k.strip().upper().replace("_", " "): (v or "").strip() for k, v in r.items() if k}
+                e = {"symbol": r.get("SYMBOL"), "name": r.get("NAME OF COMPANY"), "isin": r.get("ISIN NUMBER"),
+                     "listed": listed_date(r.get("DATE OF LISTING", "")), "board": board}
+                for k in (f"S:{e['symbol']}", f"I:{e['isin']}", f"N:{norm_name(e['name'])}"):
+                    idx.setdefault(k, e)
     return idx
 
 
@@ -194,8 +195,15 @@ def check(r: dict, listed: dict, official: dict, same_company: Counter, reasons:
             "notes": "; ".join(notes)}
 
 
+REPORT_FIELDS = [
+    "record_id", "company_name", "nse_symbol", "delisting_type", "delisting_date", "year", "verdict", "flags",
+    "nse_evidence", "bse_evidence", "listing_status", "year_status", "official_lists", "sources", "notes",
+]
+
+
 def main() -> int:
-    rows = list(csv.DictReader((PROCESSED / "nse_delisted_master.csv").open(encoding="utf-8")))
+    with (PROCESSED / "nse_delisted_master.csv").open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
     listed, official = load_listed(), official_dates()
     if not listed:
         emit({"error": "data/reference/nse_equity_listed.csv missing (NSE EQUITY_L.csv)"})
@@ -205,7 +213,7 @@ def main() -> int:
     out = [check(r, listed, official, same_company, reasons, split) for r in rows]
     path = PROCESSED / "verification_report.csv"
     buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=list(out[0]), lineterminator="\r\n")
+    w = csv.DictWriter(buf, fieldnames=REPORT_FIELDS, lineterminator="\r\n")
     w.writeheader()
     w.writerows(sorted(out, key=lambda x: (x["verdict"] != "PROBLEM", x["verdict"] != "CHECK", x["company_name"])))
     atomic_write_text(path, buf.getvalue())

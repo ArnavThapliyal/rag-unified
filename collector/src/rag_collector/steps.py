@@ -41,7 +41,7 @@ STEP_HELP = {
 }
 # collect.py stop reasons -> step status
 BLOCKED_STOPS = {"low_disk_space", "network_unavailable", "searxng_down", "search_unavailable"}
-RETRY_STOPS = {"search_engines_suspended", "engines_blocked"}
+RETRY_STOPS = {"search_engines_suspended", "engines_blocked", "collection_running"}
 
 
 def _run_json(cmd: list[str], timeout: float | None = None) -> tuple[int, dict | None, str]:

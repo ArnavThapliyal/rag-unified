@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import tempfile
 from pathlib import Path
 
 from rag_collector import paths
@@ -54,13 +55,16 @@ def run(force: bool = False, include_bse_only: bool = False) -> dict:
         return result("universe-sync", "noop", "inputs unchanged since the last sync", counts=prev.get("counts", {}),
                       database=str(db.relative_to(root)), fingerprint=fp)
 
-    tmp = db.with_name(f".{db.name}.{os.getpid()}.tmp")
-    tmp.unlink(missing_ok=True)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{db.name}.{os.getpid()}.", suffix=".tmp", dir=db.parent)
+    os.close(fd)
+    tmp = Path(tmp_name)
     try:
         with UniverseStore(tmp) as store:
             counts = sync_archive_to_store(root, store, include_bse_only=include_bse_only)
         con = sqlite3.connect(tmp)
         try:
+            con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             check = con.execute("PRAGMA integrity_check").fetchone()[0]
         finally:
             con.close()
@@ -68,12 +72,20 @@ def run(force: bool = False, include_bse_only: bool = False) -> dict:
             return result("universe-sync", "failed", f"integrity_check on the rebuilt DB: {check}")
         os.replace(tmp, db)
     finally:
-        tmp.unlink(missing_ok=True)
+        for sidecar in (tmp, Path(f"{tmp}-wal"), Path(f"{tmp}-shm")):
+            sidecar.unlink(missing_ok=True)
 
     state = {"fingerprint": fp, "synced_at": now_iso(), "counts": counts, "include_bse_only": include_bse_only}
     state_path().parent.mkdir(parents=True, exist_ok=True)
-    state_tmp = state_path().with_suffix(".json.tmp")
-    state_tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    os.replace(state_tmp, state_path())
+    sfd, state_tmp_name = tempfile.mkstemp(prefix=".universe_sync.", suffix=".tmp", dir=state_path().parent)
+    try:
+        with os.fdopen(sfd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(state, indent=2))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(state_tmp_name, state_path())
+    except BaseException:
+        Path(state_tmp_name).unlink(missing_ok=True)
+        raise
     return result("universe-sync", "ok", "universe rebuilt", counts=counts, database=str(db.relative_to(root)),
                   fingerprint=fp, next_suggested=["export"])

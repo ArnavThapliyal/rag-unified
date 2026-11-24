@@ -17,10 +17,14 @@ from __future__ import annotations
 
 import argparse
 import functools
+import ipaddress
 import json
 import mimetypes
+import os
 import re
+import socket
 import sys
+import tempfile
 import time
 from collections import Counter
 from datetime import timezone
@@ -36,6 +40,8 @@ from common import (
 )
 
 MAX_RETRIES = 4
+MAX_REDIRECTS = 5
+BODY_TIMEOUT_S = 300.0
 RETRY_AFTER_CAP_S = 120
 DEFAULT_MAX_DOWNLOAD_MB = 40     # config "max_download_mb"; the largest real delisting document is a few MB
 DOC_URL_RE = re.compile(r"\.(pdf|xlsx?|csv|zip)$", re.I)
@@ -160,14 +166,54 @@ def max_download_bytes() -> int:
     return int(mb * 1e6)
 
 
-def read_body(r, cap: int) -> tuple[bytes, bool]:
+def _is_private_host(host: str) -> bool:
+    h = (host or "").strip().rstrip(".").lower()
+    if not h or h == "localhost" or h.endswith((".localhost", ".local", ".internal")):
+        return True
+    try:
+        return not ipaddress.ip_address(h).is_global
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(h, None, type=socket.SOCK_STREAM)
+    except OSError:
+        return False
+    for info in infos:
+        addr = info[4][0]
+        try:
+            if not ipaddress.ip_address(addr.split("%", 1)[0]).is_global:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def validate_fetch_url(url: str, policy: dict | None = None, require_known: bool = False) -> str | None:
+    """Return an error reason if `url` violates scheme, SSRF, or policy checks, else None."""
+    u = urlparse(url)
+    if u.scheme.lower() not in ("http", "https"):
+        return f"disallowed URL scheme: {u.scheme or 'none'}"
+    if not u.hostname or _is_private_host(u.hostname):
+        return f"disallowed private/local host: {u.hostname or 'empty'}"
+    if policy is not None:
+        if domain_matches(url, policy["deny"]):
+            return f"domain denied by fetch policy: {u.hostname}"
+        if require_known and not allowed(url, policy):
+            return f"redirect target not allowed by fetch policy: {u.hostname}"
+    return None
+
+
+def read_body(r, cap: int, max_seconds: float = BODY_TIMEOUT_S) -> tuple[bytes, bool]:
     """The response body, streamed, stopping as soon as it exceeds cap bytes: (body, too_large)."""
     cl = str(r.headers.get("Content-Length") or "")
     if cl.isdigit() and int(cl) > cap:
         return b"", True
     if hasattr(r, "iter_content"):
         buf = bytearray()
+        deadline = time.monotonic() + max_seconds
         for chunk in r.iter_content(64 * 1024):
+            if time.monotonic() > deadline:
+                raise requests.ReadTimeout(f"response body exceeded {int(max_seconds)}s")
             buf += chunk
             if len(buf) > cap:
                 return b"", True
@@ -189,45 +235,81 @@ def soft_block(url: str, ctype: str, body: bytes) -> str | None:
     return None
 
 
+def _get_with_safe_redirects(session: requests.Session, url: str, policy: dict, require_known: bool):
+    """Perform GET with manual redirects, validating every hop against SSRF and fetch policy."""
+    cur = url
+    for _ in range(MAX_REDIRECTS + 1):
+        bad = validate_fetch_url(cur, policy, require_known=require_known)
+        if bad:
+            raise ValueError(bad)
+        r = session.get(cur, timeout=45, allow_redirects=False, stream=True)
+        if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
+            nxt = urljoin(cur, r.headers["Location"])
+            getattr(r, "close", lambda: None)()
+            cur = nxt
+            continue
+        return r
+    raise ValueError(f"too many redirects (> {MAX_REDIRECTS})")
+
+
 def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvested_from: str | None = None) -> dict:
     """GET with up to MAX_RETRIES attempts for 429/5xx/network errors (Retry-After honoured, capped; no sleep
     after the last attempt). The manifest entry records the last outcome: http_status of the last response
     (None if the last attempt got no response), `error` for a network failure, `last_http_status` for the
     last HTTP error seen before it."""
-    status, body, ctype, err, last_http, too_large = None, b"", "", None, None, False
+    status, body, ctype, err, last_http, too_large, permanent_err = None, b"", "", None, None, False, False
     cap = max_download_bytes()
-    for attempt in range(MAX_RETRIES):
-        final = attempt == MAX_RETRIES - 1
-        try:
-            r = session.get(url, timeout=45, allow_redirects=True, stream=True)
-            status, ctype, err = r.status_code, r.headers.get("Content-Type", ""), None
+    policy = fetch_policy()
+    require_known = (not policy["open_web"]) and domain_matches(url, policy["known"])
+    bad_initial = validate_fetch_url(url, policy, require_known=False)
+    if bad_initial:
+        err, permanent_err = bad_initial, True
+    else:
+        for attempt in range(MAX_RETRIES):
+            final = attempt == MAX_RETRIES - 1
             try:
-                body, too_large = (b"", False) if status == 429 or status >= 500 else read_body(r, cap)
-            finally:
-                getattr(r, "close", lambda: None)()
-            if status == 429 or status >= 500:
-                last_http = status
+                r = _get_with_safe_redirects(session, url, policy, require_known=require_known)
+                status, ctype, err = r.status_code, r.headers.get("Content-Type", ""), None
+                try:
+                    body, too_large = (b"", False) if status == 429 or status >= 500 else read_body(r, cap)
+                finally:
+                    getattr(r, "close", lambda: None)()
+                if status == 429 or status >= 500:
+                    last_http = status
+                    if not final:
+                        time.sleep(min(retry_after(r.headers.get("Retry-After")) or 2 ** (attempt + 2), RETRY_AFTER_CAP_S))
+                    continue
+                break
+            except ValueError as e:
+                status, body, ctype, err, permanent_err = None, b"", "", str(e)[:300], True
+                break
+            except requests.RequestException as e:
+                status, body, ctype, err = None, b"", "", f"{type(e).__name__}: {e}"[:300]
                 if not final:
-                    time.sleep(min(retry_after(r.headers.get("Retry-After")) or 2 ** (attempt + 2), RETRY_AFTER_CAP_S))
-                continue
-            break
-        except requests.RequestException as e:
-            status, body, ctype, err = None, b"", "", f"{type(e).__name__}: {e}"[:300]
-            if not final:
-                time.sleep(2 ** (attempt + 2))
+                    time.sleep(2 ** (attempt + 2))
 
     blocked = soft_block(url, ctype, body) if status == 200 and body else None
     digest = sha256_bytes(body) if body else None
-    ok = status == 200 and len(body) > 0 and not blocked and not too_large
+    ok = status == 200 and len(body) > 0 and not blocked and not too_large and not permanent_err
     base = sha256_text(url)[:16]
     ext = pick_ext(url, ctype)
     target_dir = raw_dir_for_tag(year_tag) if ok else QUARANTINE
     target_dir.mkdir(parents=True, exist_ok=True)
     path = target_dir / f"{base}{ext}"
     if body:  # atomic: the process worker may be scanning data/raw/ right now
-        tmp = path.with_name(f".{path.name}.part")
-        tmp.write_bytes(body)
-        tmp.replace(path)
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.{os.getpid()}.", suffix=".part", dir=target_dir)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(body)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
     entry = {
         "timestamp": now_iso(), "url": url, "http_status": status, "sha256": digest,
@@ -239,6 +321,8 @@ def fetch_one(session: requests.Session, url: str, year_tag: str | None, harvest
         entry["harvested_from"] = harvested_from
     if too_large:
         entry.update(permanent=True, error=f"too large (> {cap // 1_000_000} MB, config max_download_mb)")
+    if permanent_err and err:
+        entry.update(permanent=True, error=err)
     if blocked:
         entry.update(soft_block=True, error=f"soft block: {blocked}")
     if err and status is None:
@@ -332,8 +416,13 @@ def main() -> int:
     if a.url:
         urls, tag = [a.url], a.year_tag
     elif a.harvest:
-        p = a.harvest if a.harvest.is_absolute() else ROOT / a.harvest
-        m = next((e for e in read_jsonl(MANIFEST) if e.get("local_path") == str(p.relative_to(ROOT))), {})
+        p = (a.harvest if a.harvest.is_absolute() else ROOT / a.harvest).resolve()
+        try:
+            rel = str(p.relative_to(ROOT.resolve()))
+        except ValueError:
+            emit({"error": f"harvest path outside workspace: {a.harvest}"})
+            return 2
+        m = next((e for e in read_jsonl(MANIFEST) if e.get("local_path") == rel), {})
         urls, tag = harvest_links(p, m.get("url", "")), a.year_tag or m.get("year_tag")
     else:
         p = a.from_cache_file if a.from_cache_file.is_absolute() else ROOT / a.from_cache_file

@@ -36,7 +36,8 @@ from collections import Counter, defaultdict
 from datetime import date
 
 from common import (
-    PARSED, PRIORITY_YEARS, PROCESSED, SCHEMA_FIELDS, atomic_write_text, domain_of, emit, isin_valid, log, read_jsonl,
+    PARSED, PRIORITY_YEARS, PROCESSED, SCHEMA_FIELDS, atomic_write_text, domain_of, emit, file_lock, isin_valid, log,
+    read_jsonl,
 )
 
 CONF_RANK = {"VERIFIED_PRIMARY": 3, "CORROBORATED_SECONDARY": 2, "NEEDS_REVIEW": 1}
@@ -351,7 +352,7 @@ def render_csv(rows: list[dict], fields: list[str]) -> str:
     return buf.getvalue()
 
 
-def main() -> int:
+def _run_merge() -> dict:
     raw = []
     for p in sorted(PARSED.glob("*.jsonl")):
         raw.extend(read_jsonl(p))
@@ -404,7 +405,10 @@ def main() -> int:
             r["already_in_master"] = bool({("I", r["isin"]), ("N", r["_name"]), ("S", r["_sym"])} & known)
             leads[r["_key"]] = r
     review_path = PARSED / "_review.json"
-    review = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
+    try:
+        review = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
+    except (OSError, ValueError):
+        review = {}
     review_rows = [c for _f, cands in sorted(review.items()) for c in cands]
     atomic_write_text(PROCESSED / "extraction_review.csv", render_csv(review_rows, REVIEW_FIELDS))
     lead_fields = ["company_name", "nse_symbol", "isin", "source_url", "local_artifact_path", "already_in_master"]
@@ -421,6 +425,13 @@ def main() -> int:
         "by_confidence": {c: sum(r["confidence_status"] == c for r in master) for c in CONF_RANK},
     }
     log(f"merge in={len(raw)} out={len(master)} priority={len(priority)}", kind="merge", **summary)
+    return summary
+
+
+def main() -> int:
+    PROCESSED.mkdir(parents=True, exist_ok=True)
+    with file_lock(PROCESSED / ".merge.lock"):
+        summary = _run_merge()
     emit(summary)
     return 0
 

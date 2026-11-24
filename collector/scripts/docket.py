@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import secrets
 import sqlite3
 import sys
 import time
@@ -45,7 +46,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import historical
-from common import atomic_write_text, DATA, METADATA, PARSED, PRIORITY_YEARS, domain_matches, domain_of, emit, log, now_iso, read_jsonl
+from common import (
+    atomic_write_text, DATA, METADATA, PARSED, PRIORITY_YEARS, domain_matches, domain_of, emit, file_lock, log,
+    now_iso, read_jsonl,
+)
 
 DB = DATA / "docket.sqlite"
 STATS = METADATA / "docket_stats.json"
@@ -111,19 +115,44 @@ class Docket:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(self.path, timeout=60, isolation_level=None)  # autocommit; explicit txns
         self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout=60000")
-        self.db.executescript(SCHEMA)
-        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(items)")}
-        for col, typ in (("company", "TEXT"), ("company_name", "TEXT"), ("crashes", "INTEGER DEFAULT 0")):
-            if col not in cols:  # dockets created by older versions
-                self.db.execute(f"ALTER TABLE items ADD COLUMN {col} {typ}")
-        dcols = {r["name"] for r in self.db.execute("PRAGMA table_info(domains)")}
-        for col, typ in (("blocked_until", "REAL"), ("block_count", "INTEGER DEFAULT 0")):
-            if col not in dcols:
-                self.db.execute(f"ALTER TABLE domains ADD COLUMN {col} {typ}")
-        self.db.execute("CREATE INDEX IF NOT EXISTS items_company ON items (company)")
+        for _attempt in range(10):
+            try:
+                self.db.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or _attempt == 9:
+                    raise
+                time.sleep(0.05 * (_attempt + 1))
+        with self.txn() as db:
+            for stmt in SCHEMA.split(";"):
+                if stmt.strip():
+                    db.execute(stmt)
+            cols = {r["name"] for r in db.execute("PRAGMA table_info(items)")}
+            for col, typ in (
+                ("company", "TEXT"),
+                ("company_name", "TEXT"),
+                ("crashes", "INTEGER DEFAULT 0"),
+                ("lease_token", "TEXT"),
+            ):
+                if col not in cols:  # dockets created by older versions
+                    db.execute(f"ALTER TABLE items ADD COLUMN {col} {typ}")
+            dcols = {r["name"] for r in db.execute("PRAGMA table_info(domains)")}
+            for col, typ in (("blocked_until", "REAL"), ("block_count", "INTEGER DEFAULT 0")):
+                if col not in dcols:
+                    db.execute(f"ALTER TABLE domains ADD COLUMN {col} {typ}")
+            db.execute("CREATE INDEX IF NOT EXISTS items_company ON items (company)")
+        self._leases: dict[str, str] = {}
         self.focus = historical.window()
+
+    def close(self) -> None:
+        self.db.close()
+
+    def __enter__(self) -> "Docket":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
     @contextmanager
     def txn(self):
@@ -212,51 +241,83 @@ class Docket:
                             f" AND domain NOT IN ({BLOCKED_NOW})", (now,)).fetchone()
         return r["t"]
 
-    def lease(self, url: str) -> bool:
+    def lease(self, url: str, max_docs_per_company: int | None = None) -> bool:
         """Take an item for fetching. An expired lease means the worker that held it died mid-fetch: that
         counts as a failed attempt, and an item that killed MAX_LEASE_CRASHES workers is marked dead."""
         now = time.time()
+        token = secrets.token_hex(8)
         with self.txn() as db:
-            row = db.execute("SELECT status, attempts, crashes, lease_until, next_attempt_at FROM items WHERE url=?",
-                             (url,)).fetchone()
+            row = db.execute(
+                "SELECT status, attempts, crashes, lease_until, next_attempt_at, company FROM items WHERE url=?",
+                (url,),
+            ).fetchone()
             if not row:
                 return False
+            if max_docs_per_company and row["company"]:
+                cnt = db.execute(
+                    "SELECT COUNT(*) n FROM items WHERE company=? AND status IN ('fetching','fetched','parsed')",
+                    (row["company"],),
+                ).fetchone()["n"]
+                if cnt >= max_docs_per_company:
+                    db.execute(
+                        "UPDATE items SET status='parked', lease_until=0, lease_token=NULL, last_error=?, updated_at=? WHERE url=?",
+                        (f"max_docs_per_company ({max_docs_per_company}) reached", now, url),
+                    )
+                    return False
             if row["status"] == "fetching" and row["lease_until"] < now:
                 attempts, crashes = row["attempts"] + 1, (row["crashes"] or 0) + 1
                 if crashes >= MAX_LEASE_CRASHES or attempts >= MAX_ATTEMPTS:
-                    db.execute("UPDATE items SET status='dead', attempts=?, crashes=?, lease_until=0, updated_at=?,"
+                    db.execute("UPDATE items SET status='dead', attempts=?, crashes=?, lease_until=0, lease_token=NULL, updated_at=?,"
                                " last_error=? WHERE url=?",
                                (attempts, crashes, now, f"worker stopped while fetching it {crashes} time(s) "
                                                         "(crash or kill): given up", url))
                     log(f"docket: {url} marked dead after {crashes} worker crash(es) while fetching it",
                         level="WARN", kind="docket_poison_item", url=url, crashes=crashes)
                     return False
-                db.execute("UPDATE items SET status='fetching', attempts=?, crashes=?, lease_until=?, updated_at=?,"
+                db.execute("UPDATE items SET status='fetching', attempts=?, crashes=?, lease_until=?, lease_token=?, updated_at=?,"
                            " last_error='worker stopped while fetching it (crash or kill)' WHERE url=?",
-                           (attempts, crashes, now + LEASE_S, now, url))
+                           (attempts, crashes, now + LEASE_S, token, now, url))
+                self._leases[url] = token
                 return True
             if row["status"] in ("pending", "failed") and row["next_attempt_at"] <= now:
-                db.execute("UPDATE items SET status='fetching', lease_until=?, updated_at=? WHERE url=?",
-                           (now + LEASE_S, now, url))
+                db.execute("UPDATE items SET status='fetching', lease_until=?, lease_token=?, updated_at=? WHERE url=?",
+                           (now + LEASE_S, token, now, url))
+                self._leases[url] = token
                 return True
         return False
 
     def release(self, url: str) -> None:
         """Give a leased item back without counting an attempt (graceful stop mid-fetch)."""
-        self.db.execute("UPDATE items SET status=CASE WHEN attempts>0 THEN 'failed' ELSE 'pending' END, lease_until=0,"
-                        " updated_at=? WHERE url=? AND status='fetching'", (time.time(), url))
+        token = self._leases.pop(url, None)
+        if token is not None:
+            self.db.execute(
+                "UPDATE items SET status=CASE WHEN attempts>0 THEN 'failed' ELSE 'pending' END, lease_until=0,"
+                " lease_token=NULL, updated_at=? WHERE url=? AND status='fetching' AND (lease_token=? OR lease_token IS NULL)",
+                (time.time(), url, token),
+            )
+        else:
+            self.db.execute(
+                "UPDATE items SET status=CASE WHEN attempts>0 THEN 'failed' ELSE 'pending' END, lease_until=0,"
+                " lease_token=NULL, updated_at=? WHERE url=? AND status='fetching'",
+                (time.time(), url),
+            )
 
     def done_fetch(self, url: str, entry: dict) -> str:
         """Record a fetch attempt (a fetch_manifest entry). Returns the new status, or "unknown" (nothing
         recorded) for a URL that is not in the docket."""
         now, ok = time.time(), not entry.get("quarantined")
         st = entry.get("http_status")
+        expected_token = self._leases.pop(url, None)
         with self.txn() as db:
-            row = db.execute("SELECT attempts FROM items WHERE url=?", (url,)).fetchone()
+            row = db.execute("SELECT attempts, status, lease_token FROM items WHERE url=?", (url,)).fetchone()
             if not row:
                 log(f"docket: fetch result for a URL that is not in the docket: {url}", level="WARN",
                     kind="docket_unknown_url", url=url)
                 return "unknown"
+            if expected_token is not None and row["lease_token"] not in (None, expected_token):
+                log(f"docket: ignoring stale lease result for {url} (re-leased by another worker)",
+                    level="WARN", kind="docket_stale_lease", url=url)
+                return "stale_lease"
             attempts = row["attempts"] + 1
             if ok:
                 status, nxt, err = "fetched", 0, None
@@ -273,7 +334,7 @@ class Docket:
                     status, nxt = "dead", 0
                 else:
                     status, nxt = "failed", now + 60 * BACKOFF_MIN[min(attempts, len(BACKOFF_MIN)) - 1]
-            db.execute("UPDATE items SET status=?, attempts=?, next_attempt_at=?, lease_until=0, http_status=?,"
+            db.execute("UPDATE items SET status=?, attempts=?, next_attempt_at=?, lease_until=0, lease_token=NULL, http_status=?,"
                        " last_error=?, local_path=COALESCE(?, local_path), fetched_at=?, updated_at=? WHERE url=?",
                        (status, attempts, nxt, st, err, entry.get("local_path") if ok else None,
                         now if ok else None, now, url))
@@ -347,12 +408,15 @@ class Docket:
         """Mark fetched items whose file has an up-to-date parser output as parsed (rows, relevance)."""
         errors = {e["file"]: e["error"] for e in parse_errors or []}
         rel_path = PARSED / "_relevance.json"
-        relevance = json.loads(rel_path.read_text(encoding="utf-8")) if rel_path.exists() else {}
+        try:
+            relevance = json.loads(rel_path.read_text(encoding="utf-8")) if rel_path.exists() else {}
+        except (OSError, ValueError):
+            relevance = {}
         root = DATA.parent
         out = {"parsed": 0, "rows": 0, "parse_error": 0, "waiting": 0}
-        rows = self.db.execute("SELECT url, local_path FROM items WHERE status='fetched'").fetchall()
         now = time.time()
         with self.txn() as db:
+            rows = db.execute("SELECT url, local_path FROM items WHERE status='fetched'").fetchall()
             for r in rows:
                 lp = r["local_path"]
                 if not lp or not (root / lp).exists():
@@ -365,7 +429,7 @@ class Docket:
                     db.execute("UPDATE items SET status='parse_error', last_error=?, updated_at=? WHERE url=?",
                                (errors[lp][:300], now, r["url"]))
                     out["parse_error"] += 1
-                elif parsed.exists() and parsed.stat().st_mtime >= art.stat().st_mtime:
+                elif parsed.exists() and parsed.stat().st_mtime_ns >= art.stat().st_mtime_ns:
                     n = len(read_jsonl(parsed))
                     db.execute("UPDATE items SET status='parsed', rows=?, relevance=?, parsed_at=?, updated_at=?"
                                " WHERE url=?", (n, relevance.get(lp), now, now, r["url"]))
@@ -451,6 +515,13 @@ def import_existing(dk: Docket) -> dict | None:
     unfetched document links on downloaded pages, unfetched search results, blocked domains)."""
     if dk.get_meta("imported_at"):
         return None
+    with file_lock(dk.path.parent / ".docket_import.lock"):
+        if dk.get_meta("imported_at"):
+            return None
+        return _import_existing_locked(dk)
+
+
+def _import_existing_locked(dk: Docket) -> dict:
     import polite_fetcher
     from common import MANIFEST, SEARCH_CACHE
     policy = polite_fetcher.fetch_policy()

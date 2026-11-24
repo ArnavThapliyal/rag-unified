@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -48,9 +49,18 @@ def read_state(quant_db: Optional[Path] = None) -> Dict[str, Any]:
 
 
 def write_state(state: Dict[str, Any], quant_db: Optional[Path] = None) -> None:
-    tmp = state_path(quant_db).with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, indent=1), encoding="utf-8")
-    os.replace(tmp, state_path(quant_db))
+    target = state_path(quant_db)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(state, indent=1))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, target)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
 
 
 def sync_universe(store: QuantStore, universe_db: Path) -> Dict[str, int]:
@@ -193,7 +203,10 @@ def calibration_from_row(row: Dict[str, Any]):
         z_min=float(row["z_min"]), z_max=float(row["z_max"]), source=str(row["source"]),
         reference_start=row.get("reference_start"), reference_end=row.get("reference_end"),
         reference_dates_count=int(row.get("reference_dates_count") or 0), robust=bool(row.get("robust")),
-        mainboard_only_stats=bool(row.get("mainboard_only_stats", True)))
+        mainboard_only_stats=bool(row.get("mainboard_only_stats", True)),
+        trailing_days=int(row.get("trailing_days") or 1),
+        z_buffer=float(row.get("z_buffer") or 0.0),
+        value_field=str(row.get("value_field") or "market_cap_cr"))
 
 
 def quant_bracket(quant_db: Optional[Path] = None, schedule: bool = False, date: Optional[str] = None,
@@ -210,9 +223,14 @@ def quant_bracket(quant_db: Optional[Path] = None, schedule: bool = False, date:
         cal = calibration_from_row(saved) if saved is not None else TargetBracketCalibration.default_nse()
         if schedule:
             rows = summarize_historical_brackets(
-                store.list_daily_market_rows_for_z(pit_universe_only=True), robust=cal.robust,
-                target_bracket_cr=(cal.target_min_cr, cal.target_max_cr), calibration=cal,
-                mainboard_only_stats=cal.mainboard_only_stats)
+                store.list_daily_market_rows_for_z(pit_universe_only=True),
+                value_field=cal.value_field,
+                robust=cal.robust,
+                target_bracket_cr=(cal.target_min_cr, cal.target_max_cr),
+                calibration=cal,
+                mainboard_only_stats=cal.mainboard_only_stats,
+                trailing_days=cal.trailing_days,
+                z_buffer=cal.z_buffer)
             rows = [r for r in rows if (date is None or r["trade_date"] == date)
                     and (start_date is None or r["trade_date"] >= start_date)
                     and (end_date is None or r["trade_date"] <= end_date)]
