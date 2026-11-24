@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
@@ -165,6 +166,8 @@ def make_loop(monkeypatch, tmp_path, decisions, pending=0, **kw):
         setattr(a, k, v)
     monkeypatch.setattr(loop, "LOG", tmp_path / "loop.jsonl")
     monkeypatch.setattr(loop, "STOP", tmp_path / "STOP")
+    # the scheduler refuses to start without both environments; CI's agent job has only the collector's
+    monkeypatch.setattr(loop.registry, "python_for", lambda repo: Path(sys.executable))
     lp = loop.Loop(a)
     seq = iter(decisions)
     calls = {"cycles": 0, "pending": 0, "export_batches": []}
