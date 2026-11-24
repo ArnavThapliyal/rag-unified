@@ -236,3 +236,19 @@ def test_empty_argument_gets_the_real_refusal_reason():
     assert "redirection" not in str(e.value)
     with pytest.raises(tg.Bad, match="redirection"):
         tg.plan_command("git status > x")
+
+
+# ---------- Neon H-3: every "next" / hint command a tool prints is one the guard accepts ------------------
+def test_hints_printed_by_the_collector_tools_pass_the_guard():
+    import re
+
+    col = g.ROOT / "collector" / "scripts"
+    hints = set()
+    for script in ("job.py", "status_report.py"):
+        hints |= set(re.findall(r"\./rag [a-z_]+ [a-z0-9 \-]+?(?=[\"')`]|\{)", (col / script).read_text()))
+    hints = {h.strip() for h in hints} | {"./rag job wait 1", "./rag job wait 7"}
+    assert {"./rag docket --stats", "./rag web_search --engines"} <= hints
+    for h in sorted(hints):
+        if h.endswith("wait"):
+            h += " 2"   # f"./rag job wait {poll + 1}"
+        assert cmd(h) is None, (h, cmd(h))

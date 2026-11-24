@@ -207,7 +207,7 @@ def dispatch(a: argparse.Namespace) -> Dict[str, Any]:
     if a.step == "list":
         return result("list", "ok", steps=[{"name": k, "help": v} for k, v in STEP_HELP.items()])
     if a.step == "status":
-        return run_step("status", status_step, locks / "readonly-status", a.outbox)
+        return run_step("status", status_step, None, a.outbox)
     if a.step == "ingest":
         # one LanceDB writer at a time: ingest and ingest-dir share the "ingest" lock
         return run_step("ingest", ingest_step, locks, a.outbox, a.batch, a.all, a.workers)
@@ -233,9 +233,9 @@ def dispatch(a: argparse.Namespace) -> Dict[str, Any]:
 
         return run_step("quant-bracket", lambda: quant_bracket(schedule=a.schedule, date=a.date,
                                                                start_date=a.start_date, end_date=a.end_date,
-                                                               limit=a.limit), locks / "readonly-bracket")
+                                                               limit=a.limit), None)
     if a.step == "health":
-        return run_step("health", health_step, locks / "readonly-health")
+        return run_step("health", health_step, None)
     return result(a.step, "failed", "unknown step")
 
 

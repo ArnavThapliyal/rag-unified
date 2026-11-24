@@ -124,3 +124,27 @@ def test_real_model_dimension_and_norm():
     e = Embedder()
     out = e.encode(["Revenue grew 12% year on year.", "राजस्व में वृद्धि हुई।"])
     assert out.shape == (2, emb.EMBEDDING_DIM) and np.allclose(np.linalg.norm(out, axis=1), 1.0, atol=1e-3)
+
+
+def test_fixed_shape_out_of_memory_retries_smaller_shapes():
+    """Neon H-1: after an OOM at 16 rows the retry must run 8 rows, not pad back up to 16 (and 2/1, not 4)."""
+    class OomAbove(TensorStubModel):
+        def __init__(self, limit):
+            super().__init__()
+            self.limit = limit
+
+        def forward(self, features):
+            rows = features["input_ids"].shape[0]
+            if rows > self.limit:
+                self.forward_shapes.append(("oom", rows))
+                raise RuntimeError("MPS backend out of memory")
+            return super().forward(features)
+
+    for limit, expect in ((8, 8), (2, 2), (1, 1)):
+        model = OomAbove(limit)
+        e = Embedder(model=model, batch_size=16, fixed_shapes=True)
+        texts = [f"t{i}" for i in range(16)]
+        out = e.encode(texts)
+        assert np.allclose(out[3], text_vector("t3"), atol=1e-5)
+        ok_rows = {s[0] for s in model.forward_shapes if s[0] != "oom"}
+        assert max(ok_rows) == expect and e.batch_size == expect, (limit, model.forward_shapes)

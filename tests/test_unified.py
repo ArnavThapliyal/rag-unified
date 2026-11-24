@@ -167,10 +167,11 @@ def make_loop(monkeypatch, tmp_path, decisions, pending=0, **kw):
     monkeypatch.setattr(loop, "STOP", tmp_path / "STOP")
     lp = loop.Loop(a)
     seq = iter(decisions)
-    calls = {"cycles": 0, "pending": 0}
+    calls = {"cycles": 0, "pending": 0, "export_batches": []}
 
-    def cycle():
+    def cycle(export_batches=20):
         calls["cycles"] += 1
+        calls["export_batches"].append(export_batches)
         return next(seq)
 
     def pend():
@@ -219,9 +220,9 @@ def test_loop_stop_file(monkeypatch, tmp_path):
     lp, calls = make_loop(monkeypatch, tmp_path, [ok] * 10)
     orig = lp.collector_cycle
 
-    def cycle_then_stop():
+    def cycle_then_stop(export_batches=20):
         (tmp_path / "STOP").touch()
-        return orig()
+        return orig(export_batches)
     monkeypatch.setattr(lp, "collector_cycle", cycle_then_stop)
     assert lp.main() == 0 and calls["cycles"] == 1
 
@@ -233,4 +234,76 @@ def test_loop_commands():
     assert cmd[1:4] == ["-m", "rag_collector.loop", "--once"] and cmd[cmd.index("--agent-cmd") + 1] == str(loop.AGENT_CMD)
     lp.a.mode = "deterministic"
     assert "--agent-cmd" not in lp.collector_cmd() and "--max-queries" in lp.collector_cmd()
+    cmd = lp.collector_cmd(0)
+    assert cmd[cmd.index("--export-max-batches") + 1] == "1"   # never 0: a cycle may always export one batch
     assert lp.processor_cmd(True)[1:] == ["main.py", "--watch", "--poll", "30", "--once"]
+
+
+# ---- Neon audit regressions ----------------------------------------------------------------------------------------
+def test_pending_reads_the_real_processor_status_shape(monkeypatch):
+    """C-1: processor.status puts pending_count under "outbox" (counts is empty)."""
+    status = {"step": "status", "status": "ok", "counts": {},
+              "outbox": {"path": "x", "exists": True, "ready": 5, "pending": ["a", "b", "c", "d"], "pending_count": 4}}
+    monkeypatch.setattr(registry, "run", lambda *a, **k: (0, status))
+    lp = loop.Loop(Namespace(once=False))
+    assert lp.pending() == 4
+    monkeypatch.setattr(registry, "run", lambda *a, **k: (75, {"status": "retry_later", "counts": {}}))
+    assert lp.pending() is None
+
+
+def test_backpressure_triggers_from_a_real_status_payload(monkeypatch, tmp_path):
+    lp, calls = make_loop(monkeypatch, tmp_path, [{"loop_decision": "stop", "pause_min": 0, "why": "x"}])
+    n = {"i": 0}
+
+    def fake_run(*a, **k):
+        n["i"] += 1
+        return 0, {"status": "ok", "counts": {}, "outbox": {"pending_count": 5 if n["i"] == 1 else 1}}
+    monkeypatch.setattr(registry, "run", fake_run)
+    monkeypatch.setattr(lp, "pending", loop.Loop.pending.__get__(lp))
+    lp.main()
+    assert [e["event"] for e in events(tmp_path)][0] == "backpressure"
+    assert calls["export_batches"] == [2]   # H-6: export only into the room left under --max-pending (3 - 1)
+
+
+def test_unknown_pending_is_logged_not_silent(monkeypatch, tmp_path):
+    lp, calls = make_loop(monkeypatch, tmp_path, [{"loop_decision": "stop", "pause_min": 0, "why": "x"}],
+                          pending=None)
+    lp.main()
+    assert calls["cycles"] == 1 and events(tmp_path)[0]["event"] == "pending_unknown"
+
+
+def test_processor_stop_follows_its_settings(monkeypatch, tmp_path):
+    """M-3: the STOP file the watcher reads, also with DATA_DIR / STOP_FILE overridden."""
+    for k in ("STOP_FILE", "DATA_DIR"):
+        monkeypatch.delenv(k, raising=False)
+    assert loop.processor_stop() == ROOT / "processor" / "data" / "STOP"
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "d"))
+    assert loop.processor_stop() == tmp_path / "d" / "STOP"
+    monkeypatch.setenv("STOP_FILE", "rel/STOP")
+    assert loop.processor_stop() == ROOT / "processor" / "rel" / "STOP"
+
+
+def test_collector_cycle_keeps_the_watcher_alive(monkeypatch, tmp_path):
+    """M-3: a long cycle still checks the processor watcher, and its decision line is read."""
+    lp = loop.Loop(Namespace(once=False, failure_pause_min=5))
+    script = "import time, json; print('progress', flush=True); time.sleep(6); print(json.dumps({'loop_decision': 'continue'}))"
+    monkeypatch.setattr(lp, "collector_cmd", lambda n=20: [sys.executable, "-c", script])
+    checks = []
+    monkeypatch.setattr(lp, "check_watch", lambda: checks.append(1))
+    d = lp.collector_cycle()
+    assert d == {"loop_decision": "continue"} and checks
+
+
+def test_bg_start_is_atomic(monkeypatch, tmp_path):
+    """M-1: concurrent starts of one step: exactly one is started."""
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setattr(bg, "BG_DIR", tmp_path)
+    monkeypatch.setattr(bg.subprocess, "Popen", lambda *a, **k: None)
+    with ThreadPoolExecutor(8) as ex:
+        res = list(ex.map(lambda _: bg.start("processor.quant-sync", []), range(8)))
+    assert sorted(r["status"] for r in res) == ["ok"] + ["retry_later"] * 7
+
+
+def test_internal_bg_without_a_run_id_is_a_usage_error():
+    r = subprocess.run([RAG, "_bg"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 2 and "usage" in r.stderr

@@ -188,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.step == "list":
         return emit(result("list", "ok", steps=[{"name": k, "help": v} for k, v in STEP_HELP.items()]))
     if a.step == "status":
-        return emit(run_step("status", status_step, locks / "readonly-status"))
+        return emit(run_step("status", status_step, None))
     if a.step in COLLECT_STAGES:
         res = run_step("collect", collect_step, locks, a.step, collect_args(a))
         res["step"] = a.step

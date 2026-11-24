@@ -99,3 +99,20 @@ def test_local_network_only_blocks_outbound(world):
 def test_shipped_check_passes():
     r = subprocess.run([sys.executable, str(Path(asb.__file__)), "--check"], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout
+
+
+@pytest.mark.parametrize("rel", [".env", "collector/.env", "processor/.env", ".env.example", ".git/config",
+                                 ".git/hooks/pre-commit"])
+def test_secrets_and_git_metadata_are_not_writable(world, rel):
+    """Neon M-6: a changed .git/config or hook would run code outside the sandbox on the next git command."""
+    home, root, tmp = world
+    target = root / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    before = target.read_text() if target.exists() else None
+    r = run_in(asb.profile(), tmp, "/bin/sh", "-c", f"echo PWNED > '{target}'")
+    assert r.returncode != 0
+    assert (target.read_text() if target.exists() else None) == before
+
+
+def test_regex_metacharacters_in_the_root_are_escaped():
+    assert asb.re_literal("/a/b.c+d(e)") == "/a/b\\.c\\+d\\(e\\)"

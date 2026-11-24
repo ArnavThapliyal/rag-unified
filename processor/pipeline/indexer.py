@@ -57,6 +57,7 @@ MSG_FATAL = "fatal"
 MSG_STOP = "stop"
 
 _POLL_SECONDS = 0.2
+_KILL_GRACE_SECONDS = 15.0  # a worker still alive this long after SIGTERM (wedged in native code) gets SIGKILL
 _MAX_WORKER_START_FAILURES = 3
 
 EmbedderFactory = Callable[[], Any]  # returns an object with encode(texts) -> (n, dim) float32 matrix
@@ -490,6 +491,7 @@ class Indexer:
         current: Dict[int, str] = {}        # worker -> file it is on
         last_seen: Dict[int, float] = {w: time.monotonic() for w in workers}
         killed: Dict[int, str] = {}         # worker -> why we terminated it
+        killed_at: Dict[int, float] = {}    # worker -> when it got SIGTERM
         start_failures = 0
         stop_sent = False
 
@@ -519,7 +521,11 @@ class Indexer:
                             time.monotonic() - last_seen[worker_id] > WORKER_STALL_TIMEOUT_SECONDS)
                         if stalled and worker_id not in killed:
                             killed[worker_id] = f"no progress for {WORKER_STALL_TIMEOUT_SECONDS}s; worker killed"
+                            killed_at[worker_id] = time.monotonic()
                             proc.terminate()
+                        elif worker_id in killed_at and time.monotonic() - killed_at[worker_id] > _KILL_GRACE_SECONDS:
+                            proc.kill()  # ignored SIGTERM (stuck in a native parser call)
+                            killed_at.pop(worker_id)
                         continue
                     proc.join()
                     drain_control()  # a normal exit announces itself; pick that up before judging
@@ -529,13 +535,17 @@ class Indexer:
                     workers.pop(worker_id)
                     path = current.pop(worker_id, None)
                     reason = killed.pop(worker_id, f"worker process died (exit code {proc.exitcode})")
+                    killed_at.pop(worker_id, None)
                     logger.error(f"worker {worker_id} lost on {path or 'startup'}: {reason}")
                     run.on_worker_lost(path, reason)
                     if path is None:
                         start_failures += 1
                         if start_failures >= _MAX_WORKER_START_FAILURES:
                             raise RuntimeError("worker processes keep dying before taking a file; aborting the run")
-                    start_worker()  # its stop marker is still queued, so the replacement will finish cleanly
+                    # The replacement needs a stop marker: the lost worker's own is normally still queued, but not if
+                    # it died after taking it. Stop markers sit behind every path, so a spare one is harmless.
+                    task_q.put(None)
+                    start_worker()
                     last_seen[next_id - 1] = time.monotonic()
 
                 embedder_gone = not embedder.is_alive()  # it exits right after its final message
@@ -570,6 +580,11 @@ class Indexer:
                     proc.terminate()  # only on an abnormal end; finished workers exit by themselves
             for proc in started:
                 proc.join(timeout=10)
+            for proc in started:
+                if proc.is_alive():  # ignored SIGTERM: never leave a worker or the MPS embedder behind
+                    logger.error(f"{proc.name} did not stop after SIGTERM; killing it")
+                    proc.kill()
+                    proc.join(timeout=5)
             for q in (task_q, chunk_q, out_q, ctl_q):
                 q.cancel_join_thread()
                 q.close()

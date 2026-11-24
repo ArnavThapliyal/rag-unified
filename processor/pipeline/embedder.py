@@ -114,7 +114,7 @@ class Embedder:
         while start < len(order):
             indices = order[start:start + batch_size]
             try:
-                vectors = self._encode_batch([texts[i] for i in indices])
+                vectors = self._encode_batch([texts[i] for i in indices], batch_size)
             except Exception as exc:
                 if not _is_out_of_memory(exc):
                     raise
@@ -133,9 +133,9 @@ class Embedder:
             self.batch_size = batch_size  # stay at the size that fits for the rest of the run
         return out
 
-    def _encode_batch(self, batch: List[str]) -> np.ndarray:
+    def _encode_batch(self, batch: List[str], batch_size: Optional[int] = None) -> np.ndarray:
         if self._fixed_shapes:
-            vectors = self._forward_fixed(batch)
+            vectors = self._forward_fixed(batch, batch_size)
         else:
             vectors = np.asarray(
                 self._model.encode(batch, batch_size=len(batch), normalize_embeddings=True,
@@ -156,12 +156,16 @@ class Embedder:
             self._empty_cache()
         return vectors
 
-    def _forward_fixed(self, batch: List[str]) -> np.ndarray:
-        """Run the model on `batch` padded to a bucketed (rows, tokens) shape; padding does not change the vectors."""
+    def _forward_fixed(self, batch: List[str], batch_size: Optional[int] = None) -> np.ndarray:
+        """Run the model on `batch` padded to a bucketed (rows, tokens) shape; padding does not change the vectors.
+
+        batch_size is the size in use right now: after an out-of-memory retry it is smaller than self.batch_size,
+        and the padding must not go back up to the shape that just failed."""
         import torch
 
         model = self._model
-        rows = _row_bucket(len(batch), max(self.batch_size, len(batch)))
+        cap = batch_size or self.batch_size
+        rows = _row_bucket(len(batch), max(cap, len(batch)))
         padded = list(batch) + [batch[-1]] * (rows - len(batch))  # filler rows are dropped below
         features = (getattr(model, "preprocess", None) or model.tokenize)(padded)
         tokens = features["input_ids"].shape[1]

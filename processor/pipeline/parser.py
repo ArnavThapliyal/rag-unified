@@ -165,9 +165,8 @@ class Parser:
             return Block(BLOCK_CODE, text, page)
         return Block(BLOCK_PARAGRAPH, text, page)
 
-    @staticmethod
-    def _low_text_pages(blocks: List[Block], page_count: int) -> List[int]:
-        threshold = int(COMPUTE_BUDGET.get("min_chars_per_page_before_ocr", 25))
+    def _low_text_pages(self, blocks: List[Block], page_count: int) -> List[int]:
+        threshold = int(self.compute_budget.get("min_chars_per_page_before_ocr", 25))
         chars = dict.fromkeys(range(1, page_count + 1), 0)
         for block in blocks:
             if block.page_number in chars:

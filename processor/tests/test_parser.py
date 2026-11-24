@@ -82,3 +82,13 @@ def test_header_promotion_heuristic():
     assert not _looks_like_header(["Revenue", "1,200", "(300)"])   # data row
     assert not _looks_like_header(["", "2024", "2023"])             # blank cell / year labels: keep generic names
     assert not _looks_like_header(["Item", "12.5%", "7"])
+
+
+def test_low_text_threshold_uses_the_instance_budget():
+    """Neon L-3: a per-instance min_chars_per_page_before_ocr is honoured."""
+    from pipeline.parser import Parser
+    from pipeline.schema import Block
+
+    blocks = [Block("paragraph", "x" * 40, 1), Block("paragraph", "y" * 5, 2)]
+    assert Parser({"min_chars_per_page_before_ocr": 25})._low_text_pages(blocks, 2) == [2]
+    assert Parser({"min_chars_per_page_before_ocr": 100})._low_text_pages(blocks, 2) == [1, 2]

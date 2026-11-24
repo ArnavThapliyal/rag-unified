@@ -3,6 +3,7 @@ shows them. One run per step at a time, at most MAX_RUNNING in all. State: logs/
 progress: logs/bg/<run_id>.log. A run survives the command that started it (own session)."""
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -31,7 +32,7 @@ def _path(run_id: str) -> Path:
 
 def _write(state: dict) -> None:
     p = _path(state["run_id"])
-    tmp = p.with_suffix(".json.tmp")
+    tmp = p.with_suffix(f".json.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(state, indent=1, default=str), encoding="utf-8")
     os.replace(tmp, p)
 
@@ -81,6 +82,13 @@ def running() -> list[dict]:
 
 def start(name: str, args: list[str]) -> dict:
     registry.get(name)
+    BG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(BG_DIR / ".start.lock", "a") as lock:  # check-then-start is atomic across concurrent `./rag start`
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _start_locked(name, args)
+
+
+def _start_locked(name: str, args: list[str]) -> dict:
     busy = running()
     same = [s for s in busy if s["step"] == name]
     if same:
@@ -89,7 +97,6 @@ def start(name: str, args: list[str]) -> dict:
     if len(busy) >= MAX_RUNNING:
         return registry.failed("start", f"{len(busy)} runs in progress (max {MAX_RUNNING}): "
                                         + ", ".join(s["run_id"] for s in busy), "retry_later")
-    BG_DIR.mkdir(parents=True, exist_ok=True)
     base = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + name
     run_id, n = base, 1
     while _path(run_id).exists():

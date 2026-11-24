@@ -57,6 +57,12 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
   JSON with `--once`; the installer and setup texts point at rag-unified.
 - Processor: `COLLECTOR_OUTBOX` defaults to `../collector/data/export`; the 10 ruff errors in `check_pipeline.py`
   (which failed CI lint since `a8419e2`) are fixed (unused imports, an unused variable, `l` renamed).
+- Gemini Neon review (`NEON_AUDIT.md`, branch `audit/neon`): 21 findings checked one by one; the confirmed ones
+  are fixed with a regression test each (see its last section). The main ones: backpressure read the wrong key and
+  never fired; indexer children that ignore SIGTERM are now killed; MPS out-of-memory retries now use smaller shapes;
+  agent mode no longer acts on an earlier cycle's run summary; `job.py`'s `next` command passes the guard; a job
+  and a collect step can't run at once; export bursts are capped by `--max-pending`; the sandbox blocks writes to
+  `.env` and `.git/`; read-only steps take no lock.
 - Deleted per-repo audit/planning docs (in history): `collector/instructions.md`,
   `collector/docs/UNIFIED_PIPELINE_CHANGES.md`, `processor/HANDOFF.md`, `processor/NEXT_STEPS_PLAN.md`,
   `processor/refactoring_flags.md`.
@@ -78,3 +84,6 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
 6. CI on Linux skips the macOS sandbox tests; the sandbox is only verified locally.
 7. Every export batch carries a full universe snapshot, even when the universe did not change (small, but
    repeated); the processor installs only the newest. Shipping it only when the fingerprint changes would save space.
+8. Deferred from the Neon review: the process worker can't see that its fetch worker sibling has exited (a zombie)
+   while discovery is still running, so the last parse batch waits for discovery (M-5). `agent_exec.py` does not tear down its
+   child when Cline kills it after 30 s (L-2; agent-access steps finish well within that).

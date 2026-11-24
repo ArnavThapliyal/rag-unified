@@ -17,18 +17,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from unified import registry
 
 ROOT = registry.ROOT
 LOG = ROOT / "logs" / "loop.jsonl"
 STOP = ROOT / "logs" / "STOP"
-PROCESSOR_STOP = ROOT / "processor" / "data" / "STOP"   # processor STOP_FILE: --watch stops after its batch
+
+
+def processor_stop() -> Path:
+    """The processor's STOP_FILE (--watch stops after its batch), resolved the way processor/config/settings.py does."""
+    raw = os.environ.get("STOP_FILE") or (str(Path(os.environ["DATA_DIR"]) / "STOP") if os.environ.get("DATA_DIR")
+                                          else "data/STOP")
+    p = Path(raw).expanduser()
+    return p if p.is_absolute() else ROOT / "processor" / p
+
+
 AGENT_CMD = ROOT / "agent" / "run_agent.sh"
 
 
@@ -73,7 +85,7 @@ class Loop:
         return cmd + (["--once"] if once else [])
 
     def start_watch(self) -> None:
-        PROCESSOR_STOP.unlink(missing_ok=True)
+        processor_stop().unlink(missing_ok=True)
         self.watch = subprocess.Popen(self.processor_cmd(False), cwd=ROOT / "processor", env=registry.env_for(),
                                       stdin=subprocess.DEVNULL)
         self.say(f"processor watcher started (pid {self.watch.pid})")
@@ -96,8 +108,9 @@ class Loop:
     def stop_watch(self) -> None:
         if not self.watch or self.watch.poll() is not None:
             return
-        PROCESSOR_STOP.parent.mkdir(parents=True, exist_ok=True)
-        PROCESSOR_STOP.touch()
+        stop_file = processor_stop()
+        stop_file.parent.mkdir(parents=True, exist_ok=True)
+        stop_file.touch()
         try:
             self.watch.wait(timeout=self.a.stop_timeout)
         except subprocess.TimeoutExpired:
@@ -107,36 +120,51 @@ class Loop:
                 self.watch.wait(timeout=60)
             except subprocess.TimeoutExpired:
                 self.watch.kill()
-        PROCESSOR_STOP.unlink(missing_ok=True)
+        stop_file.unlink(missing_ok=True)
 
     def pending(self) -> int | None:
+        """Batches waiting for the processor (processor.status: outbox.pending_count), None if unknown."""
         _, res = registry.run("processor.status", [], stderr=subprocess.DEVNULL, timeout=120)
-        return (res.get("counts") or {}).get("pending_count")
+        for section in ("outbox", "counts"):
+            n = (res.get(section) or {}).get("pending_count")
+            if isinstance(n, int):
+                return n
+        return None
 
     # ---- collector cycles ----------------------------------------------------------------------------------------
-    def collector_cmd(self) -> list[str]:
+    def collector_cmd(self, export_batches: int = 20) -> list[str]:
         cmd = [str(registry.python_for("collector")), "-m", "rag_collector.loop", "--once", "--mode", self.a.mode,
-               "--export-batch", str(self.a.export_batch)]
+               "--export-batch", str(self.a.export_batch), "--export-max-batches", str(max(1, export_batches))]
         if self.a.mode == "deterministic":
             cmd += ["--max-queries", str(self.a.max_queries)]
         else:
             cmd += ["--agent-cmd", str(AGENT_CMD)]
         return cmd
 
-    def collector_cycle(self) -> dict:
-        self.child = subprocess.Popen(self.collector_cmd(), cwd=ROOT / "collector", env=registry.env_for(),
-                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
-        decision = None
-        for line in self.child.stdout:  # the collector's progress, passed through; its last JSON line decides
-            sys.stdout.write(line)
-            sys.stdout.flush()
-            if line.startswith('{"loop_decision"'):
-                try:
-                    decision = json.loads(line)
-                except ValueError:
-                    pass
+    def collector_cycle(self, export_batches: int = 20) -> dict:
+        self.child = subprocess.Popen(self.collector_cmd(export_batches), cwd=ROOT / "collector",
+                                      env=registry.env_for(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                      text=True)
+        found: list[dict] = []
+
+        def relay(stream) -> None:  # the collector's progress, passed through; its last JSON line decides
+            for line in stream:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                if line.startswith('{"loop_decision"'):
+                    try:
+                        found.append(json.loads(line))
+                    except ValueError:
+                        pass
+
+        reader = threading.Thread(target=relay, args=(self.child.stdout,), daemon=True)
+        reader.start()
+        while reader.is_alive():  # a cycle can take an hour: keep the processor watcher alive meanwhile
+            reader.join(5)
+            self.check_watch()
         code = self.child.wait()
         self.child = None
+        decision = found[-1] if found else None
         return decision or {"loop_decision": "failed", "pause_min": self.a.failure_pause_min,
                             "why": f"collector loop gave no decision (exit {code})"}
 
@@ -157,15 +185,21 @@ class Loop:
             while not self.stop_requested():
                 self.check_watch()
                 waiting = self.pending() if not self.a.once else 0
-                if waiting is not None and waiting > self.a.max_pending:
+                if waiting is None:
+                    self.say("could not read the processor's pending batches (processor.status); collecting anyway")
+                    self.record(event="pending_unknown")
+                elif waiting > self.a.max_pending:
                     self.say(f"backpressure: {waiting} batches waiting for the processor; collection paused")
                     self.record(event="backpressure", pending=waiting)
                     self.sleep(self.a.poll)
                     continue
-                d = self.collector_cycle()
+                d = self.collector_cycle(self.a.max_pending - (waiting or 0))
                 self.record(event="collector_cycle", **d)
                 action, why = d.get("loop_decision"), d.get("why", "")
                 if self.a.once:
+                    if self.stop_requested():
+                        code = 0 if action != "failed" else 1
+                        break
                     self.say("--once: ingesting what was exported")
                     ingest = subprocess.run(self.processor_cmd(True), cwd=ROOT / "processor", env=registry.env_for(),
                                             stdin=subprocess.DEVNULL)
@@ -186,6 +220,13 @@ class Loop:
                     self.say(f"pausing {pause:g} min ({why}); the processor keeps ingesting")
                 self.sleep(pause * 60)
         finally:
+            if self.child and self.child.poll() is None:  # an unexpected error mid-cycle: don't leave it running
+                self.child.terminate()
+                try:
+                    self.child.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    self.child.kill()
+                    self.child.wait()
             self.stop_watch()
             self.record(event="stopped", code=code)
             self.say("stopped")

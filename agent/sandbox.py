@@ -44,6 +44,11 @@ def q(p: Path | str) -> str:
     return '"' + str(p).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def re_literal(p: Path | str) -> str:
+    """A path as a literal inside an SBPL #"..." regex: regex metacharacters escaped."""
+    return "".join("\\" + c if c in ".^$|?*+()[]{}\\" else c for c in str(p))
+
+
 VENVS = ("collector/.venv", "processor/.venv")
 
 
@@ -90,7 +95,10 @@ def profile(cline_dirs: list[Path] | None = None, allow_keys: bool = False, loca
               + " ".join(f"(subpath {q(p)})" for p in [root, *cline_dirs, *tmp]) + " (literal \"/dev/null\")"
               + " (literal \"/dev/tty\") (regex #\"^/dev/fd/\") (regex #\"^/dev/ttys\"))))",
               ";; secrets inside the project",
-              f"(deny file-read* (regex #\"^{root}/((collector|processor)/)?\\.env\") (literal {q(root / '.git' / 'config')}))",
+              f"(deny file-read* file-write* (regex #\"^{re_literal(root)}/((collector|processor)/)?\\.env\")"
+              f" (literal {q(root / '.git' / 'config')}))",
+              ";; git metadata: a changed hook or config would run code outside the sandbox on your next git command",
+              f"(deny file-write* (subpath {q(root / '.git')}))",
               f"(allow file-read* (literal {q(root / '.env.example')}) (literal {q(root / 'collector' / '.env.example')}))",
               ";; secrets in home and the keychain, whatever was allowed above"]
     for s in SECRET_DIRS:

@@ -4,7 +4,8 @@ Read `soul.md` and `.cline/rules/01-rag-agent.md` first, then work through this 
 YOUR JOB IS RUNNING THE PIPELINE, NOT DEBUGGING IT. You collect documents, keep them flowing into the vector
 database, watch the numbers, and REPORT anomalies with `./rag report_issue`; the user fixes them. Never read, edit,
 rewrite or test code (`collector/`, `processor/`, `unified/`, `agent/`, `tests/`) or your own instructions
-(`prompts/`, `.cline/`, `skills/`, `soul.md`); never write ad-hoc Python (`python -c`) to probe parsers or data.
+(`prompts/`, `.cline/`, `skills/`, `soul.md`) beyond reading `soul.md` and the rules file once at the start;
+never write ad-hoc Python (`python -c`) to probe parsers or data.
 Add searches and websites ONLY with `./rag add_queries --year-tag <year> --query "..."` (repeat `--query`, max 8
 per call) and `--add-domain <host>`. Don't edit the query plan any other way.
 
@@ -45,15 +46,15 @@ files, new companies, documents per company); they are the user's settings, neve
    same thing twice.
    - `artifacts_zero_rows` grew → `./rag inspect_artifact --zero-rows`; look at AT MOST 3
      with `./rag inspect_artifact <path>` (structured facts: pages, table headers, ISINs, dates,
-     keywords — no document text). If one is clearly a delisting order or a list of
-     delisted companies, report it and move on:
+     keywords; no document body, only the title as `untrusted_text`). If one is clearly a delisting order or
+     a list of delisted companies, report it and move on:
      `./rag report_issue --kind zero_rows --summary "<N> <document kind> gave 0 rows" --evidence <path> …`
      Do not open the parser, do not retry, do not try to explain why.
    - Priority-grid gaps (year × type with 0 records) after the plan for that year is done → add 2–4
      targeted queries with `./rag add_queries --year-tag <year> --query "..."` (use the discovery
      skill templates). Never delete existing queries.
    - `collector/data/processed/proposed_delisting_leads.csv` has companies with `already_in_master = False` →
-     add queries like `"<company name>" delisted NSE` with `./rag add_queries` (max 10 per cycle). No `site:` — any
+     add queries like `"<company name>" delisted NSE` with `./rag add_queries` (they count toward the 8 new queries per cycle below). No `site:` — any
      website that has the story is fine.
    - NEW WEBSITES: finding sources beyond NSE/BSE/SEBI is part of your job (NSE rate-limits hard, so it gets
      only a few requests per run). `indicators.new_domains_with_rows` lists websites outside `fetch_domains`

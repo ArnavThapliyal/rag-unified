@@ -320,3 +320,88 @@ def test_agent_mode_without_a_runner_is_blocked(repo, tmp_path, monkeypatch):
     assert lp.agent_cmd() == runner.resolve()             # rag-unified layout: ../agent/run_agent.sh
     lp.a.agent_cmd = str(tmp_path / "missing.sh")
     assert lp.agent_cmd() == runner.resolve()             # a missing --agent-cmd falls through
+
+
+# ---------------------------------------------------------------- Neon audit regressions
+
+def test_export_skips_in_batch_duplicates(repo):
+    """M-2: two docket rows pointing at one file: exported once, no PermissionError on the read-only copy."""
+    con = sqlite3.connect(repo / "data/docket.sqlite")
+    con.execute("INSERT INTO items VALUES (?,?,?,?,?,?,?,?)",
+                ("https://mirror.example.com/Delisting_Order-GONE.pdf", "search", "parsed", "2007",
+                 "data/raw/priority_2007/a.pdf", "content", "Order", 1.7e9 + 3))
+    con.commit()
+    con.close()
+    universe_sync.run()
+    res = export.run()
+    assert res["status"] == "ok", res
+    assert res["counts"]["exported"] == 2 and res["counts"]["duplicate_in_batch"] == 1
+
+
+def test_read_only_steps_take_no_lock(tmp_path):
+    """M-7: status runs while another status (or anything) holds its lock."""
+    with stepkit.step_lock(tmp_path, "status"):
+        assert stepkit.run_step("status", lambda: stepkit.result("status", "ok"), None)["status"] == "ok"
+
+
+def test_agent_mode_ignores_run_summaries_from_earlier_cycles(repo, tmp_path, monkeypatch):
+    """H-2: a stale low_disk_space summary must not block a session that ran no collection."""
+    runs = paths.root() / "logs" / "runs"
+    runs.mkdir(parents=True)
+    old = runs / "20200101-000000-1.json"
+    old.write_text(json.dumps({"stop_reason": "low_disk_space", "new_records": 0}))
+    os.utime(old, (1e9, 1e9))
+    lp = FakeLoop({})
+    lp.a.mode = "agent"
+    runner = tmp_path / "run_agent.sh"
+    runner.write_text("exit 0\n")
+    lp.a.agent_cmd = str(runner)
+    assert Loop.segment(lp)["status"] == "noop"
+    # a summary written during the session counts
+    runner.write_text(f"echo '{{\"stop_reason\": \"low_disk_space\"}}' > {runs}/20990101-000000-2.json\n")
+    assert Loop.segment(lp)["status"] == "blocked"
+
+
+def test_export_burst_is_capped(repo):
+    """H-6: --export-max-batches bounds the batches one cycle writes."""
+    lp = FakeLoop({"step": "collect", "status": "ok"})
+    lp.a.export_max_batches = 2
+    n = {"export": 0}
+
+    def step(name, *a):
+        if name == "export":
+            n["export"] += 1
+            return {"step": "export", "status": "ok", "more_waiting": 100}
+        return {"step": name, "status": "noop"}
+    lp.step = step
+    lp.cycle(1)
+    assert n["export"] == 2
+
+
+def test_job_holds_the_collect_lock(tmp_path, monkeypatch):
+    """H-4: a job and a collect step never run together: the job holds data/metadata/locks/collect.lock."""
+    import fcntl
+
+    import job
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "collect.py").write_text("import time; time.sleep(4)\n")
+    lock = tmp_path / "metadata" / "locks" / "collect.lock"
+    for k, v in {"ROOT": tmp_path, "METADATA": tmp_path / "metadata", "JOBS_DIR": tmp_path / "jobs",
+                 "JOB_FILE": tmp_path / "metadata" / "job.json", "COLLECT_LOCK": lock}.items():
+        monkeypatch.setattr(job, k, v)
+    monkeypatch.setattr(job, "log", lambda *a, **k: None)
+    # a collect step holds it: no job
+    with stepkit.step_lock(lock.parent, "collect"):
+        r = job.start([])
+    assert r["started"] is False and "collect lock" in r["reason"]
+    # a job holds it for as long as collect.py runs
+    r = job.start([])
+    assert r["started"] is True and r["next"] == "./rag job wait 1"
+    fd = os.open(lock, os.O_RDWR)
+    try:
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert stepkit.run_step("collect", lambda: stepkit.result("collect", "ok"), lock.parent)["status"] == "retry_later"
+    finally:
+        os.close(fd)
+        os.kill(r["pid"], 9)

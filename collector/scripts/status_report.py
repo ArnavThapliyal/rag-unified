@@ -80,7 +80,7 @@ def print_indicators(meta: dict) -> None:
         print(f" Docket: {dk['fetch_ready_now']} ready to fetch, {st.get('failed', 0)} retrying, "
               f"{dk['awaiting_parse']} awaiting parse, {st.get('parsed', 0)} parsed, {st.get('dead', 0)} dead, "
               f"{st.get('parked', 0)} parked ({dk['evidence_unfetched']} with delisting evidence) "
-              f"— scripts/docket.py --stats")
+              f"— ./rag docket --stats")
     print(f" Data audit: {ind['audit_errors']} errors, {ind['audit_warnings']} warnings "
           f"(data/metadata/dataset_audit.json)")
     eng = web_search.Search().report()
@@ -88,7 +88,7 @@ def print_indicators(meta: dict) -> None:
     provs = ", ".join(f"{n} {'✓' if v['ready'] else '✗'}" for n, v in eng["providers"].items())
     print(f" Search: {provs} | units {len(eng['usable'])} usable, {len(eng['benched'])} benched"
           + (f" (next back in {nxt} min)" if not eng["usable"] and eng["benched"] else "")
-          + " — details: scripts/web_search.py --engines")
+          + " — details: ./rag web_search --engines")
     open_issues = [i for i in report_issue.load() if i["status"] == "open"]
     print(f" Reported issues: {len(open_issues)} open (logs/issues.jsonl)"
           + (f" — latest: #{open_issues[-1]['id']} {open_issues[-1]['summary'][:70]}" if open_issues else ""))

@@ -180,3 +180,30 @@ def test_lost_worker_marks_only_its_file_failed(tmp_path):
     assert by_name["a.zip"] == (STATUS_FAILED, "worker process died (exit code -11)")
     assert by_name["never_seen.pdf"][0] == STATUS_FAILED and by_name["a.zip!one.html"][0] == "empty"
     assert run.summary()["files_failed"] == 2
+
+
+def _wedged(path, ctx):
+    """A parser stuck in native code: ignores SIGTERM and never yields."""
+    import signal
+    import time
+
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    while True:
+        time.sleep(1)
+    yield  # pragma: no cover
+
+
+def test_stalled_worker_that_ignores_sigterm_is_killed(tree, tmp_path, monkeypatch):
+    """Neon C-2: a stalled worker gets SIGKILL after the grace period; the run ends, nothing is left running."""
+    import multiprocessing as mp
+
+    monkeypatch.setenv("LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(indexer_mod, "MP_START_METHOD", "fork")   # so the children see the patched parser
+    monkeypatch.setattr(indexer_mod, "process_path", _wedged)
+    monkeypatch.setattr(indexer_mod, "WORKER_STALL_TIMEOUT_SECONDS", 1)
+    monkeypatch.setattr(indexer_mod, "_KILL_GRACE_SECONDS", 1)
+    indexer, _ = make_indexer(tmp_path, workers=1, embedder_factory=make_stub_embedder)
+    files = discover_files(tree)[:1]
+    summary = indexer.index_files(files, tree)
+    assert summary["files_failed"] == 1
+    assert not [p for p in mp.active_children() if p.name.startswith("worker")]

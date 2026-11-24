@@ -89,7 +89,8 @@ it prints; don't tail raw logs.
 
 ## You run the pipeline; the user debugs
 Never read or edit the code (`collector/scripts`, `collector/src`, `processor/`, `unified/`, `agent/`, `tests/`) or
-your own instructions (`prompts/`, `.cline/`, `skills/`, `soul.md`). Everything you need is in the tools' JSON output
+your own instructions (`prompts/`, `.cline/`, `skills/`, `soul.md`), apart from reading `soul.md` and this file once at the
+start. Everything you need is in the tools' JSON output
 (e.g. `./rag collect --dry-run` shows `search_cooldown_min_left`). Never write ad-hoc `python -c` probes of the
 parser or the data. When something looks wrong, report it with `./rag report_issue` (at most 3
 `./rag inspect_artifact` looks for evidence) and carry on.

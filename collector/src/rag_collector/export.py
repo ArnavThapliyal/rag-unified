@@ -217,6 +217,12 @@ def list_batches(outbox: Path) -> list[dict]:
 
 # ---------------------------------------------------------------- the step
 
+def batch_subpath(local_path: str) -> Path:
+    """Where a raw file goes inside a batch's files/: its path under data/raw, else its name."""
+    rel = Path(local_path)
+    return rel.relative_to("data/raw") if rel.parts[:2] == ("data", "raw") else Path(rel.name)
+
+
 def run(max_files: int = 500, include_irrelevant: bool = False, outbox: Path | None = None,
         dry_run: bool = False) -> dict:
     root = paths.root()
@@ -234,9 +240,11 @@ def run(max_files: int = 500, include_irrelevant: bool = False, outbox: Path | N
                         f.chmod(0o644)
                 shutil.rmtree(d, ignore_errors=True)
 
-    counts = {"candidates": 0, "already_exported": 0, "missing_raw_file": 0, "changed_during_copy": 0,
-              "exported": 0, "cloned": 0, "copied": 0, "bytes": 0}
+    counts = {"candidates": 0, "already_exported": 0, "duplicate_in_batch": 0, "missing_raw_file": 0,
+              "changed_during_copy": 0, "exported": 0, "cloned": 0, "copied": 0, "bytes": 0}
     pending = []
+    seen_sha: set[str] = set()
+    seen_dst: set[Path] = set()  # two docket rows can point at one file: copy it once (the copy is read-only)
     for it in candidates(include_irrelevant):
         counts["candidates"] += 1
         src = root / it["local_path"]
@@ -247,6 +255,12 @@ def run(max_files: int = 500, include_irrelevant: bool = False, outbox: Path | N
         if sha in exported:
             counts["already_exported"] += 1
             continue
+        dst_sub = batch_subpath(it["local_path"])
+        if sha in seen_sha or dst_sub in seen_dst:
+            counts["duplicate_in_batch"] += 1
+            continue
+        seen_sha.add(sha)
+        seen_dst.add(dst_sub)
         pending.append((it, src, sha))
     more_waiting = max(0, len(pending) - max_files)
     pending = pending[:max_files]
@@ -267,8 +281,7 @@ def run(max_files: int = 500, include_irrelevant: bool = False, outbox: Path | N
     arts = records_by_artifact(paths.processed())
     files = []
     for it, src, sha in pending:
-        rel = Path(it["local_path"])
-        sub = rel.relative_to("data/raw") if rel.parts[:2] == ("data", "raw") else Path(rel.name)
+        sub = batch_subpath(it["local_path"])
         dst = tmp / "files" / sub
         method = clone_file(src, dst)
         got = sha256_file(dst)

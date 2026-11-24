@@ -68,12 +68,13 @@ def step_lock(lock_dir: Path, name: str) -> Iterator[Path]:
         os.close(fd)
 
 
-def run_step(name: str, fn, lock_dir: Path, *args, **kwargs) -> dict:
+def run_step(name: str, fn, lock_dir: Path | None, *args, **kwargs) -> dict:
     """Run fn under the step's lock, time it, and turn exceptions into a failed result (never a traceback
-    instead of JSON). fn returns a result() dict."""
+    instead of JSON). fn returns a result() dict. lock_dir None: no lock (read-only steps, which may run
+    next to anything, including themselves)."""
     started, t0 = now_iso(), time.monotonic()
     try:
-        with step_lock(lock_dir, name):
+        with (step_lock(lock_dir, name) if lock_dir is not None else contextlib.nullcontext()):
             res = fn(*args, **kwargs)
     except LockBusy:
         res = result(name, "retry_later", "another run of this step holds its lock")

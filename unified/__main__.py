@@ -154,6 +154,9 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "runs":
         return cmd_runs(rest)
     if cmd == "_bg":
+        if len(rest) != 1:
+            print("usage: ./rag _bg <run_id> (internal: started by ./rag start)", file=sys.stderr)
+            return 2
         return bg.execute(rest[0])
     if cmd == "loop":
         from unified import loop

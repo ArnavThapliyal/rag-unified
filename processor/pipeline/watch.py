@@ -31,6 +31,7 @@ class Watch:
     def __init__(self, outbox: Path, poll: float, once: bool, workers: Optional[int], zfactor: bool = True):
         self.outbox, self.poll, self.once, self.workers, self.zfactor = Path(outbox), poll, once, workers, zfactor
         self.stopping = False
+        self.failures = 0
         self.log_path = LOG_DIR / "watch.jsonl"
 
     def on_term(self, *_: Any) -> None:
@@ -51,6 +52,8 @@ class Watch:
     def step(self, name: str, fn, *args) -> Dict[str, Any]:
         res = run_step(name, fn, STEP_LOCK_DIR, *args)
         self.record(res)
+        if res.get("status") == "failed":
+            self.failures += 1
         if res.get("reason") == "interrupted":
             self.stopping = True
         return res
@@ -93,7 +96,8 @@ class Watch:
         except KeyboardInterrupt:
             self.stopping = True
         print("■ stopped", file=sys.stderr, flush=True)
-        return 0
+        # --once is a single pass for a caller (./rag loop --once) that needs to know whether it worked
+        return 1 if self.once and self.failures else 0
 
 
 def main(argv: Optional[list] = None) -> int:

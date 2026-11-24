@@ -40,12 +40,22 @@ class Loop:
         self.a = a
         self.stopping = False
         self.child: subprocess.Popen | None = None
+        self.child_group = False  # the child leads its own process group (the agent session)
         self.log_path = paths.root() / "logs" / "continuous.jsonl"
 
     # --- control -------------------------------------------------------
     def on_signal(self, signum, _frame):
         self.stopping = True
-        if signum == signal.SIGTERM and self.child and self.child.poll() is None:
+        if not self.child or self.child.poll() is not None:
+            return
+        if self.child_group:
+            # the agent session runs in its own process group: interrupt all of it (bash, Cline, the progress
+            # filter) the way Ctrl-C would; run_agent.sh treats INT as "interrupted" and exits 130
+            try:
+                os.killpg(self.child.pid, signal.SIGINT)
+            except ProcessLookupError:
+                pass
+        elif signum == signal.SIGTERM:
             self.child.terminate()  # pipeline scripts stop gracefully on SIGTERM (common.graceful_sigterm)
 
     def stop_requested(self) -> bool:
@@ -68,10 +78,14 @@ class Loop:
             time.sleep(min(5, max(0.0, end - time.monotonic())))
 
     # --- running -------------------------------------------------------
-    def run(self, cmd: list[str], capture: bool) -> tuple[int, dict | None]:
-        self.child = subprocess.Popen(cmd, cwd=paths.root(), stdout=subprocess.PIPE if capture else None, text=True)
+    def run(self, cmd: list[str], capture: bool, group: bool = False) -> tuple[int, dict | None]:
+        self.child_group = group
+        self.child = subprocess.Popen(cmd, cwd=paths.root(), stdout=subprocess.PIPE if capture else None, text=True,
+                                      start_new_session=group)
+        if group and self.stopping:  # a signal that arrived before the child existed
+            self.on_signal(signal.SIGTERM, None)
         out, _ = self.child.communicate()
-        code, self.child = self.child.returncode, None
+        code, self.child, self.child_group = self.child.returncode, None, False
         if not capture:
             return code, None
         for line in reversed((out or "").strip().splitlines()):
@@ -95,12 +109,13 @@ class Loop:
                 return {"step": "agent", "status": "blocked",
                         "reason": "no agent runner (rag-unified's agent/run_agent.sh); use --agent-cmd or --mode deterministic"}
             self.say(f"collection segment: agent session ({agent})")
-            code, _ = self.run(["bash", str(agent)], capture=False)
+            started = time.time()
+            code, _ = self.run(["bash", str(agent)], capture=False, group=True)
             # run_agent.sh exits 0 when the agent completed its plan, 130 when interrupted, else 1;
             # the collector's own run summaries say what happened
             if code == 130 or self.stopping:
                 return {"step": "agent", "status": "failed", "reason": "interrupted"}
-            last = self.last_run_summary()
+            last = self.last_run_summary(since=started)  # never a summary left over from an earlier cycle
             stop = (last or {}).get("stop_reason") or ""
             if stop in ("low_disk_space", "network_unavailable"):
                 return {"step": "agent", "status": "blocked", "reason": stop}
@@ -120,10 +135,13 @@ class Loop:
         return None
 
     @staticmethod
-    def last_run_summary() -> dict | None:
+    def last_run_summary(since: float | None = None) -> dict | None:
+        """The newest collect.py run summary, only from runs written at or after `since` (epoch seconds)."""
         runs = sorted((paths.root() / "logs" / "runs").glob("*.json"))
         for p in reversed(runs):
             try:
+                if since is not None and p.stat().st_mtime < since:
+                    continue
                 return json.loads(p.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
@@ -142,7 +160,7 @@ class Loop:
         results = [seg]
         if not self.stop_requested():
             results.append(self.step("universe-sync"))
-        for _ in range(20):  # export in batches while documents are waiting
+        for _ in range(max(1, getattr(self.a, "export_max_batches", 20))):  # export while documents are waiting
             if self.stop_requested():
                 break
             ex = self.step("export", "--max-files", str(self.a.export_batch))
@@ -207,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mode", choices=("agent", "deterministic"), default="agent")
     ap.add_argument("--max-queries", type=int, default=10, help="deterministic mode: queries per cycle")
     ap.add_argument("--export-batch", type=int, default=500, help="documents per outbox batch")
+    ap.add_argument("--export-max-batches", type=int, default=20,
+                    help="outbox batches per cycle at most (./rag loop passes its free backpressure room)")
     ap.add_argument("--idle-min", type=float, default=30, help="pause after a cycle that found nothing new")
     ap.add_argument("--busy-pause-min", type=float, default=1, help="pause after a productive cycle")
     ap.add_argument("--network-retry-min", type=float, default=10)

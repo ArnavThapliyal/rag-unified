@@ -405,9 +405,19 @@ def main() -> int:
         step.update(status="error", stop_reason=f"{type(e).__name__}: {e}"[:300])
         log(traceback.format_exc()[-800:], level="ERROR", kind="run_error")
     finally:
-        for c in children.values():  # Ctrl-C / job.py stop reach the workers too (same process group)
+        # A completed run's workers are finishing on their own. Otherwise (SIGTERM to this process only, low disk,
+        # an error) they may not know yet: stop them now; they save their state on SIGTERM (graceful_sigterm).
+        done = step.get("status") == "completed"
+        if not done:
+            grace = time.monotonic() + 5  # after Ctrl-C they are already saving: don't interrupt that
+            while time.monotonic() < grace and any(c.poll() is None for c in children.values()):
+                time.sleep(0.2)
+            for c in children.values():
+                if c.poll() is None:
+                    c.terminate()
+        for c in children.values():
             try:
-                c.wait(timeout=120)
+                c.wait(timeout=120 if done else 30)
             except subprocess.TimeoutExpired:
                 c.terminate()
                 try:

@@ -114,7 +114,7 @@ def test_job_wait_counts_up_and_shows_run_progress(tmp_path, monkeypatch):
     monkeypatch.setattr(job, "alive", lambda pid: True)
     monkeypatch.setattr(job, "WAIT_MAX_S", 0)
     s = job.wait(3)
-    assert s["next"].endswith("job.py wait 4")
+    assert s["next"] == "./rag job wait 4"
     assert s["progress"] == ["[11:21:00] run_start: run start", "[11:23:00] fetch: OK https://x/a.pdf"]
 
 

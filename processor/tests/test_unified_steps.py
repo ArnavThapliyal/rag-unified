@@ -266,3 +266,27 @@ def test_stepkit_is_identical_to_the_collectors():
             assert other.read_bytes() == (REPO / "pipeline" / "stepkit.py").read_bytes()
             return
     pytest.skip("collector checkout not found next to this repo")
+
+
+def test_watch_once_exits_nonzero_when_a_step_failed(env, monkeypatch):
+    """Neon M-3: ./rag loop --once must see a failed ingest."""
+    import pipeline.watch as watch
+
+    monkeypatch.setattr(watch, "STEP_LOCK_DIR", env["tmp"] / "locks")
+    monkeypatch.setattr(watch, "STOP_FILE", env["tmp"] / "STOP")
+    monkeypatch.setattr(watch, "LOG_DIR", env["tmp"] / "logs")
+    w = watch.Watch(env["outbox"], poll=0, once=True, workers=0)
+    monkeypatch.setattr(w, "cycle", lambda: w.step("ingest", lambda: {"step": "ingest", "status": "failed",
+                                                                      "reason": "boom", "counts": {}}))
+    assert w.main() == 1
+    w2 = watch.Watch(env["outbox"], poll=0, once=True, workers=0)
+    monkeypatch.setattr(w2, "cycle", lambda: None)
+    assert w2.main() == 0
+
+
+def test_read_only_steps_run_while_their_lock_is_held(tmp_path):
+    """Neon M-7: status/health/quant-bracket take no lock, so a loop poll never gets retry_later."""
+    from pipeline import stepkit
+
+    with stepkit.step_lock(tmp_path, "status"):
+        assert stepkit.run_step("status", lambda: stepkit.result("status", "ok"), None)["status"] == "ok"
