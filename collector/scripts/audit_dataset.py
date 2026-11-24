@@ -106,8 +106,14 @@ def audit(rows: list[dict]) -> dict:
         if not r.get("order_date") and not r.get("effective_delisting_date"):
             flag(warnings, "no_date", r)
         y = r.get("calendar_year")
-        if y and not 2006 <= int(y) <= 2026:
-            flag(warnings, "year_out_of_range", r)
+        if y:
+            try:
+                yi = int(y)
+            except (TypeError, ValueError):
+                flag(errors, "invalid_calendar_year", r)
+            else:
+                if not 2006 <= yi <= 2026:
+                    flag(warnings, "year_out_of_range", r)
         name = (r.get("company_name") or "").strip()
         if LABEL_NAME_RE.search(name):
             flag(errors, "label_as_company_name", r)

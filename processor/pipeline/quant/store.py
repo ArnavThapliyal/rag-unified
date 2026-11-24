@@ -1,17 +1,19 @@
 """Quant store (SQLite): point-in-time universe, daily market data, quarterly fundamentals, Z calibrations.
 
-Moved from Unified_Pipeline's company_pipeline/storage.py (Sanidhya) without changing the logic; the company
-directory and raw market_records tables are dropped, and market records are normalized against
-pipeline.schema.EXTENDED_FIELDS, the single definition of the 50 market columns in this repo.
+Hardened from Unified_Pipeline's company_pipeline/storage.py (WAL + BEGIN IMMEDIATE + nested savepoints,
+nse_entities_isin_unique, PIT & recycled-symbol fixes, company profile/timeline, ISIN backfill).
+Market records are normalized against pipeline.schema.EXTENDED_FIELDS.
 """
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 import re
 import sqlite3
-from collections.abc import Mapping
+import time
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,7 @@ def normalize_market_record(record: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Unknown market data column(s): {', '.join(sorted(unknown))}")
     return {column: record.get(column) for column in EXTENDED_FIELDS}
 
+
 _NAME_STOP_RE = re.compile(
     r"\b(LTD|LIMITED|PVT|PRIVATE|THE|CO|COMPANY|CORPN?|CORPORATION|OF)\b"
 )
@@ -35,11 +38,65 @@ class QuantStore:
         self.database_path = Path(database_path)
         if str(self.database_path) != ":memory:":
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(str(self.database_path))
+        self._connection = sqlite3.connect(
+            str(self.database_path), timeout=30.0, isolation_level=None
+        )
         self._connection.row_factory = sqlite3.Row
+        self._txn_depth = 0
+        self._connection.execute("PRAGMA busy_timeout = 30000")
         self._connection.execute("PRAGMA foreign_keys = ON")
+        if str(self.database_path) != ":memory:":
+            for _attempt in range(10):
+                try:
+                    self._connection.execute("PRAGMA journal_mode = WAL")
+                    break
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower() or _attempt == 9:
+                        raise
+                    time.sleep(0.05 * (_attempt + 1))
+            self._connection.execute("PRAGMA synchronous = NORMAL")
         self._create_schema()
         self._migrate_schema()
+
+    @contextmanager
+    def _write_txn(self) -> Iterator[sqlite3.Connection]:
+        """Serialize writers with BEGIN IMMEDIATE and support nested savepoints."""
+        if self._txn_depth == 0:
+            self._connection.execute("BEGIN IMMEDIATE")
+            self._txn_depth = 1
+            try:
+                yield self._connection
+                self._connection.execute("COMMIT")
+            except BaseException:
+                try:
+                    self._connection.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+                raise
+            finally:
+                self._txn_depth = 0
+        else:
+            sp = f"sp_{self._txn_depth}"
+            self._connection.execute(f"SAVEPOINT {sp}")
+            self._txn_depth += 1
+            try:
+                yield self._connection
+                self._connection.execute(f"RELEASE SAVEPOINT {sp}")
+            except BaseException:
+                try:
+                    self._connection.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+                    self._connection.execute(f"RELEASE SAVEPOINT {sp}")
+                except sqlite3.Error:
+                    pass
+                raise
+            finally:
+                self._txn_depth -= 1
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        """Public write transaction context manager (supports nesting via savepoints)."""
+        with self._write_txn() as conn:
+            yield conn
 
     def close(self) -> None:
         self._connection.close()
@@ -50,6 +107,7 @@ class QuantStore:
     def __exit__(self, *_: object) -> None:
         self.close()
 
+    # ------------------------------------------------------------------
     def upsert_nse_entity(self, entity: Mapping[str, Any]) -> tuple[int, bool]:
         """Insert or update an NSE entity; return (entity_id, inserted)."""
         company_name = _clean_str(entity.get("company_name"))
@@ -68,11 +126,14 @@ class QuantStore:
         face_value = _to_float(entity.get("face_value"))
         latest_delisting_date = _clean_str(entity.get("latest_delisting_date"))
         latest_delisting_type = _clean_upper(entity.get("latest_delisting_type"))
+        suspension_date = _clean_str(entity.get("suspension_date"))
+        suspension_reason = _clean_str(entity.get("suspension_reason"))
+        surveillance_stage = _clean_str(entity.get("surveillance_stage"))
+        shares_outstanding = _to_int(entity.get("shares_outstanding"))
         source_url = _clean_str(entity.get("source_url"))
 
-        existing = self._find_existing_nse_entity(isin, nse_symbol, normalized_name)
-
-        with self._connection:
+        with self._write_txn():
+            existing = self._find_existing_nse_entity(isin, nse_symbol, normalized_name)
             if existing is None:
                 cursor = self._connection.execute(
                     """
@@ -80,8 +141,9 @@ class QuantStore:
                         isin, nse_symbol, company_name, normalized_name, series,
                         sector, industry, listing_date, listing_status,
                         paid_up_value, face_value, latest_delisting_date,
-                        latest_delisting_type, source_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        latest_delisting_type, suspension_date, suspension_reason,
+                        surveillance_stage, shares_outstanding, source_url
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         isin,
@@ -97,6 +159,10 @@ class QuantStore:
                         face_value,
                         latest_delisting_date,
                         latest_delisting_type,
+                        suspension_date,
+                        suspension_reason,
+                        surveillance_stage,
+                        shares_outstanding,
                         source_url,
                     ),
                 )
@@ -106,9 +172,11 @@ class QuantStore:
                 existing_status=existing["listing_status"],
                 existing_listing_date=existing["listing_date"],
                 existing_delisting_date=existing["latest_delisting_date"],
+                existing_suspension_date=existing["suspension_date"],
                 incoming_status=incoming_status,
                 incoming_listing_date=listing_date,
                 incoming_delisting_date=latest_delisting_date,
+                incoming_suspension_date=suspension_date,
             )
 
             merged_delisting_date = _max_non_empty(
@@ -127,6 +195,20 @@ class QuantStore:
                     )
                 )
                 else existing["latest_delisting_type"] or latest_delisting_type
+            )
+            merged_suspension_date = _max_non_empty(
+                existing["suspension_date"], suspension_date
+            )
+            merged_suspension_reason = (
+                suspension_reason or existing["suspension_reason"]
+            )
+            merged_surveillance_stage = (
+                surveillance_stage or existing["surveillance_stage"]
+            )
+            merged_shares = (
+                shares_outstanding
+                if shares_outstanding is not None and shares_outstanding > 0
+                else existing["shares_outstanding"]
             )
 
             # Prefer active listing symbol/name when entity is ACTIVE, else preserve existing non-empty.
@@ -157,6 +239,10 @@ class QuantStore:
                     face_value = ?,
                     latest_delisting_date = ?,
                     latest_delisting_type = ?,
+                    suspension_date = ?,
+                    suspension_reason = ?,
+                    surveillance_stage = ?,
+                    shares_outstanding = ?,
                     source_url = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
@@ -175,6 +261,10 @@ class QuantStore:
                     face_value if face_value is not None else existing["face_value"],
                     merged_delisting_date,
                     merged_delisting_type,
+                    merged_suspension_date,
+                    merged_suspension_reason,
+                    merged_surveillance_stage,
+                    merged_shares,
                     existing["source_url"] or source_url,
                     existing["id"],
                 ),
@@ -188,10 +278,6 @@ class QuantStore:
             raise ValueError("Delisting event requires a non-empty 'record_id'.")
         scope = _clean_upper(event.get("scope")) or "NSE_2006_2026"
         company_name = _clean_str(event.get("company_name")) or ""
-
-        existing = self._connection.execute(
-            "SELECT id FROM delisting_events WHERE record_id = ?", (record_id,)
-        ).fetchone()
 
         values = (
             entity_id,
@@ -219,7 +305,10 @@ class QuantStore:
             _clean_str(event.get("date_source")),
         )
 
-        with self._connection:
+        with self._write_txn():
+            existing = self._connection.execute(
+                "SELECT id FROM delisting_events WHERE record_id = ?", (record_id,)
+            ).fetchone()
             self._connection.execute(
                 """
                 INSERT INTO delisting_events (
@@ -257,6 +346,22 @@ class QuantStore:
                 """,
                 values,
             )
+            ev_date = _clean_str(event.get("effective_delisting_date")) or _clean_str(
+                event.get("order_date")
+            )
+            ev_type = _clean_upper(event.get("delisting_type"))
+            if scope in ("NSE_2006_2026", "PRE_2006") and ev_date:
+                self._connection.execute(
+                    """
+                    UPDATE nse_entities
+                    SET latest_delisting_date = ?,
+                        latest_delisting_type = COALESCE(?, latest_delisting_type),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                      AND (latest_delisting_date IS NULL OR latest_delisting_date <= ?)
+                    """,
+                    (ev_date, ev_type, entity_id, ev_date),
+                )
         return existing is None
 
     def list_delisting_events(
@@ -276,6 +381,74 @@ class QuantStore:
             params,
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def prune_delisting_events(self, scope: str, keep_record_ids: set[str]) -> int:
+        """Delete delisting_events in `scope` whose record_id is no longer in `keep_record_ids`."""
+        with self._write_txn():
+            existing = [
+                row["record_id"]
+                for row in self._connection.execute(
+                    "SELECT record_id FROM delisting_events WHERE scope = ?", (scope,)
+                ).fetchall()
+            ]
+            stale = [rid for rid in existing if rid not in keep_record_ids]
+            if not stale:
+                return 0
+            self._connection.executemany(
+                "DELETE FROM delisting_events WHERE scope = ? AND record_id = ?",
+                [(scope, rid) for rid in stale],
+            )
+            return len(stale)
+
+    def count_nse_entities(self, include_bse_only: bool = False) -> int:
+        if include_bse_only:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS cnt FROM nse_entities"
+            ).fetchone()
+        else:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS cnt FROM nse_entities WHERE listing_status != 'BSE_ONLY'"
+            ).fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
+    def count_delisting_events(self, scope: str | None = None) -> int:
+        if scope is not None:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS cnt FROM delisting_events WHERE scope = ?", (scope,)
+            ).fetchone()
+        else:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS cnt FROM delisting_events"
+            ).fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
+    def count_qualitative_filings(self) -> int:
+        row = self._connection.execute(
+            "SELECT COUNT(*) AS cnt FROM qualitative_filings"
+        ).fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
+    def get_nse_entity(
+        self, *, isin: str | None = None, nse_symbol: str | None = None
+    ) -> dict[str, Any] | None:
+        """Fetch a single NSE entity record by exact ISIN or NSE symbol."""
+        code = _clean_upper(isin)
+        sym = _clean_symbol(nse_symbol)
+        if code:
+            row = self._connection.execute(
+                "SELECT * FROM nse_entities WHERE isin = ? LIMIT 1", (code,)
+            ).fetchone()
+            if row is not None:
+                return dict(row)
+        if sym:
+            row = self._connection.execute(
+                "SELECT * FROM nse_entities WHERE nse_symbol = ? "
+                "ORDER BY (listing_status = 'ACTIVE') DESC, id ASC LIMIT 1",
+                (sym,),
+            ).fetchone()
+            if row is not None:
+                return dict(row)
+        return None
 
     def list_nse_entities(
         self,
@@ -356,12 +529,329 @@ class QuantStore:
 
             if included:
                 item = dict(row)
-                item["as_of_status"] = "ACTIVE_AT_DATE"
+                susp_date = row["suspension_date"]
+                is_relisted_after_susp = bool(
+                    row["listing_status"] == "ACTIVE"
+                    and listing_date
+                    and susp_date
+                    and susp_date < listing_date <= as_of_date
+                )
+                if (
+                    susp_date
+                    and susp_date <= as_of_date
+                    and not is_relisted_after_susp
+                    and (not subsequent_delisting_date or as_of_date < subsequent_delisting_date)
+                ):
+                    item["as_of_status"] = "SUSPENDED_AT_DATE"
+                else:
+                    item["as_of_status"] = "ACTIVE_AT_DATE"
                 item["subsequent_delisting_date"] = subsequent_delisting_date
                 results.append(item)
         return results
 
-    def _resolve_entity_id(self, isin: str | None, nse_symbol: str | None) -> int | None:
+    def backfill_entity_isin(
+        self,
+        nse_symbol: str,
+        isin: str,
+        observed_date: str | None = None,
+    ) -> bool:
+        """Safely attach a validated equity ISIN to an ISIN-less entity matching nse_symbol."""
+        sym = _clean_symbol(nse_symbol)
+        code = _clean_upper(isin)
+        if not sym or not code or not _is_valid_equity_isin(code):
+            return False
+
+        with self._write_txn():
+            owner = self._connection.execute(
+                "SELECT id FROM nse_entities WHERE isin = ? LIMIT 1", (code,)
+            ).fetchone()
+            if owner is not None:
+                return False
+
+            target = self._connection.execute(
+                """
+                SELECT * FROM nse_entities
+                WHERE nse_symbol = ? AND (isin IS NULL OR isin = '')
+                ORDER BY id LIMIT 1
+                """,
+                (sym,),
+            ).fetchone()
+            if target is None:
+                return False
+
+            if (
+                target["listing_status"] in ("DELISTED", "DELISTED_PRE_2006")
+                and target["latest_delisting_date"]
+                and observed_date
+                and observed_date[:10] > target["latest_delisting_date"][:10]
+            ):
+                return False
+
+            self._connection.execute(
+                """
+                UPDATE nse_entities SET isin = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (code, target["id"]),
+            )
+            self._connection.execute(
+                """
+                UPDATE delisting_events SET isin = ?
+                WHERE entity_id = ? AND (isin IS NULL OR isin = '')
+                """,
+                (code, target["id"]),
+            )
+        return True
+
+    def get_company_profile_and_timeline(
+        self,
+        identifier: str,
+        as_of_date: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Return a company's lifecycle status, latest quant snapshot, fundamentals, and qualitative timeline."""
+        ident = _clean_str(identifier)
+        if not ident:
+            return None
+        ident_upper = ident.upper()
+        norm_name = _normalize_nse_entity_name(ident)
+
+        entity_row = self._connection.execute(
+            "SELECT * FROM nse_entities WHERE isin = ? LIMIT 1", (ident_upper,)
+        ).fetchone()
+        if entity_row is None:
+            entity_row = self._connection.execute(
+                "SELECT * FROM nse_entities WHERE nse_symbol = ? "
+                "ORDER BY (listing_status = 'ACTIVE') DESC, id ASC LIMIT 1",
+                (ident_upper,),
+            ).fetchone()
+        if entity_row is None and norm_name:
+            entity_row = self._connection.execute(
+                "SELECT * FROM nse_entities WHERE normalized_name = ? ORDER BY id LIMIT 1",
+                (norm_name,),
+            ).fetchone()
+        if entity_row is None:
+            return None
+
+        entity = dict(entity_row)
+        entity_id = int(entity["id"])
+        nse_symbol = entity.get("nse_symbol")
+        d_cut = as_of_date[:10] if as_of_date else None
+        ts_cut = (
+            f"{as_of_date.strip()}T23:59:59"
+            if as_of_date and len(as_of_date.strip()) == 10
+            else (as_of_date.strip() if as_of_date else None)
+        )
+
+        all_events = [
+            dict(r)
+            for r in self._connection.execute(
+                """
+                SELECT * FROM delisting_events
+                WHERE entity_id = ?
+                ORDER BY COALESCE(effective_delisting_date, order_date, ''), id
+                """,
+                (entity_id,),
+            ).fetchall()
+        ]
+        if d_cut is not None:
+            delisting_events = [
+                ev
+                for ev in all_events
+                if (ev.get("effective_delisting_date") or ev.get("order_date"))
+                and (ev.get("effective_delisting_date") or ev.get("order_date")) <= d_cut
+            ]
+        else:
+            delisting_events = all_events
+
+        if d_cut is None:
+            status_as_of = entity["listing_status"]
+        else:
+            scope_events = [
+                ev
+                for ev in all_events
+                if ev.get("scope") in ("NSE_2006_2026", "PRE_2006")
+                and (ev.get("effective_delisting_date") or ev.get("order_date"))
+            ]
+            past_delistings = sorted(
+                (ev.get("effective_delisting_date") or ev.get("order_date"))
+                for ev in scope_events
+                if (ev.get("effective_delisting_date") or ev.get("order_date")) <= d_cut
+            )
+            future_delistings = sorted(
+                (ev.get("effective_delisting_date") or ev.get("order_date"))
+                for ev in scope_events
+                if (ev.get("effective_delisting_date") or ev.get("order_date")) > d_cut
+            )
+            ld = entity.get("listing_date")
+            sd = entity.get("suspension_date")
+            if past_delistings:
+                last_delist = past_delistings[-1]
+                if (
+                    entity["listing_status"] == "ACTIVE"
+                    and ld
+                    and ld > last_delist
+                    and d_cut >= ld
+                ):
+                    status_as_of = "ACTIVE"
+                else:
+                    status_as_of = "DELISTED"
+            elif ld and d_cut < ld and not future_delistings:
+                status_as_of = "NOT_YET_LISTED"
+            elif sd and sd <= d_cut and not (
+                entity["listing_status"] == "ACTIVE" and ld and sd < ld <= d_cut
+            ):
+                status_as_of = "SUSPENDED"
+            elif entity["listing_status"] == "PROPOSED_DELISTING":
+                status_as_of = "PROPOSED_DELISTING"
+            else:
+                status_as_of = "ACTIVE"
+
+        if d_cut is not None:
+            mkt_row = self._connection.execute(
+                """
+                SELECT * FROM daily_market_data
+                WHERE (entity_id = ? OR (entity_id IS NULL AND ? IS NOT NULL AND nse_symbol = ?))
+                  AND trade_date <= ?
+                ORDER BY trade_date DESC, id DESC LIMIT 1
+                """,
+                (entity_id, nse_symbol, nse_symbol, d_cut),
+            ).fetchone()
+        else:
+            mkt_row = self._connection.execute(
+                """
+                SELECT * FROM daily_market_data
+                WHERE (entity_id = ? OR (entity_id IS NULL AND ? IS NOT NULL AND nse_symbol = ?))
+                ORDER BY trade_date DESC, id DESC LIMIT 1
+                """,
+                (entity_id, nse_symbol, nse_symbol),
+            ).fetchone()
+        latest_market_snapshot = (
+            {k: v for k, v in dict(mkt_row).items() if k != "raw_json"}
+            if mkt_row is not None
+            else None
+        )
+
+        if ts_cut is not None:
+            fund_row = self._connection.execute(
+                """
+                SELECT * FROM quarterly_fundamentals
+                WHERE (entity_id = ? OR (entity_id IS NULL AND ? IS NOT NULL AND nse_symbol = ?))
+                  AND broadcast_timestamp <= ?
+                ORDER BY broadcast_timestamp DESC, quarter_ending DESC, id DESC LIMIT 1
+                """,
+                (entity_id, nse_symbol, nse_symbol, ts_cut),
+            ).fetchone()
+        else:
+            fund_row = self._connection.execute(
+                """
+                SELECT * FROM quarterly_fundamentals
+                WHERE (entity_id = ? OR (entity_id IS NULL AND ? IS NOT NULL AND nse_symbol = ?))
+                ORDER BY broadcast_timestamp DESC, quarter_ending DESC, id DESC LIMIT 1
+                """,
+                (entity_id, nse_symbol, nse_symbol),
+            ).fetchone()
+        latest_fundamentals = dict(fund_row) if fund_row is not None else None
+
+        if ts_cut is not None:
+            filings_rows = self._connection.execute(
+                """
+                SELECT * FROM qualitative_filings
+                WHERE (entity_id = ? OR (entity_id IS NULL AND ? IS NOT NULL AND nse_symbol = ?))
+                  AND broadcast_timestamp IS NOT NULL
+                  AND broadcast_timestamp <= ?
+                ORDER BY broadcast_timestamp, id
+                """,
+                (entity_id, nse_symbol, nse_symbol, ts_cut),
+            ).fetchall()
+        else:
+            filings_rows = self._connection.execute(
+                """
+                SELECT * FROM qualitative_filings
+                WHERE (entity_id = ? OR (entity_id IS NULL AND ? IS NOT NULL AND nse_symbol = ?))
+                ORDER BY COALESCE(broadcast_timestamp, ''), id
+                """,
+                (entity_id, nse_symbol, nse_symbol),
+            ).fetchall()
+        qualitative_filings = [dict(r) for r in filings_rows]
+
+        timeline: list[dict[str, Any]] = []
+        if entity.get("listing_date") and (d_cut is None or entity["listing_date"] <= d_cut):
+            timeline.append(
+                {
+                    "date": entity["listing_date"],
+                    "event_type": "LISTING",
+                    "summary": f"Listed on NSE ({entity.get('series') or 'EQ'})",
+                    "source_url": entity.get("source_url"),
+                    "local_artifact_path": None,
+                }
+            )
+        if entity.get("suspension_date") and (
+            d_cut is None or entity["suspension_date"] <= d_cut
+        ):
+            reason = entity.get("suspension_reason") or "Trading suspended"
+            timeline.append(
+                {
+                    "date": entity["suspension_date"],
+                    "event_type": "SUSPENSION",
+                    "summary": reason,
+                    "source_url": entity.get("source_url"),
+                    "local_artifact_path": None,
+                }
+            )
+        for filing in qualitative_filings:
+            ts = filing.get("broadcast_timestamp")
+            if not ts:
+                continue
+            headline = (
+                filing.get("announcement_headline")
+                or filing.get("announcement_category")
+                or "Qualitative Filing"
+            )
+            timeline.append(
+                {
+                    "date": ts,
+                    "event_type": filing.get("announcement_category") or "FILING",
+                    "summary": headline,
+                    "source_url": filing.get("source_url"),
+                    "local_artifact_path": filing.get("local_artifact_path"),
+                }
+            )
+        for ev in delisting_events:
+            ev_dt = ev.get("effective_delisting_date") or ev.get("order_date")
+            if not ev_dt:
+                continue
+            timeline.append(
+                {
+                    "date": ev_dt,
+                    "event_type": f"DELISTING_{ev.get('delisting_type') or 'EVENT'}",
+                    "summary": f"{ev.get('scope')}: {ev.get('delisting_type') or 'OTHER'}",
+                    "source_url": ev.get("source_url"),
+                    "local_artifact_path": ev.get("local_artifact_path"),
+                }
+            )
+        timeline.sort(key=lambda item: (item["date"], item["event_type"]))
+
+        return {
+            "as_of_date": as_of_date,
+            "status_as_of": status_as_of,
+            "entity": entity,
+            "latest_market_snapshot": latest_market_snapshot,
+            "latest_fundamentals": latest_fundamentals,
+            "delisting_events": delisting_events,
+            "qualitative_filings": qualitative_filings,
+            "timeline": timeline,
+        }
+
+    # ------------------------------------------------------------------
+    # Typed quantitative, fundamental & qualitative tables
+    # ------------------------------------------------------------------
+
+    def _resolve_entity_id(
+        self,
+        isin: str | None,
+        nse_symbol: str | None,
+        observed_date: str | None = None,
+    ) -> int | None:
         if isin:
             row = self._connection.execute(
                 "SELECT id FROM nse_entities WHERE isin = ? LIMIT 1", (isin,)
@@ -369,10 +859,21 @@ class QuantStore:
             if row is not None:
                 return int(row["id"])
         if nse_symbol:
-            row = self._connection.execute(
-                "SELECT id FROM nse_entities WHERE nse_symbol = ? LIMIT 1", (nse_symbol,)
-            ).fetchone()
-            if row is not None:
+            rows = self._connection.execute(
+                "SELECT * FROM nse_entities WHERE nse_symbol = ? ORDER BY id",
+                (nse_symbol,),
+            ).fetchall()
+            for row in rows:
+                if isin and row["isin"] and row["isin"] != isin:
+                    continue
+                if (
+                    isin
+                    and observed_date
+                    and row["listing_status"] in ("DELISTED", "DELISTED_PRE_2006")
+                    and row["latest_delisting_date"]
+                    and observed_date[:10] > row["latest_delisting_date"][:10]
+                ):
+                    continue
                 return int(row["id"])
         return None
 
@@ -384,57 +885,87 @@ class QuantStore:
             raise ValueError("Daily market row requires 'nse_symbol' and 'trade_date'.")
 
         isin = _clean_upper(record.get("isin"))
-        entity_id = _to_int(record.get("entity_id")) or self._resolve_entity_id(
-            isin, nse_symbol
-        )
-
-        existing = self._connection.execute(
-            "SELECT id FROM daily_market_data WHERE nse_symbol = ? AND trade_date = ?",
-            (nse_symbol, trade_date),
-        ).fetchone()
-
+        shares_in = _to_int(record.get("shares_outstanding"))
+        close_val = _to_float(record.get("close"))
+        mcap_val = _to_float(record.get("market_cap_cr"))
         raw_json = json.dumps(dict(record), ensure_ascii=False, sort_keys=True)
-        values = (
-            entity_id,
-            isin,
-            nse_symbol,
-            _clean_upper(record.get("series")),
-            _clean_str(record.get("sector")),
-            _clean_str(record.get("industry")),
-            trade_date,
-            _to_float(record.get("open")),
-            _to_float(record.get("high")),
-            _to_float(record.get("low")),
-            _to_float(record.get("close")),
-            _to_int(record.get("total_traded_qty")),
-            _to_float(record.get("turnover_cr")),
-            _to_int(record.get("deliverable_qty")),
-            _to_float(record.get("delivery_pct")),
-            _to_int(record.get("no_of_trades")),
-            _to_float(record.get("market_cap_cr")),
-            _to_float(record.get("free_float_pct")),
-            _to_sqlite_bool(record.get("is_fno")),
-            _to_sqlite_bool(record.get("bulk_block_deal_flag")),
-            _to_float(record.get("futures_oi")),
-            _to_float(record.get("oi_change_pct")),
-            _to_float(record.get("pe_ratio")),
-            _to_float(record.get("sector_median_pe")),
-            _to_float(record.get("ev_ebitda")),
-            _to_float(record.get("peg_ratio")),
-            _to_float(record.get("z_factor_mcap")),
-            _to_float(record.get("mcap_percentile")),
-            _to_int(record.get("mcap_rank")),
-            _clean_upper(record.get("size_bracket")),
-            _to_float(record.get("deflated_mcap_cr")),
-            _to_float(record.get("equivalent_mcap_cr")),
-            _to_sqlite_bool(record.get("in_target_bracket")),
-            _to_float(record.get("target_bracket_distance_z")),
-            _to_float(record.get("implied_bracket_min_cr")),
-            _to_float(record.get("implied_bracket_max_cr")),
-            raw_json,
-        )
 
-        with self._connection:
+        with self._write_txn():
+            if isin and nse_symbol:
+                self.backfill_entity_isin(nse_symbol, isin, observed_date=trade_date)
+
+            entity_id = _to_int(record.get("entity_id")) or self._resolve_entity_id(
+                isin, nse_symbol, observed_date=trade_date
+            )
+
+            if shares_in is not None and shares_in > 0 and entity_id is not None:
+                self._connection.execute(
+                    """
+                    UPDATE nse_entities
+                    SET shares_outstanding = COALESCE(?, shares_outstanding),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (shares_in, entity_id),
+                )
+
+            if mcap_val is None and close_val is not None and close_val > 0:
+                shares = shares_in
+                if (shares is None or shares <= 0) and entity_id is not None:
+                    ent_row = self._connection.execute(
+                        "SELECT shares_outstanding FROM nse_entities WHERE id = ?",
+                        (entity_id,),
+                    ).fetchone()
+                    if ent_row is not None:
+                        shares = ent_row["shares_outstanding"]
+                if shares is not None and shares > 0:
+                    mcap_val = round(close_val * shares / 1e7, 4)
+
+            existing = self._connection.execute(
+                "SELECT id FROM daily_market_data WHERE nse_symbol = ? AND trade_date = ?",
+                (nse_symbol, trade_date),
+            ).fetchone()
+
+            values = (
+                entity_id,
+                isin,
+                nse_symbol,
+                _clean_upper(record.get("series")),
+                _clean_str(record.get("sector")),
+                _clean_str(record.get("industry")),
+                trade_date,
+                _to_float(record.get("open")),
+                _to_float(record.get("high")),
+                _to_float(record.get("low")),
+                close_val,
+                _to_int(record.get("total_traded_qty")),
+                _to_float(record.get("turnover_cr")),
+                _to_int(record.get("deliverable_qty")),
+                _to_float(record.get("delivery_pct")),
+                _to_int(record.get("no_of_trades")),
+                mcap_val,
+                _to_float(record.get("free_float_pct")),
+                _to_sqlite_bool(record.get("is_fno")),
+                _to_sqlite_bool(record.get("bulk_block_deal_flag")),
+                _to_float(record.get("futures_oi")),
+                _to_float(record.get("oi_change_pct")),
+                _to_float(record.get("pe_ratio")),
+                _to_float(record.get("sector_median_pe")),
+                _to_float(record.get("ev_ebitda")),
+                _to_float(record.get("peg_ratio")),
+                _to_float(record.get("z_factor_mcap")),
+                _to_float(record.get("mcap_percentile")),
+                _to_int(record.get("mcap_rank")),
+                _clean_upper(record.get("size_bracket")),
+                _to_float(record.get("deflated_mcap_cr")),
+                _to_float(record.get("equivalent_mcap_cr")),
+                _to_sqlite_bool(record.get("in_target_bracket")),
+                _to_float(record.get("target_bracket_distance_z")),
+                _to_float(record.get("implied_bracket_min_cr")),
+                _to_float(record.get("implied_bracket_max_cr")),
+                raw_json,
+            )
+
             self._connection.execute(
                 """
                 INSERT INTO daily_market_data (
@@ -489,6 +1020,12 @@ class QuantStore:
             )
         return existing is None
 
+    def count_daily_market_rows(self) -> int:
+        row = self._connection.execute(
+            "SELECT COUNT(*) AS cnt FROM daily_market_data"
+        ).fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
     def list_daily_market_rows(
         self, trade_date: str | None = None, nse_symbol: str | None = None
     ) -> list[dict[str, Any]]:
@@ -535,14 +1072,15 @@ class QuantStore:
 
     def save_z_calibration(self, cal: Mapping[str, Any]) -> int:
         """Persist a target-bracket Z-factor calibration record."""
-        with self._connection:
+        with self._write_txn():
             cursor = self._connection.execute(
                 """
                 INSERT INTO z_factor_calibrations (
                     target_min_cr, target_max_cr, ref_log_center, ref_log_scale,
                     z_min, z_max, source, reference_start, reference_end,
-                    reference_dates_count, robust, mainboard_only_stats
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    reference_dates_count, robust, mainboard_only_stats,
+                    trailing_days, z_buffer, value_field
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     float(cal["target_min_cr"]),
@@ -557,6 +1095,9 @@ class QuantStore:
                     int(cal.get("reference_dates_count") or 0),
                     1 if cal.get("robust") else 0,
                     1 if cal.get("mainboard_only_stats", True) else 0,
+                    int(cal.get("trailing_days") or 1),
+                    float(cal.get("z_buffer") or 0.0),
+                    _clean_str(cal.get("value_field")) or "market_cap_cr",
                 ),
             )
         return int(cursor.lastrowid)
@@ -571,6 +1112,9 @@ class QuantStore:
         out = dict(row)
         out["robust"] = bool(out["robust"])
         out["mainboard_only_stats"] = bool(out["mainboard_only_stats"])
+        out["trailing_days"] = int(out.get("trailing_days") or 1)
+        out["z_buffer"] = float(out.get("z_buffer") or 0.0)
+        out["value_field"] = out.get("value_field") or "market_cap_cr"
         return out
 
     def list_target_bracket_stocks(
@@ -631,42 +1175,42 @@ class QuantStore:
             )
 
         isin = _clean_upper(record.get("isin"))
-        entity_id = _to_int(record.get("entity_id")) or self._resolve_entity_id(
-            isin, nse_symbol
-        )
+        with self._write_txn():
+            entity_id = _to_int(record.get("entity_id")) or self._resolve_entity_id(
+                isin, nse_symbol, observed_date=(broadcast_timestamp or quarter_ending)
+            )
 
-        existing = self._connection.execute(
-            """
-            SELECT id FROM quarterly_fundamentals
-            WHERE nse_symbol = ? AND quarter_ending = ? AND broadcast_timestamp = ?
-            """,
-            (nse_symbol, quarter_ending, broadcast_timestamp),
-        ).fetchone()
+            existing = self._connection.execute(
+                """
+                SELECT id FROM quarterly_fundamentals
+                WHERE nse_symbol = ? AND quarter_ending = ? AND broadcast_timestamp = ?
+                """,
+                (nse_symbol, quarter_ending, broadcast_timestamp),
+            ).fetchone()
 
-        values = (
-            entity_id,
-            isin,
-            nse_symbol,
-            quarter_ending,
-            broadcast_timestamp,
-            _to_float(record.get("sales_growth_yoy")),
-            _to_float(record.get("sales_growth_qoq")),
-            _to_float(record.get("ebitda_margin_pct")),
-            _to_float(record.get("pat_growth_yoy")),
-            _to_float(record.get("eps_ttm")),
-            _to_float(record.get("roce_pct")),
-            _to_float(record.get("roe_pct")),
-            _to_float(record.get("debt_to_equity")),
-            _to_float(record.get("interest_coverage")),
-            _to_float(record.get("cash_flow_from_ops")),
-            _to_float(record.get("promoter_holding_pct")),
-            _to_float(record.get("promoter_pledge_pct")),
-            _to_float(record.get("fii_holding_chg_qoq")),
-            _to_float(record.get("dii_holding_chg_qoq")),
-            _to_float(record.get("retail_holding_chg_qoq")),
-        )
+            values = (
+                entity_id,
+                isin,
+                nse_symbol,
+                quarter_ending,
+                broadcast_timestamp,
+                _to_float(record.get("sales_growth_yoy")),
+                _to_float(record.get("sales_growth_qoq")),
+                _to_float(record.get("ebitda_margin_pct")),
+                _to_float(record.get("pat_growth_yoy")),
+                _to_float(record.get("eps_ttm")),
+                _to_float(record.get("roce_pct")),
+                _to_float(record.get("roe_pct")),
+                _to_float(record.get("debt_to_equity")),
+                _to_float(record.get("interest_coverage")),
+                _to_float(record.get("cash_flow_from_ops")),
+                _to_float(record.get("promoter_holding_pct")),
+                _to_float(record.get("promoter_pledge_pct")),
+                _to_float(record.get("fii_holding_chg_qoq")),
+                _to_float(record.get("dii_holding_chg_qoq")),
+                _to_float(record.get("retail_holding_chg_qoq")),
+            )
 
-        with self._connection:
             self._connection.execute(
                 """
                 INSERT INTO quarterly_fundamentals (
@@ -718,8 +1262,8 @@ class QuantStore:
         """Insert a qualitative filing deterministically by content hash."""
         isin = _clean_upper(record.get("isin"))
         nse_symbol = _clean_symbol(record.get("nse_symbol"))
-        entity_id = _to_int(record.get("entity_id")) or self._resolve_entity_id(
-            isin, nse_symbol
+        obs_date = _clean_str(record.get("broadcast_timestamp")) or _clean_str(
+            record.get("trade_date")
         )
 
         payload = {
@@ -749,12 +1293,14 @@ class QuantStore:
             )
         ).hexdigest()
 
-        existing = self._connection.execute(
-            "SELECT id FROM qualitative_filings WHERE filing_hash = ?",
-            (filing_hash,),
-        ).fetchone()
-
-        with self._connection:
+        with self._write_txn():
+            entity_id = _to_int(record.get("entity_id")) or self._resolve_entity_id(
+                isin, nse_symbol, observed_date=obs_date
+            )
+            existing = self._connection.execute(
+                "SELECT id FROM qualitative_filings WHERE filing_hash = ?",
+                (filing_hash,),
+            ).fetchone()
             self._connection.execute(
                 """
                 INSERT INTO qualitative_filings (
@@ -807,46 +1353,53 @@ class QuantStore:
         return [dict(row) for row in rows]
 
     def ingest_unified_market_record(self, record: Mapping[str, Any]) -> dict[str, bool]:
-        """Persist a canonical 50-column market record into raw and typed tables."""
+        """Persist a canonical 50-column market record into typed tables atomically."""
         normalized = normalize_market_record(record)
+        with self._write_txn():
+            daily_upserted = False
+            if _clean_symbol(normalized.get("nse_symbol")) and _clean_str(
+                normalized.get("trade_date")
+            ):
+                daily_upserted = self.upsert_daily_market_row(normalized)
 
-        daily_upserted = False
-        if _clean_symbol(normalized.get("nse_symbol")) and _clean_str(
-            normalized.get("trade_date")
-        ):
-            daily_upserted = self.upsert_daily_market_row(normalized)
-
-        fundamental_upserted = False
-        if _clean_symbol(normalized.get("nse_symbol")) and _clean_str(
-            normalized.get("quarter_ending")
-        ):
-            fundamental_payload = dict(normalized)
-            fundamental_payload["broadcast_timestamp"] = (
-                _clean_str(normalized.get("broadcast_timestamp"))
-                or _clean_str(normalized.get("trade_date"))
-                or _clean_str(normalized.get("quarter_ending"))
+            fundamental_upserted = False
+            bcast_ts = _clean_str(normalized.get("broadcast_timestamp")) or _clean_str(
+                normalized.get("trade_date")
             )
-            fundamental_upserted = self.upsert_quarterly_fundamental(fundamental_payload)
+            if (
+                _clean_symbol(normalized.get("nse_symbol"))
+                and _clean_str(normalized.get("quarter_ending"))
+                and bcast_ts
+            ):
+                fundamental_payload = dict(normalized)
+                fundamental_payload["broadcast_timestamp"] = bcast_ts
+                fundamental_upserted = self.upsert_quarterly_fundamental(
+                    fundamental_payload
+                )
 
-        qualitative_fields = (
-            "surveillance_stage",
-            "announcement_category",
-            "announcement_headline",
-            "announcement_body_md",
-            "concall_commentary_md",
-            "concall_guidance_md",
-            "sast_insider_activity",
-            "bulk_block_deal_participants",
-        )
-        qualitative_inserted = False
-        if any(normalized.get(field) is not None for field in qualitative_fields):
-            qualitative_inserted = self.upsert_qualitative_filing(normalized)
+            qualitative_fields = (
+                "surveillance_stage",
+                "announcement_category",
+                "announcement_headline",
+                "announcement_body_md",
+                "concall_commentary_md",
+                "concall_guidance_md",
+                "sast_insider_activity",
+                "bulk_block_deal_participants",
+            )
+            qualitative_inserted = False
+            if any(normalized.get(field) is not None for field in qualitative_fields):
+                qualitative_inserted = self.upsert_qualitative_filing(normalized)
 
         return {
             "daily_upserted": daily_upserted,
             "fundamental_upserted": fundamental_upserted,
             "qualitative_inserted": qualitative_inserted,
         }
+
+    # ------------------------------------------------------------------
+    # Internal matchers & schema initialization
+    # ------------------------------------------------------------------
 
     def _find_existing_nse_entity(
         self,
@@ -888,8 +1441,7 @@ class QuantStore:
         return None
 
     def _create_schema(self) -> None:
-        self._connection.executescript(
-            """
+        ddl = """
             CREATE TABLE IF NOT EXISTS nse_entities (
                 id INTEGER PRIMARY KEY,
                 isin TEXT,
@@ -905,20 +1457,20 @@ class QuantStore:
                 face_value REAL,
                 latest_delisting_date TEXT,
                 latest_delisting_type TEXT,
+                suspension_date TEXT,
+                suspension_reason TEXT,
+                surveillance_stage TEXT,
+                shares_outstanding INTEGER,
                 source_url TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
-
             CREATE INDEX IF NOT EXISTS nse_entities_isin_idx
                 ON nse_entities(isin);
-
             CREATE INDEX IF NOT EXISTS nse_entities_symbol_idx
                 ON nse_entities(nse_symbol);
-
             CREATE INDEX IF NOT EXISTS nse_entities_norm_name_idx
                 ON nse_entities(normalized_name);
-
             CREATE INDEX IF NOT EXISTS nse_entities_status_idx
                 ON nse_entities(listing_status);
 
@@ -948,10 +1500,8 @@ class QuantStore:
                 review_flags TEXT,
                 date_source TEXT
             );
-
             CREATE INDEX IF NOT EXISTS delisting_events_entity_idx
                 ON delisting_events(entity_id);
-
             CREATE INDEX IF NOT EXISTS delisting_events_scope_idx
                 ON delisting_events(scope);
 
@@ -996,13 +1546,10 @@ class QuantStore:
                 raw_json TEXT,
                 UNIQUE(nse_symbol, trade_date)
             );
-
             CREATE INDEX IF NOT EXISTS daily_market_trade_date_idx
                 ON daily_market_data(trade_date);
-
             CREATE INDEX IF NOT EXISTS daily_market_isin_date_idx
                 ON daily_market_data(isin, trade_date);
-
             CREATE INDEX IF NOT EXISTS daily_market_entity_date_idx
                 ON daily_market_data(entity_id, trade_date);
 
@@ -1020,6 +1567,9 @@ class QuantStore:
                 reference_dates_count INTEGER NOT NULL DEFAULT 0,
                 robust INTEGER NOT NULL DEFAULT 0,
                 mainboard_only_stats INTEGER NOT NULL DEFAULT 1,
+                trailing_days INTEGER NOT NULL DEFAULT 1,
+                z_buffer REAL NOT NULL DEFAULT 0.0,
+                value_field TEXT NOT NULL DEFAULT 'market_cap_cr',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -1047,7 +1597,6 @@ class QuantStore:
                 retail_holding_chg_qoq REAL,
                 UNIQUE(nse_symbol, quarter_ending, broadcast_timestamp)
             );
-
             CREATE INDEX IF NOT EXISTS quarterly_fundamentals_sym_ts_idx
                 ON quarterly_fundamentals(nse_symbol, broadcast_timestamp);
 
@@ -1070,22 +1619,23 @@ class QuantStore:
                 local_artifact_path TEXT,
                 confidence_status TEXT
             );
-
             CREATE INDEX IF NOT EXISTS qualitative_filings_sym_ts_idx
                 ON qualitative_filings(nse_symbol, broadcast_timestamp);
-
             CREATE INDEX IF NOT EXISTS qualitative_filings_entity_idx
                 ON qualitative_filings(entity_id);
             """
-        )
+        with self._write_txn():
+            for stmt in ddl.split(";"):
+                if stmt.strip():
+                    self._connection.execute(stmt)
 
     def _migrate_schema(self) -> None:
-        existing_cols = {
-            row["name"]
-            for row in self._connection.execute(
-                "PRAGMA table_info(daily_market_data)"
-            ).fetchall()
-        }
+        new_entity_cols = (
+            ("suspension_date", "TEXT"),
+            ("suspension_reason", "TEXT"),
+            ("surveillance_stage", "TEXT"),
+            ("shares_outstanding", "INTEGER"),
+        )
         new_cols = (
             ("mcap_rank", "INTEGER"),
             ("equivalent_mcap_cr", "REAL"),
@@ -1094,11 +1644,44 @@ class QuantStore:
             ("implied_bracket_min_cr", "REAL"),
             ("implied_bracket_max_cr", "REAL"),
         )
-        with self._connection:
+        new_cal_cols = (
+            ("trailing_days", "INTEGER NOT NULL DEFAULT 1"),
+            ("z_buffer", "REAL NOT NULL DEFAULT 0.0"),
+            ("value_field", "TEXT NOT NULL DEFAULT 'market_cap_cr'"),
+        )
+        with self._write_txn():
+            entity_cols = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(nse_entities)"
+                ).fetchall()
+            }
+            existing_cols = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(daily_market_data)"
+                ).fetchall()
+            }
+            cal_cols = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(z_factor_calibrations)"
+                ).fetchall()
+            }
+            for col_name, col_type in new_entity_cols:
+                if col_name not in entity_cols:
+                    self._connection.execute(
+                        f"ALTER TABLE nse_entities ADD COLUMN {col_name} {col_type}"
+                    )
             for col_name, col_type in new_cols:
                 if col_name not in existing_cols:
                     self._connection.execute(
                         f"ALTER TABLE daily_market_data ADD COLUMN {col_name} {col_type}"
+                    )
+            for col_name, col_type in new_cal_cols:
+                if col_name not in cal_cols:
+                    self._connection.execute(
+                        f"ALTER TABLE z_factor_calibrations ADD COLUMN {col_name} {col_type}"
                     )
             self._connection.execute(
                 """
@@ -1106,6 +1689,21 @@ class QuantStore:
                     ON daily_market_data(trade_date, in_target_bracket)
                 """
             )
+            dup_isin = self._connection.execute(
+                """
+                SELECT isin FROM nse_entities
+                WHERE isin IS NOT NULL AND isin != ''
+                GROUP BY isin HAVING COUNT(*) > 1 LIMIT 1
+                """
+            ).fetchone()
+            if dup_isin is None:
+                self._connection.execute(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS nse_entities_isin_unique
+                        ON nse_entities(isin)
+                        WHERE isin IS NOT NULL AND isin != ''
+                    """
+                )
 
 
 def _normalize_name(value: str | None) -> str:
@@ -1198,14 +1796,29 @@ def _max_non_empty(first: str | None, second: str | None) -> str | None:
     return first or second
 
 
+def _is_valid_equity_isin(code: str) -> bool:
+    if not re.fullmatch(r"IN[E9][A-Z0-9]{8}[0-9]", code or ""):
+        return False
+    if code[7:9] in {"07", "08", "14", "16"}:
+        return False
+    digits = "".join(str(int(c, 36)) for c in code)
+    total = 0
+    for idx, digit in enumerate(reversed(digits)):
+        num = int(digit) * (2 if idx % 2 else 1)
+        total += num - 9 if num > 9 else num
+    return total % 10 == 0
+
+
 def _resolve_merged_status(
     *,
     existing_status: str,
     existing_listing_date: str | None,
     existing_delisting_date: str | None,
+    existing_suspension_date: str | None = None,
     incoming_status: str,
     incoming_listing_date: str | None,
     incoming_delisting_date: str | None,
+    incoming_suspension_date: str | None = None,
 ) -> str:
     delisted_statuses = {"DELISTED", "DELISTED_PRE_2006"}
 
@@ -1214,8 +1827,38 @@ def _resolve_merged_status(
     if incoming_status == "BSE_ONLY" and existing_status != "BSE_ONLY":
         return existing_status
 
-    if existing_status in delisted_statuses and incoming_status == "PROPOSED_DELISTING":
+    if existing_status in delisted_statuses and incoming_status in ("PROPOSED_DELISTING", "SUSPENDED"):
         return existing_status
+
+    if existing_status == "SUSPENDED" and incoming_status in delisted_statuses:
+        return incoming_status
+
+    if existing_status == "PROPOSED_DELISTING" and incoming_status == "SUSPENDED":
+        return "SUSPENDED"
+
+    if existing_status == "PROPOSED_DELISTING" and incoming_status == "ACTIVE":
+        return "PROPOSED_DELISTING"
+
+    if existing_status == "SUSPENDED" and incoming_status == "PROPOSED_DELISTING":
+        return "SUSPENDED"
+
+    if existing_status == "ACTIVE" and incoming_status == "SUSPENDED":
+        if (
+            existing_listing_date
+            and incoming_suspension_date
+            and incoming_suspension_date < existing_listing_date
+        ):
+            return "ACTIVE"
+        return "SUSPENDED"
+
+    if existing_status == "SUSPENDED" and incoming_status == "ACTIVE":
+        if (
+            incoming_listing_date
+            and existing_suspension_date
+            and existing_suspension_date < incoming_listing_date
+        ):
+            return "ACTIVE"
+        return "SUSPENDED"
 
     if existing_status == "ACTIVE" and incoming_status in delisted_statuses:
         if (
@@ -1265,6 +1908,8 @@ def _is_row_active_at_trade_date(row: Mapping[str, Any]) -> bool:
         if delisting_date and listing_date and delisting_date < listing_date:
             if delisting_date <= trade_date < listing_date:
                 return False
+        elif listing_date and trade_date < listing_date:
+            return False
         return True
 
     return True

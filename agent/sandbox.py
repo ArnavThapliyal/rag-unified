@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,11 @@ ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.path.expanduser("~")).resolve()
 SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/rag-collector", ".netrc", ".docker",
                "Library/Keychains", ".kube", ".npmrc", ".pypirc", ".git-credentials", ".gitconfig"]
+READONLY_PROJECT_PATHS = [
+    ".git", "agent", "unified", "collector/scripts", "collector/src", "collector/tests",
+    "processor/pipeline", "processor/config", "processor/tests", "scripts", "tests",
+    ".cline", "skills", "prompts", "soul.md", "rag",
+]
 
 
 def q(p: Path | str) -> str:
@@ -45,8 +51,8 @@ def q(p: Path | str) -> str:
 
 
 def re_literal(p: Path | str) -> str:
-    """A path as a literal inside an SBPL #"..." regex: regex metacharacters escaped."""
-    return "".join("\\" + c if c in ".^$|?*+()[]{}\\" else c for c in str(p))
+    """Escape a filesystem path for use inside an SBPL POSIX ERE regex literal (#\"...\")."""
+    return re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", str(p)).replace('"', '\\"')
 
 
 VENVS = ("collector/.venv", "processor/.venv")
@@ -55,17 +61,27 @@ VENVS = ("collector/.venv", "processor/.venv")
 def runtime_dirs() -> list[Path]:
     """Read-only locations under $HOME that the pipeline's runtimes need."""
     out = []
+    seen = set()
     for v in VENVS:
         venv_py = ROOT / v / "bin" / "python"
+        py_exe = str(venv_py) if venv_py.exists() else sys.executable
         try:
-            base = subprocess.run([str(venv_py), "-c", "import sys; print(sys.base_prefix)"], capture_output=True,
-                                  text=True, timeout=30).stdout.strip()
-            if base:
-                out.append(Path(base).resolve())
+            prefixes = subprocess.run(
+                [py_exe, "-c", "import sys; print(sys.base_prefix); print(sys.prefix)"],
+                capture_output=True, text=True, timeout=30,
+            ).stdout.splitlines()
+            for p_str in prefixes:
+                p_str = p_str.strip()
+                if p_str:
+                    resolved = Path(p_str).resolve()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        out.append(resolved)
         except (OSError, subprocess.SubprocessError):
             pass
         venv = (ROOT / v).resolve()
-        if venv.exists() and not venv.is_relative_to(ROOT):
+        if venv.exists() and not venv.is_relative_to(ROOT) and venv not in seen:
+            seen.add(venv)
             out.append(venv)                     # a .venv symlinked to another checkout
     hf = Path(os.environ.get("HF_HOME") or HOME / ".cache" / "huggingface")
     out.append(hf.resolve() if hf.exists() else hf)
@@ -97,13 +113,14 @@ def profile(cline_dirs: list[Path] | None = None, allow_keys: bool = False, loca
               ";; secrets inside the project",
               f"(deny file-read* file-write* (regex #\"^{re_literal(root)}/((collector|processor)/)?\\.env\")"
               f" (literal {q(root / '.git' / 'config')}))",
-              ";; git metadata: a changed hook or config would run code outside the sandbox on your next git command",
-              f"(deny file-write* (subpath {q(root / '.git')}))",
+              ";; code, hooks and git metadata: read-only inside the sandbox so the agent cannot modify its own guard",
+              *(f"(deny file-write* (subpath {q(root / p)}))" for p in READONLY_PROJECT_PATHS),
               f"(allow file-read* (literal {q(root / '.env.example')}) (literal {q(root / 'collector' / '.env.example')}))",
               ";; secrets in home and the keychain, whatever was allowed above"]
     for s in SECRET_DIRS:
         p = HOME / s
         if s == ".config/rag-collector" and allow_keys:
+            lines.append(f"(allow file-read* (subpath {q(p)}))")
             continue
         lines.append(f"(deny file-read* file-write* (subpath {q(p)}))")
     lines.append('(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd"))')

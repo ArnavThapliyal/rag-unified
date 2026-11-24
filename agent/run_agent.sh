@@ -46,7 +46,8 @@ MODEL="${CLINE_MODEL:-qwen/qwen3.8-27b}"
 MAX_RESTARTS="${CLINE_MAX_RESTARTS:-5}"
 MAX_COOLDOWNS="${CLINE_MAX_COOLDOWNS:-12}"  # search-engine suspensions to wait out
 RESTART_DELAY="${CLINE_RESTART_DELAY:-15}"
-PY="$COL/.venv/bin/python"
+PY="${NSE_PYTHON:-$COL/.venv/bin/python}"
+[ -x "$PY" ] || PY="$(command -v python3)"
 CLINE_BIN="$COL/node_modules/.bin/cline"   # not npx: no npm registry check, and it runs inside the sandbox
 SANDBOX_MODE="${CLINE_SANDBOX:-auto}"
 SESSIONS="$COL/logs/agent_sessions"   # where the collector's scripts look for the running session
@@ -94,8 +95,8 @@ if [ "$SANDBOX_MODE" != "0" ]; then
 fi
 
 interrupted=0
-trap 'interrupted=1' INT
-trap 'rm -f "$SESSIONS/current"' EXIT
+trap 'interrupted=1' INT TERM
+trap 'rm -f "$SESSIONS/current" "$SESSIONS/.current.$$"' EXIT
 
 TIMEOUT_ARGS=()
 [ -n "$TIMEOUT" ] && TIMEOUT_ARGS=(--timeout "$TIMEOUT")
@@ -108,7 +109,8 @@ while :; do
   SESSION="agent-$(date +%Y%m%d-%H%M%S)"
   OUT="$SESSIONS/$SESSION.jsonl"
   export NSE_AGENT_SESSION="$SESSION"
-  echo "$SESSION" > "$SESSIONS/current"  # Cline's hub keeps the first session's env; scripts read this
+  printf '%s\n' "$SESSION" > "$SESSIONS/.current.$$" \
+    && mv -f "$SESSIONS/.current.$$" "$SESSIONS/current"  # Cline's hub keeps the first session's env; scripts read this
   "$PY" "$COL/scripts/common.py" log "agent session $SESSION started (model: $MODEL, prompt: $PROMPT_FILE, timeout: ${TIMEOUT:-none}, attempt $((attempt + 1)))" >/dev/null
   echo "■ $SESSION — raw log: $OUT"
 

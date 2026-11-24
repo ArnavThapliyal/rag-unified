@@ -21,6 +21,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -76,13 +77,32 @@ def run_mode() -> str | None:
         return None
 
 
+def _atomic_write(path: Path, text: str, mode: int | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        if mode is not None:
+            os.fchmod(fd, mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
 def set_run_mode(mode: str) -> None:
     """Write run_limits.mode (and default caps if missing) into config/query_plan.json, after a backup."""
     cfg = json.loads(PLAN.read_text(encoding="utf-8"))
     rl = cfg.get("run_limits") or {}
     cfg["run_limits"] = {"mode": mode, **{k: rl.get(k, v) for k, v in LIMIT_DEFAULTS.items()}}
     backup(PLAN)
-    PLAN.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _atomic_write(PLAN, json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
 
 
 def tracked_by_git(path: Path) -> bool:
@@ -214,8 +234,7 @@ def merge_env(path: Path, updates: dict[str, str], overwrite: set[str] = frozens
     if changed or not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         backup(path)
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        path.chmod(0o600)
+        _atomic_write(path, "\n".join(lines) + "\n", mode=0o600)
     return changed
 
 

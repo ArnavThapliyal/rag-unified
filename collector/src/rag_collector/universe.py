@@ -8,11 +8,13 @@ tables live in rag-processor's quant stage).
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 import re
 import sqlite3
-from collections.abc import Mapping
+import time
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +28,65 @@ class UniverseStore:
         self.database_path = Path(database_path)
         if str(self.database_path) != ":memory:":
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(str(self.database_path))
+        self._connection = sqlite3.connect(
+            str(self.database_path), timeout=30.0, isolation_level=None
+        )
         self._connection.row_factory = sqlite3.Row
+        self._txn_depth = 0
+        self._connection.execute("PRAGMA busy_timeout = 30000")
         self._connection.execute("PRAGMA foreign_keys = ON")
+        if str(self.database_path) != ":memory:":
+            for _attempt in range(10):
+                try:
+                    self._connection.execute("PRAGMA journal_mode = WAL")
+                    break
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower() or _attempt == 9:
+                        raise
+                    time.sleep(0.05 * (_attempt + 1))
+            self._connection.execute("PRAGMA synchronous = NORMAL")
         self._create_schema()
+        self._migrate_schema()
+
+    @contextmanager
+    def _write_txn(self) -> Iterator[sqlite3.Connection]:
+        """Serialize writers with BEGIN IMMEDIATE and support nested savepoints."""
+        if self._txn_depth == 0:
+            self._connection.execute("BEGIN IMMEDIATE")
+            self._txn_depth = 1
+            try:
+                yield self._connection
+                self._connection.execute("COMMIT")
+            except BaseException:
+                try:
+                    self._connection.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+                raise
+            finally:
+                self._txn_depth = 0
+        else:
+            sp = f"sp_{self._txn_depth}"
+            self._connection.execute(f"SAVEPOINT {sp}")
+            self._txn_depth += 1
+            try:
+                yield self._connection
+                self._connection.execute(f"RELEASE SAVEPOINT {sp}")
+            except BaseException:
+                try:
+                    self._connection.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+                    self._connection.execute(f"RELEASE SAVEPOINT {sp}")
+                except sqlite3.Error:
+                    pass
+                raise
+            finally:
+                self._txn_depth -= 1
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        """Public write transaction context manager (supports nesting via savepoints)."""
+        with self._write_txn() as conn:
+            yield conn
 
     def close(self) -> None:
         self._connection.close()
@@ -58,11 +115,14 @@ class UniverseStore:
         face_value = _to_float(entity.get("face_value"))
         latest_delisting_date = _clean_str(entity.get("latest_delisting_date"))
         latest_delisting_type = _clean_upper(entity.get("latest_delisting_type"))
+        suspension_date = _clean_str(entity.get("suspension_date"))
+        suspension_reason = _clean_str(entity.get("suspension_reason"))
+        surveillance_stage = _clean_str(entity.get("surveillance_stage"))
+        shares_outstanding = _to_int(entity.get("shares_outstanding"))
         source_url = _clean_str(entity.get("source_url"))
 
-        existing = self._find_existing_nse_entity(isin, nse_symbol, normalized_name)
-
-        with self._connection:
+        with self._write_txn():
+            existing = self._find_existing_nse_entity(isin, nse_symbol, normalized_name)
             if existing is None:
                 cursor = self._connection.execute(
                     """
@@ -70,8 +130,9 @@ class UniverseStore:
                         isin, nse_symbol, company_name, normalized_name, series,
                         sector, industry, listing_date, listing_status,
                         paid_up_value, face_value, latest_delisting_date,
-                        latest_delisting_type, source_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        latest_delisting_type, suspension_date, suspension_reason,
+                        surveillance_stage, shares_outstanding, source_url
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         isin,
@@ -87,6 +148,10 @@ class UniverseStore:
                         face_value,
                         latest_delisting_date,
                         latest_delisting_type,
+                        suspension_date,
+                        suspension_reason,
+                        surveillance_stage,
+                        shares_outstanding,
                         source_url,
                     ),
                 )
@@ -96,9 +161,11 @@ class UniverseStore:
                 existing_status=existing["listing_status"],
                 existing_listing_date=existing["listing_date"],
                 existing_delisting_date=existing["latest_delisting_date"],
+                existing_suspension_date=existing["suspension_date"],
                 incoming_status=incoming_status,
                 incoming_listing_date=listing_date,
                 incoming_delisting_date=latest_delisting_date,
+                incoming_suspension_date=suspension_date,
             )
 
             merged_delisting_date = _max_non_empty(
@@ -117,6 +184,20 @@ class UniverseStore:
                     )
                 )
                 else existing["latest_delisting_type"] or latest_delisting_type
+            )
+            merged_suspension_date = _max_non_empty(
+                existing["suspension_date"], suspension_date
+            )
+            merged_suspension_reason = (
+                suspension_reason or existing["suspension_reason"]
+            )
+            merged_surveillance_stage = (
+                surveillance_stage or existing["surveillance_stage"]
+            )
+            merged_shares = (
+                shares_outstanding
+                if shares_outstanding is not None and shares_outstanding > 0
+                else existing["shares_outstanding"]
             )
 
             # Prefer active listing symbol/name when entity is ACTIVE, else preserve existing non-empty.
@@ -147,6 +228,10 @@ class UniverseStore:
                     face_value = ?,
                     latest_delisting_date = ?,
                     latest_delisting_type = ?,
+                    suspension_date = ?,
+                    suspension_reason = ?,
+                    surveillance_stage = ?,
+                    shares_outstanding = ?,
                     source_url = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
@@ -165,6 +250,10 @@ class UniverseStore:
                     face_value if face_value is not None else existing["face_value"],
                     merged_delisting_date,
                     merged_delisting_type,
+                    merged_suspension_date,
+                    merged_suspension_reason,
+                    merged_surveillance_stage,
+                    merged_shares,
                     existing["source_url"] or source_url,
                     existing["id"],
                 ),
@@ -178,10 +267,6 @@ class UniverseStore:
             raise ValueError("Delisting event requires a non-empty 'record_id'.")
         scope = _clean_upper(event.get("scope")) or "NSE_2006_2026"
         company_name = _clean_str(event.get("company_name")) or ""
-
-        existing = self._connection.execute(
-            "SELECT id FROM delisting_events WHERE record_id = ?", (record_id,)
-        ).fetchone()
 
         values = (
             entity_id,
@@ -209,7 +294,10 @@ class UniverseStore:
             _clean_str(event.get("date_source")),
         )
 
-        with self._connection:
+        with self._write_txn():
+            existing = self._connection.execute(
+                "SELECT id FROM delisting_events WHERE record_id = ?", (record_id,)
+            ).fetchone()
             self._connection.execute(
                 """
                 INSERT INTO delisting_events (
@@ -247,7 +335,7 @@ class UniverseStore:
                 """,
                 values,
             )
-        return existing is None
+            return existing is None
 
     def list_delisting_events(
         self, scope: str | None = None, entity_id: int | None = None
@@ -266,6 +354,41 @@ class UniverseStore:
             params,
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def prune_delisting_events(self, scope: str, keep_record_ids: set[str]) -> int:
+        """Delete delisting_events in `scope` whose record_id is no longer in `keep_record_ids`."""
+        with self._write_txn():
+            existing = [
+                row["record_id"]
+                for row in self._connection.execute(
+                    "SELECT record_id FROM delisting_events WHERE scope = ?", (scope,)
+                ).fetchall()
+            ]
+            stale = [rid for rid in existing if rid not in keep_record_ids]
+            if not stale:
+                return 0
+            self._connection.executemany(
+                "DELETE FROM delisting_events WHERE scope = ? AND record_id = ?",
+                [(scope, rid) for rid in stale],
+            )
+            return len(stale)
+
+    def count_nse_entities(self, include_bse_only: bool = False) -> int:
+        if include_bse_only:
+            row = self._connection.execute("SELECT COUNT(*) AS cnt FROM nse_entities").fetchone()
+        else:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS cnt FROM nse_entities WHERE listing_status != 'BSE_ONLY'"
+            ).fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
+    def count_delisting_events(self) -> int:
+        row = self._connection.execute("SELECT COUNT(*) AS cnt FROM delisting_events").fetchone()
+        return int(row["cnt"]) if row is not None else 0
+
+    def count_qualitative_filings(self) -> int:
+        row = self._connection.execute("SELECT COUNT(*) AS cnt FROM qualitative_filings").fetchone()
+        return int(row["cnt"]) if row is not None else 0
 
     def list_nse_entities(
         self,
@@ -401,12 +524,11 @@ class UniverseStore:
             )
         ).hexdigest()
 
-        existing = self._connection.execute(
-            "SELECT id FROM qualitative_filings WHERE filing_hash = ?",
-            (filing_hash,),
-        ).fetchone()
-
-        with self._connection:
+        with self._write_txn():
+            existing = self._connection.execute(
+                "SELECT id FROM qualitative_filings WHERE filing_hash = ?",
+                (filing_hash,),
+            ).fetchone()
             self._connection.execute(
                 """
                 INSERT INTO qualitative_filings (
@@ -438,7 +560,7 @@ class UniverseStore:
                     _clean_upper(record.get("confidence_status")),
                 ),
             )
-        return existing is None
+            return existing is None
 
     def list_qualitative_filings(
         self, nse_symbol: str | None = None, as_of_timestamp: str | None = None
@@ -498,8 +620,7 @@ class UniverseStore:
         return None
 
     def _create_schema(self) -> None:
-        self._connection.executescript(
-            """
+        ddl = """
             CREATE TABLE IF NOT EXISTS nse_entities (
                 id INTEGER PRIMARY KEY,
                 isin TEXT,
@@ -515,6 +636,10 @@ class UniverseStore:
                 face_value REAL,
                 latest_delisting_date TEXT,
                 latest_delisting_type TEXT,
+                suspension_date TEXT,
+                suspension_reason TEXT,
+                surveillance_stage TEXT,
+                shares_outstanding INTEGER,
                 source_url TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -590,8 +715,47 @@ class UniverseStore:
 
             CREATE INDEX IF NOT EXISTS qualitative_filings_entity_idx
                 ON qualitative_filings(entity_id);
-            """
+        """
+        with self._write_txn():
+            for stmt in ddl.split(";"):
+                stmt = stmt.strip()
+                if stmt:
+                    self._connection.execute(stmt)
+
+    def _migrate_schema(self) -> None:
+        new_entity_cols = (
+            ("suspension_date", "TEXT"),
+            ("suspension_reason", "TEXT"),
+            ("surveillance_stage", "TEXT"),
+            ("shares_outstanding", "INTEGER"),
         )
+        with self._write_txn():
+            entity_cols = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(nse_entities)"
+                ).fetchall()
+            }
+            for col_name, col_type in new_entity_cols:
+                if col_name not in entity_cols:
+                    self._connection.execute(
+                        f"ALTER TABLE nse_entities ADD COLUMN {col_name} {col_type}"
+                    )
+            dup_isin = self._connection.execute(
+                """
+                SELECT isin FROM nse_entities
+                WHERE isin IS NOT NULL AND isin != ''
+                GROUP BY isin HAVING COUNT(*) > 1 LIMIT 1
+                """
+            ).fetchone()
+            if dup_isin is None:
+                self._connection.execute(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS nse_entities_isin_unique
+                        ON nse_entities(isin)
+                        WHERE isin IS NOT NULL AND isin != ''
+                    """
+                )
 
 
 def _normalize_name(value: str | None) -> str:
@@ -689,9 +853,11 @@ def _resolve_merged_status(
     existing_status: str,
     existing_listing_date: str | None,
     existing_delisting_date: str | None,
+    existing_suspension_date: str | None = None,
     incoming_status: str,
     incoming_listing_date: str | None,
     incoming_delisting_date: str | None,
+    incoming_suspension_date: str | None = None,
 ) -> str:
     delisted_statuses = {"DELISTED", "DELISTED_PRE_2006"}
 
@@ -700,8 +866,38 @@ def _resolve_merged_status(
     if incoming_status == "BSE_ONLY" and existing_status != "BSE_ONLY":
         return existing_status
 
-    if existing_status in delisted_statuses and incoming_status == "PROPOSED_DELISTING":
+    if existing_status in delisted_statuses and incoming_status in ("PROPOSED_DELISTING", "SUSPENDED"):
         return existing_status
+
+    if existing_status == "SUSPENDED" and incoming_status in delisted_statuses:
+        return incoming_status
+
+    if existing_status == "PROPOSED_DELISTING" and incoming_status == "SUSPENDED":
+        return "SUSPENDED"
+
+    if existing_status == "PROPOSED_DELISTING" and incoming_status == "ACTIVE":
+        return "PROPOSED_DELISTING"
+
+    if existing_status == "SUSPENDED" and incoming_status == "PROPOSED_DELISTING":
+        return "SUSPENDED"
+
+    if existing_status == "ACTIVE" and incoming_status == "SUSPENDED":
+        if (
+            existing_listing_date
+            and incoming_suspension_date
+            and incoming_suspension_date < existing_listing_date
+        ):
+            return "ACTIVE"
+        return "SUSPENDED"
+
+    if existing_status == "SUSPENDED" and incoming_status == "ACTIVE":
+        if (
+            incoming_listing_date
+            and existing_suspension_date
+            and existing_suspension_date < incoming_listing_date
+        ):
+            return "ACTIVE"
+        return "SUSPENDED"
 
     if existing_status == "ACTIVE" and incoming_status in delisted_statuses:
         if (

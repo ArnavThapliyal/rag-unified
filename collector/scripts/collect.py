@@ -37,8 +37,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -54,7 +56,7 @@ import polite_fetcher
 import run_limits
 import web_search
 from common import (
-    atomic_write_text,
+    atomic_write_text, file_lock,
     CONFIG, METADATA, PROCESSED, ROOT, RUNS, agent_session, check_disk,
     emit, log, now_iso, polite_sleep, run_id,
 )
@@ -70,15 +72,41 @@ PY = sys.executable
 
 def load_state() -> dict:
     if STATE.exists():
-        return json.loads(STATE.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(STATE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                data.setdefault("queries", {})
+                data.setdefault("blocked_domains", [])
+                return data
+        except (OSError, ValueError) as e:
+            log(f"collection_state.json unreadable ({e}); starting from empty state",
+                level="WARN", kind="state_corrupt")
     return {"queries": {}, "blocked_domains": []}
 
 
 def save_state(state: dict) -> None:
-    METADATA.mkdir(parents=True, exist_ok=True)
-    tmp = STATE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, indent=1, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(STATE)
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(STATE.parent / f".{STATE.name}.lock"):
+        disk: dict = {}
+        if STATE.exists():
+            try:
+                loaded = json.loads(STATE.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    disk = loaded
+            except (OSError, ValueError):
+                disk = {}
+        merged = dict(disk)
+        for k, v in state.items():
+            if k not in ("queries", "blocked_domains", "engines_suspended_until"):
+                merged[k] = v
+        merged["queries"] = {**(disk.get("queries") or {}), **(state.get("queries") or {})}
+        merged["blocked_domains"] = sorted(set(disk.get("blocked_domains") or []) | set(state.get("blocked_domains") or []))
+        if "engines_suspended_until" in disk or "engines_suspended_until" in state:
+            merged["engines_suspended_until"] = max(
+                float(disk.get("engines_suspended_until") or 0),
+                float(state.get("engines_suspended_until") or 0),
+            )
+        atomic_write_text(STATE, json.dumps(merged, indent=1, ensure_ascii=False))
 
 
 def plan_items(plan: dict, phase: str | None) -> list[dict]:
@@ -119,11 +147,26 @@ def search_ready() -> dict:
     return {p.name: p.health() for p in web_search.Search().providers}
 
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
 def mark_stale_runs(current: str) -> None:
     """Runs left at status "running" were killed without cleanup (e.g. by a tool timeout)."""
     for p in RUNS.glob("*.json"):
         if p.stem == current:
             continue
+        m = re.search(r"-(\d+)$", p.stem)
+        if m:
+            pid = int(m.group(1))
+            if pid != os.getpid() and _pid_alive(pid):
+                continue
         try:
             r = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -276,6 +319,10 @@ def stop_children(children: dict, status: str | None, grace_s: float = 5, wait_s
                 c.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 c.kill()
+                try:
+                    c.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
 
 
 def main() -> int:
@@ -343,6 +390,18 @@ def main() -> int:
               "next": [t["query"] for t in todo[:5]]})
         return 0
 
+    lock_fd = None
+    if os.environ.get("NSE_COLLECT_LOCK_HELD") != "1":
+        lock_path = METADATA / "locks" / "collect.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(lock_fd)
+            emit({"status": "busy", "error": "another collection run is already active"})
+            return 1
+
     os.environ.pop("NSE_RUN_ID", None)  # every collect.py invocation is its own run (workers inherit it)
     rid = run_id()
     RUNS.mkdir(parents=True, exist_ok=True)
@@ -386,12 +445,15 @@ def main() -> int:
         if wait_s > 0:
             step.update(status="error", stop_reason="search_engines_suspended", finished_at=now_iso())
             write_summary()
+            if lock_fd is not None:
+                os.close(lock_fd)
             emit({"run_id": rid, "status": "error", "stop_reason": "search_engines_suspended",
                   "retry_after_min": round(wait_s / 60), "hint": "--harvest-only still works"})
             return 1
 
     fetch_out, proc_out = RUNS / f".{rid}.fetch.json", RUNS / f".{rid}.process.json"
     marker = RUNS / f".{rid}.discovering"  # exists while Discovery runs: the fetch worker waits for new items
+    fetch_marker = RUNS / f".{rid}.fetching"  # exists while fetch_worker runs: avoids PID-reuse race
     stop = run_limits.StopFile(RUNS / f".{rid}.stop")  # the first stage to reach a cap writes the reason here
     cap = {k: str(limits[k] or "all") for k in run_limits.CAPS}
     children: dict[str, subprocess.Popen] = {}
@@ -401,11 +463,14 @@ def main() -> int:
             if stage == "all" and todo:
                 marker.touch()
                 follow = ["--follow", str(marker), "--follow-pid", str(os.getpid())]
+            fetch_marker.touch()
             fw = spawn("fetch_worker.py", "--max-files", cap["max_files"], "--max-docs-per-company",
-                       cap["max_docs_per_company"], "--stop-file", str(stop.path), *follow, out=fetch_out)
+                       cap["max_docs_per_company"], "--stop-file", str(stop.path),
+                       "--running-marker", str(fetch_marker), *follow, out=fetch_out)
             children["fetch_worker"] = fw
             if stage != "fetch":
                 children["process_worker"] = (spawn("process_worker.py", "--batch", str(a.process_every), "--follow", str(fw.pid),
+                                      "--follow-marker", str(fetch_marker),
                                       "--max-companies", cap["max_companies"], "--records-before",
                                       str(step["records_before"]), "--stop-file", str(stop.path), out=proc_out))
         elif stage == "process":
@@ -431,6 +496,8 @@ def main() -> int:
         step.update(status="error", stop_reason=f"{type(e).__name__}: {e}"[:300])
         log(traceback.format_exc()[-800:], level="ERROR", kind="run_error")
     finally:
+        if step["status"] != "completed":
+            stop.stop(step["stop_reason"] or step["status"])
         # A completed run's workers are finishing on their own. Otherwise (SIGTERM to this process only, low disk,
         # an error) they may not know yet: stop them now; they save their state on SIGTERM (graceful_sigterm).
         stop_children(children, step.get("status"))
@@ -441,7 +508,7 @@ def main() -> int:
                            for name, c in children.items()}
         failed = worker_failure(step["workers"])
         capped = stop.reason()
-        for p in (fetch_out, proc_out, marker, stop.path):
+        for p in (fetch_out, proc_out, marker, fetch_marker, stop.path):
             p.unlink(missing_ok=True)
         step.update(fetched_ok=f.get("fetched_ok", 0), fetch_failed=f.get("failed", 0), fetch_dead=f.get("dead", 0),
                     quarantined=f.get("failed", 0) + f.get("dead", 0), harvested_ok=f.get("harvested_new", 0),
@@ -464,13 +531,21 @@ def main() -> int:
         save_state(state)
         step["records_after"] = master_count()
         dk = docket.open_docket()
-        step["harvest_backlog"] = docket_backlog(dk)
-        dk.write_stats()
+        try:
+            step["harvest_backlog"] = docket_backlog(dk)
+            dk.write_stats()
+        finally:
+            dk.close()
         write_summary()
         try:
             meta = build_metadata.build()
         except Exception as e:
             meta = {"error": str(e)}
+        if lock_fd is not None:
+            try:
+                os.close(lock_fd)
+            except OSError:
+                pass
         log(f"run end: status={step['status']} queries={step['queries_done']} fetched={step['fetched_ok']} "
             f"new_records={step['new_records']}", kind="run_end",
             **{k: step[k] for k in ("status", "stop_reason", "stage", "queries_done", "fetched_ok", "quarantined",

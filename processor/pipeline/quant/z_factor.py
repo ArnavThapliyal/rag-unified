@@ -1,4 +1,4 @@
-"""Point-in-time cross-sectional Z-factor standardization (zero lookahead bias). Moved unchanged from Unified_Pipeline (Sanidhya)."""
+"""Point-in-time cross-sectional Z-factor standardization (zero lookahead bias)."""
 
 from __future__ import annotations
 
@@ -51,6 +51,9 @@ class TargetBracketCalibration:
     reference_dates_count: int = 0
     robust: bool = False
     mainboard_only_stats: bool = True
+    trailing_days: int = 1
+    z_buffer: float = 0.0
+    value_field: str = "market_cap_cr"
 
     @classmethod
     def default_nse(
@@ -58,6 +61,9 @@ class TargetBracketCalibration:
         target_bracket_cr: tuple[float, float] = DEFAULT_TARGET_BRACKET_CR,
         robust: bool = False,
         mainboard_only_stats: bool = True,
+        trailing_days: int = 1,
+        z_buffer: float = 0.0,
+        value_field: str = "market_cap_cr",
     ) -> "TargetBracketCalibration":
         """Build a zero-lookahead calibration from the default modern NSE mainboard prior."""
         low, high = normalize_bracket_bounds(*target_bracket_cr)
@@ -73,6 +79,9 @@ class TargetBracketCalibration:
             source="nse_prior",
             robust=robust,
             mainboard_only_stats=mainboard_only_stats,
+            trailing_days=trailing_days,
+            z_buffer=z_buffer,
+            value_field=value_field,
         )
 
     @classmethod
@@ -83,6 +92,9 @@ class TargetBracketCalibration:
         target_bracket_cr: tuple[float, float] = DEFAULT_TARGET_BRACKET_CR,
         robust: bool = False,
         mainboard_only_stats: bool = True,
+        trailing_days: int = 1,
+        z_buffer: float = 0.0,
+        value_field: str = "market_cap_cr",
     ) -> "TargetBracketCalibration":
         """Build a calibration from fixed explicit Z-score bounds."""
         low, high = normalize_bracket_bounds(*target_bracket_cr)
@@ -106,10 +118,24 @@ class TargetBracketCalibration:
             source="fixed_z",
             robust=robust,
             mainboard_only_stats=mainboard_only_stats,
+            trailing_days=trailing_days,
+            z_buffer=z_buffer,
+            value_field=value_field,
         )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _safe_exp(x: float) -> float | None:
+    """Compute round(exp(x), 4) without raising OverflowError on extreme exponents."""
+    if not math.isfinite(x) or x > 700.0:
+        return None
+    try:
+        val = math.exp(x)
+    except OverflowError:
+        return None
+    return round(val, 4) if math.isfinite(val) else None
 
 
 def classify_size_bracket(z_factor: float | None) -> str | None:
@@ -137,6 +163,8 @@ def calibrate_target_bracket(
     date_field: str = "trade_date",
     robust: bool = False,
     mainboard_only_stats: bool = True,
+    trailing_days: int = 1,
+    z_buffer: float = 0.0,
 ) -> TargetBracketCalibration:
     """Calibrate Z-score bracket bounds from a recent multi-stock NSE reference window."""
     if reference_years < 1:
@@ -211,6 +239,9 @@ def calibrate_target_bracket(
         reference_dates_count=len(mu_values),
         robust=robust,
         mainboard_only_stats=mainboard_only_stats,
+        trailing_days=trailing_days,
+        z_buffer=z_buffer,
+        value_field=value_field,
     )
 
 
@@ -335,12 +366,8 @@ def compute_cross_sectional_z_factors(
         implied_min_cr: float | None = None
         implied_max_cr: float | None = None
         if log_transform and calibration is not None and eff_scale > 0:
-            implied_min_cr = round(
-                math.exp(eff_center + eff_scale * calibration.z_min), 4
-            )
-            implied_max_cr = round(
-                math.exp(eff_center + eff_scale * calibration.z_max), 4
-            )
+            implied_min_cr = _safe_exp(eff_center + eff_scale * calibration.z_min)
+            implied_max_cr = _safe_exp(eff_center + eff_scale * calibration.z_max)
 
         for (idx, raw, _), z_val, pct, rank in zip(
             transformed, z_values, percentiles, ranks
@@ -366,11 +393,8 @@ def compute_cross_sectional_z_factors(
             output[idx]["deflated_value"] = deflated
 
             if log_transform and calibration is not None:
-                equivalent_cr = round(
-                    math.exp(
-                        calibration.ref_log_center + calibration.ref_log_scale * z_val
-                    ),
-                    4,
+                equivalent_cr = _safe_exp(
+                    calibration.ref_log_center + calibration.ref_log_scale * z_val
                 )
                 in_bracket = (
                     (calibration.z_min - z_buffer)
@@ -494,79 +518,110 @@ def recompute_store_z_factors(
             f"Invalid calibration_mode {calibration_mode!r}; expected 'nse_prior', 'reference_window', or 'fixed_z'."
         )
 
-    rows = store.list_daily_market_rows_for_z(pit_universe_only=pit_universe_only)
-    if not rows:
-        return {
-            "rows_updated": 0,
-            "dates_processed": 0,
-            "anchor_date_used": anchor_date,
-            "robust": robust,
-            "target_bracket_matches": 0,
-            "calibration": None,
-        }
+    with store._write_txn():
+        rows = store.list_daily_market_rows_for_z(pit_universe_only=pit_universe_only)
+        if not rows:
+            store._connection.execute(
+                """
+                UPDATE daily_market_data SET
+                    z_factor_mcap = NULL,
+                    mcap_percentile = NULL,
+                    mcap_rank = NULL,
+                    size_bracket = NULL,
+                    deflated_mcap_cr = NULL,
+                    equivalent_mcap_cr = NULL,
+                    in_target_bracket = NULL,
+                    target_bracket_distance_z = NULL,
+                    implied_bracket_min_cr = NULL,
+                    implied_bracket_max_cr = NULL
+                WHERE z_factor_mcap IS NOT NULL OR in_target_bracket IS NOT NULL
+                """
+            )
+            return {
+                "rows_updated": 0,
+                "dates_processed": 0,
+                "anchor_date_used": anchor_date,
+                "robust": robust,
+                "target_bracket_matches": 0,
+                "calibration": None,
+            }
 
-    if calibration_mode == "nse_prior":
-        calibration = TargetBracketCalibration.default_nse(
-            target_bracket_cr=target_bracket_cr,
-            robust=robust,
-            mainboard_only_stats=mainboard_only_stats,
-        )
-    elif calibration_mode == "reference_window":
-        calibration = calibrate_target_bracket(
+        if calibration_mode == "nse_prior":
+            calibration = TargetBracketCalibration.default_nse(
+                target_bracket_cr=target_bracket_cr,
+                robust=robust,
+                mainboard_only_stats=mainboard_only_stats,
+                trailing_days=trailing_days,
+                z_buffer=z_buffer,
+                value_field=value_field,
+            )
+        elif calibration_mode == "reference_window":
+            calibration = calibrate_target_bracket(
+                rows,
+                target_bracket_cr=target_bracket_cr,
+                reference_start=reference_start,
+                reference_end=reference_end,
+                reference_years=reference_years,
+                value_field=value_field,
+                date_field="trade_date",
+                robust=robust,
+                mainboard_only_stats=mainboard_only_stats,
+                trailing_days=trailing_days,
+                z_buffer=z_buffer,
+            )
+        else:
+            if z_min is None or z_max is None:
+                raise ValueError("calibration_mode='fixed_z' requires both z_min and z_max.")
+            calibration = TargetBracketCalibration.from_fixed_z(
+                z_min=z_min,
+                z_max=z_max,
+                target_bracket_cr=target_bracket_cr,
+                robust=robust,
+                mainboard_only_stats=mainboard_only_stats,
+                trailing_days=trailing_days,
+                z_buffer=z_buffer,
+                value_field=value_field,
+            )
+
+        computed = compute_cross_sectional_z_factors(
             rows,
-            target_bracket_cr=target_bracket_cr,
-            reference_start=reference_start,
-            reference_end=reference_end,
-            reference_years=reference_years,
             value_field=value_field,
             date_field="trade_date",
+            log_transform=True,
             robust=robust,
+            anchor_date=anchor_date,
+            target_bracket_cr=(calibration.target_min_cr, calibration.target_max_cr),
+            calibration=calibration,
             mainboard_only_stats=mainboard_only_stats,
-        )
-    else:
-        if z_min is None or z_max is None:
-            raise ValueError("calibration_mode='fixed_z' requires both z_min and z_max.")
-        calibration = TargetBracketCalibration.from_fixed_z(
-            z_min=z_min,
-            z_max=z_max,
-            target_bracket_cr=target_bracket_cr,
-            robust=robust,
-            mainboard_only_stats=mainboard_only_stats,
+            trailing_days=trailing_days,
+            z_buffer=z_buffer,
         )
 
-    computed = compute_cross_sectional_z_factors(
-        rows,
-        value_field=value_field,
-        date_field="trade_date",
-        log_transform=True,
-        robust=robust,
-        anchor_date=anchor_date,
-        target_bracket_cr=(calibration.target_min_cr, calibration.target_max_cr),
-        calibration=calibration,
-        mainboard_only_stats=mainboard_only_stats,
-        trailing_days=trailing_days,
-        z_buffer=z_buffer,
-    )
+        valid_dates = sorted(
+            {
+                str(r["trade_date"]).strip()
+                for r in computed
+                if r.get("z_factor") is not None and r.get("trade_date")
+            }
+        )
+        anchor_used = (
+            anchor_date
+            if anchor_date is not None
+            else (valid_dates[0] if valid_dates else None)
+        )
 
-    valid_dates = sorted(
-        {
-            str(r["trade_date"]).strip()
-            for r in computed
-            if r.get("z_factor") is not None and r.get("trade_date")
-        }
-    )
-    anchor_used = (
-        anchor_date
-        if anchor_date is not None
-        else (valid_dates[0] if valid_dates else None)
-    )
+        store.save_z_calibration(
+            {
+                **calibration.to_dict(),
+                "trailing_days": trailing_days,
+                "z_buffer": z_buffer,
+                "value_field": value_field,
+            }
+        )
 
-    store.save_z_calibration(calibration.to_dict())
-
-    updated_ids: set[int] = set()
-    rows_updated = 0
-    target_matches = 0
-    with store._connection:
+        updated_ids: set[int] = set()
+        rows_updated = 0
+        target_matches = 0
         for row in computed:
             if row.get("z_factor") is None:
                 continue

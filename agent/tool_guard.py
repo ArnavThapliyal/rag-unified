@@ -31,7 +31,9 @@ a call (cancel ends the whole run), hence the rewrite. Every checked call goes t
 from __future__ import annotations
 
 import base64
+import fcntl
 import json
+import os
 import re
 import shlex
 import sys
@@ -365,16 +367,27 @@ DQUOTED_BAD = set("$`\\!")
 
 def scan(cmd: str) -> str:
     """Refuse anything bash would expand or interpret beyond words, quotes and && || ; |.
-    Unquoted newlines become ';'. Returns the command ready for shlex."""
-    cmd = re.sub(r"(?:(?<=\s)|^)2>&1(?=\s|$)", " ", cmd)  # stderr merge is harmless (the runner merges anyway)
-    out, state = [], None
-    for ch in cmd:
+    Unquoted newlines become ';'. Unquoted `2>&1` is stripped (runner merges stderr anyway).
+    Returns the command ready for shlex."""
+    out: list[str] = []
+    state = None
+    i = 0
+    n = len(cmd)
+    while i < n:
+        ch = cmd[i]
         if ch == "\n" and state is None:
             out.append(" ; ")
+            i += 1
             continue
         if ord(ch) < 32 and ch != "\t" or ord(ch) == 127:
             raise Bad("control characters are not allowed")
         if state is None:
+            if (cmd[i:i + 4] == "2>&1"
+                    and (i == 0 or cmd[i - 1].isspace())
+                    and (i + 4 == n or cmd[i + 4].isspace())):
+                out.append(" ")
+                i += 4
+                continue
             if ch in UNQUOTED_BAD:
                 raise Bad(f"'{ch}' is not allowed outside quotes (no shell expansion, redirection or subshell)")
             if ch in "'\"":
@@ -387,6 +400,7 @@ def scan(cmd: str) -> str:
         elif ch == "'":
             state = None
         out.append(ch)
+        i += 1
     if state:
         raise Bad("unterminated quote")
     return "".join(out)
@@ -515,10 +529,12 @@ def check(tool: str, inp: dict) -> str | None:
         return None
     if tool == "read_files":
         files = inp.get("files") or inp.get("paths") or []
+        no_read_dirs = {d.rstrip("/") for d in NO_READ}
         for f in files if isinstance(files, list) else [files]:
             path = f.get("path", "") if isinstance(f, dict) else str(f)
             r = rel(path)
-            if r is None or r.startswith(NO_READ) or (Path(r).name.startswith(".env") and Path(r).name != ".env.example"):
+            if (r is None or r.startswith(NO_READ) or r in no_read_dirs
+                    or (Path(r).name.startswith(".env") and Path(r).name != ".env.example")):
                 return f"reading {path} is not allowed (use ./rag status, the tools' JSON output or ./rag inspect_artifact)"
         return None
     if tool in ("editor", "apply_patch"):
@@ -569,10 +585,22 @@ def record(tool: str, inp: dict, reason: str) -> None:
 def audit(tool: str, inp, reason: str | None) -> None:
     try:
         from datetime import datetime, timezone
-        with AUDIT.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tool": tool,
-                                "allowed": reason is None, "reason": reason,
-                                "input": json.dumps(inp)[:300]}) + "\n")
+        AUDIT.parent.mkdir(parents=True, exist_ok=True)
+        line = (json.dumps({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tool": tool,
+                            "allowed": reason is None, "reason": reason,
+                            "input": json.dumps(inp)[:300]}) + "\n").encode("utf-8")
+        fd = os.open(AUDIT, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                view = memoryview(line)
+                written = 0
+                while written < len(line):
+                    written += os.write(fd, view[written:])
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
     except Exception:
         pass
 

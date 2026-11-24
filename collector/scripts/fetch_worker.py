@@ -37,6 +37,7 @@ import socket
 import sys
 import time
 import traceback
+from collections import Counter
 from pathlib import Path
 
 import requests
@@ -150,8 +151,11 @@ def archive_fallback(dk: docket.Docket, session, c, policy: dict, used) -> bool:
 
 def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int | None = None,
         max_seconds: float | None = None, max_docs_per_company: int | None = None,
-        stop: run_limits.StopFile | None = None) -> dict:
+        stop: run_limits.StopFile | None = None, running_marker: Path | None = None) -> dict:
     dk = docket.open_docket()
+    if running_marker:
+        running_marker.parent.mkdir(parents=True, exist_ok=True)
+        running_marker.touch()
     p = plan()
     policy = polite_fetcher.fetch_policy()
     block_after = p.get("block_domain_after_failures", 3)
@@ -160,7 +164,7 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-IN,en;q=0.9"})
     next_ok: dict[str, float] = {}           # domain_limits key -> earliest next request
-    used = polite_fetcher.RUN_COUNTS          # requests per key in this run
+    used: Counter = Counter()                # requests per key in this run (isolated per invocation)
     disk_state = dk.get_meta("disk_state", {})
     stop = stop or run_limits.StopFile(None)
     hosts = probe_hosts(p)
@@ -220,7 +224,7 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
                 out["stop_reason"] = "docket_exhausted" if not dk.remaining() else "sources_exhausted"
                 break
             c, key, lim = pick
-            if not dk.lease(c["url"]):            # another worker took it, or it is a poison item (now dead)
+            if not dk.lease(c["url"], max_docs_per_company=max_docs_per_company):
                 continue
             used[key] += 1
             inflight = c["url"]
@@ -255,6 +259,10 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
                     kind="network_unavailable", url=c["url"])
                 break
             status = dk.done_fetch(c["url"], e)
+            if status == "stale_lease":
+                log(f"fetch worker: stale lease ignored for {c['url']}", level="WARN",
+                    kind="fetch_stale_lease", url=c["url"])
+                continue
             ok = status == "fetched"
             out["fetched_ok" if ok else status] += 1
             if not ok and e.get("http_status") is None and e.get("error"):
@@ -292,8 +300,10 @@ def run(max_files: int | None = 60, follow: Path | None = None, follow_pid: int 
         log(f"fetch worker stopped: {out['stop_reason']}", level="ERROR", kind="run_error",
             traceback=traceback.format_exc()[-800:])
     finally:
-        dk.set_meta("disk_state", disk_state)
+        if running_marker:
+            running_marker.unlink(missing_ok=True)
         try:
+            dk.set_meta("disk_state", disk_state)
             out["docket"] = dk.write_stats()
         except Exception as ex:
             out["docket"] = {"error": str(ex)[:200]}
@@ -315,12 +325,14 @@ def main() -> int:
     ap.add_argument("--stop-file", type=Path, help="run-wide stop signal shared with the other stages")
     ap.add_argument("--follow", type=Path, metavar="FILE", help="keep waiting for new items while FILE exists")
     ap.add_argument("--follow-pid", type=int, metavar="PID", help="...and while this process is alive")
+    ap.add_argument("--running-marker", type=Path, metavar="FILE", help="touch while running; unlink on exit")
     ap.add_argument("--max-seconds", type=float)
     ap.add_argument("--summary-out", type=Path)
     a = ap.parse_args()
     common.graceful_sigterm()
     out = run(run_limits.parse_cap(a.max_files), a.follow, a.follow_pid, a.max_seconds,
-              run_limits.parse_cap(a.max_docs_per_company), run_limits.StopFile(a.stop_file))
+              run_limits.parse_cap(a.max_docs_per_company), run_limits.StopFile(a.stop_file),
+              running_marker=a.running_marker)
     if a.summary_out:
         atomic_write_text(a.summary_out, json.dumps(out, indent=1, default=str))
     emit({k: v for k, v in out.items() if k != "docket"} | {"docket_ready": (out.get("docket") or {}).get("fetch_ready_now")})

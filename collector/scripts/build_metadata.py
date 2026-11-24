@@ -19,7 +19,7 @@ from collections import Counter, defaultdict
 
 import audit_dataset
 from common import (
-    atomic_write_text,
+    atomic_write_text, file_lock,
     AGENT_SESSIONS, CONFIG, MANIFEST, METADATA, PARSED, PRIORITY_YEARS, PROCESSED, RAW, ROOT, RUNS,
     disk_status, domain_of, emit, now_iso, read_jsonl,
 )
@@ -43,7 +43,10 @@ def load_master() -> list[dict]:
 def query_stats() -> dict:
     plan_p, state_p = CONFIG / "query_plan.json", METADATA / "collection_state.json"
     plan = json.loads(plan_p.read_text(encoding="utf-8")) if plan_p.exists() else {"phases": []}
-    state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {"queries": {}}
+    try:
+        state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {"queries": {}}
+    except (OSError, ValueError):
+        state = {"queries": {}}
     phases = {}
     for ph in plan["phases"]:
         c = Counter()
@@ -92,13 +95,20 @@ def fetch_stats(manifest: list[dict]) -> dict:
 def artifact_inventory(manifest: list[dict]) -> list[dict]:
     by_path = {e["local_path"]: e for e in manifest if e.get("local_path")}
     rp = PARSED / "_relevance.json"
-    relevance = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else {}
+    try:
+        relevance = json.loads(rp.read_text(encoding="utf-8")) if rp.exists() else {}
+    except (OSError, ValueError):
+        relevance = {}
     rows = []
     for p in sorted(x for x in RAW.rglob("*") if x.is_file() and not x.name.startswith(".")):
         rel = str(p.relative_to(ROOT))
         m = by_path.get(rel, {})
         parsed = PARSED / f"{p.parent.name}__{p.stem}.jsonl"
-        n_rows = sum(1 for _ in parsed.open(encoding="utf-8")) if parsed.exists() else None
+        if parsed.exists():
+            with parsed.open(encoding="utf-8") as f:
+                n_rows = sum(1 for _ in f)
+        else:
+            n_rows = None
         rows.append({"local_path": rel, "bucket": p.parent.name, "source_url": m.get("url"),
                      "domain": domain_of(m["url"]) if m.get("url") else None,
                      "year_tag": m.get("year_tag"), "content_type": m.get("content_type"),
@@ -194,6 +204,12 @@ def csv_rows(name: str) -> int:
 
 
 def build() -> dict:
+    METADATA.mkdir(parents=True, exist_ok=True)
+    with file_lock(METADATA / ".metadata.lock"):
+        return _build_locked()
+
+
+def _build_locked() -> dict:
     manifest = read_jsonl(MANIFEST)
     inventory = artifact_inventory(manifest)
     master = load_master()

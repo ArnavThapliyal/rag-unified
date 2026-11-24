@@ -13,12 +13,11 @@ the plan. Append-only: it never changes or removes existing queries, phases or o
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import re
 import sys
 
-from common import CONFIG, atomic_write_text, emit, log
+from common import CONFIG, atomic_write_text, emit, file_lock, log
 
 PLAN = CONFIG / "query_plan.json"
 PLAN_LOCK = CONFIG / ".query_plan.lock"  # serializes read-modify-write: Cline may run several calls at once
@@ -83,8 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     if len(a.query) > MAX_QUERIES or len(a.add_domain) > MAX_DOMAINS:
         emit({"error": f"at most {MAX_QUERIES} queries and {MAX_DOMAINS} domains per call"})
         return 2
-    with open(PLAN_LOCK, "a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with file_lock(PLAN_LOCK):
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
         try:
             out = add(plan, a.query, a.year_tag, a.add_domain)
