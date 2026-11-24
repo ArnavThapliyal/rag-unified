@@ -151,6 +151,16 @@ def sidecar_for(item: dict, recs: list[dict], sha: str, batch_id: str) -> dict:
     return {k: v for k, v in meta.items() if v not in (None, "", [])}
 
 
+def _scope_target() -> str:
+    """scope.target of config/query_plan.json (scripts/common.py), for the processor's scope gate."""
+    try:
+        t = (json.loads((paths.root() / "config" / "query_plan.json").read_text(encoding="utf-8")).get("scope") or {})
+        t = t.get("target", "delisted")
+    except (OSError, ValueError, AttributeError):
+        t = "delisted"
+    return t if t in ("delisted", "listed", "both") else "delisted"
+
+
 def candidates(include_irrelevant: bool) -> list[dict]:
     db = paths.docket_db()
     if not db.exists():
@@ -318,7 +328,8 @@ def run(max_files: int = 500, include_irrelevant: bool = False, outbox: Path | N
     counts["exported"] = len(files)
     manifest = {"contract_version": CONTRACT_VERSION, "batch_id": batch_id, "created_at": now_iso(),
                 "producer": {"name": "rag-collector", "version": __version__, "git_commit": git_commit(root)},
-                "ingest_root": "files", "files": files, "universe": universe, "counts": counts}
+                "ingest_root": "files", "files": files, "universe": universe, "counts": counts,
+                "scope_target": _scope_target()}
     (tmp / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")
     final = outbox / batch_id
     os.replace(tmp, final)

@@ -304,7 +304,9 @@ def main() -> int:
     plan = json.loads(PLAN.read_text(encoding="utf-8"))
     state = load_state()
     # historical focus first: window-year proof, company proof, company support; then the plan's phases
-    hist = [it for it in historical.items(state) if a.phase in ("all", it["phase"])]
+    # (only when the corpus is about delisted companies: scope.target delisted / both)
+    hist = [it for it in historical.items(state) if a.phase in ("all", it["phase"])] \
+        if common.scope_target() in ("delisted", "both") else []
     planned = {it["query"] for it in hist}
     items = hist + [it for it in plan_items(plan, a.phase) if it["query"] not in planned]
     if not items:

@@ -27,6 +27,10 @@ and what is still open: [AUDIT.md](AUDIT.md).
 
 Services the agent needs: LM Studio on `localhost:1234` with a model loaded, SearXNG on `localhost:8082`.
 
+Tested hardware: runs end to end on Apple Silicon, an **M4 Pro with 48 GB** and an **M5 Max with 128 GB**
+unified memory. On 48 GB, keep the processor at its default `MAX_WORKERS=4` and unload the agent's LLM in
+LM Studio before a large ingest (the embedder alone uses about 13–17 GB, each docling worker 1–12 GB on big PDFs).
+
 ## Run
 
 Everything goes through `./rag`. Every step prints one JSON result and exits 0 (ok/noop/partial),

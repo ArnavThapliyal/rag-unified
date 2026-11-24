@@ -309,6 +309,7 @@ class ParseResult:
     blocks: List[Block]
     page_count: Optional[int] = None
     ocr_pages: int = 0
+    low_text_pages: int = 0  # pages under the OCR threshold before OCR (ocr_pages of them were recovered)
     warnings: List[str] = field(default_factory=list)
 
 

@@ -242,6 +242,28 @@ def disk_settings() -> dict:
     return out
 
 
+SCOPE_TARGETS = ("delisted", "listed", "both")
+
+
+def scope_target() -> str:
+    """"scope": {"target": ...} in config/query_plan.json: which companies the corpus is about.
+    delisted (default): only documents with a delisting signal; IPO offer documents are rejected; the historical
+                        delisting phases run.
+    listed:             any document from the searched/fetched sources is kept (offer documents included); the
+                        historical delisting phases do not run, so the queries you add decide what is found.
+    both:               documents of either kind; the historical delisting phases run too."""
+    try:
+        t = (json.loads((CONFIG / "query_plan.json").read_text(encoding="utf-8")).get("scope") or {}).get("target")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        t = None
+    if t is None:
+        return "delisted"
+    if t not in SCOPE_TARGETS:
+        print(f"warning: config scope.target={t!r} is not one of {SCOPE_TARGETS}; using 'delisted'", file=sys.stderr)
+        return "delisted"
+    return t
+
+
 def dir_size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 

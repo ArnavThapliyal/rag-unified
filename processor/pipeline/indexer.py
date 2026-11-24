@@ -40,13 +40,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 
 from config.settings import (
-    EMBED_QUEUE_MAX_BATCHES, EMBEDDING_MODEL, MP_START_METHOD, NUM_WORKERS, PIPELINE_VERSION, SCRATCH_DIR,
-    WORKER_STALL_TIMEOUT_SECONDS, WRITE_MAX_ROWS_PER_ADD,
+    EMBED_QUEUE_MAX_BATCHES, EMBEDDING_MODEL, MAX_WORKERS, MP_START_METHOD, NUM_WORKERS, PIPELINE_VERSION, SCRATCH_DIR,
+    SCOPE_SKIP_OFFER_DOCUMENTS, TRIAGE_DIR, WORKER_STALL_TIMEOUT_SECONDS, WRITE_MAX_ROWS_PER_ADD,
 )
+from pipeline import memwatch, triage
 from pipeline.schema import Chunk, SourceDocument, build_record
 from pipeline.vector_store import VectorStore
 from pipeline.worker import (
-    MSG_CHUNKS, MSG_DONE, STATUS_DUPLICATE, STATUS_EMPTY, STATUS_FAILED, STATUS_OK, STATUS_UNSUPPORTED,
+    MSG_CHUNKS, MSG_DONE, SKIPPED, STATUS_DUPLICATE, STATUS_EMPTY, STATUS_FAILED, STATUS_OK, STATUS_OUT_OF_SCOPE,
     STATUSES, ItemKey, ItemResult, WorkerContext, process_path,
 )
 
@@ -57,6 +58,7 @@ MSG_FATAL = "fatal"
 MSG_STOP = "stop"
 
 _POLL_SECONDS = 0.2
+_MEMORY_SAMPLE_SECONDS = 5.0
 _KILL_GRACE_SECONDS = 15.0  # a worker still alive this long after SIGTERM (wedged in native code) gets SIGKILL
 _MAX_WORKER_START_FAILURES = 3
 
@@ -88,6 +90,21 @@ class _Run:
         self._failed: Dict[ItemKey, str] = {}    # item -> reason; later messages for it are ignored
         self._finished: Set[ItemKey] = set()
         self._dead_paths: Set[str] = set()       # delivered files whose worker died
+        self.mem: Dict[str, Any] = {"embedder_peak_mb": 0, "worker_peak_mb": 0, "file_peak_mb": {}}
+
+    def sample_memory(self, embedder_pid: Optional[int], workers: Dict[int, Any], current: Dict[int, str]) -> None:
+        """Physical footprint (incl. GPU memory on Apple Silicon) of the embedder and each worker; the per-file
+        peak is the worker's footprint while it was on that file."""
+        if embedder_pid:
+            self.mem["embedder_peak_mb"] = max(self.mem["embedder_peak_mb"], memwatch.footprint_mb(embedder_pid) or 0)
+        for worker_id, proc in list(workers.items()):
+            mb = memwatch.footprint_mb(proc.pid) if proc.pid else None
+            if not mb:
+                continue
+            self.mem["worker_peak_mb"] = max(self.mem["worker_peak_mb"], mb)
+            name = Path(current.get(worker_id, "")).name
+            if name:
+                self.mem["file_peak_mb"][name] = max(self.mem["file_peak_mb"].get(name, 0), mb)
 
     # ---- messages ----------------------------------------------------------------
 
@@ -196,6 +213,8 @@ class _Run:
         for warning in result.warnings:
             logger.warning(f"{result.name}: {warning}")
         detail = f" ({result.reason})" if result.reason else ""
+        if result.pages:
+            detail += " [pages {total}, ocr {ocr}, unindexed {unindexed}]".format(**result.pages)
         level = logging.WARNING if result.status == STATUS_FAILED else logging.INFO
         logger.log(level, f"{result.name}: {result.status}, {result.chunks} chunk(s){detail}")
 
@@ -213,12 +232,18 @@ class _Run:
             "run_id": self.run_id,
             "files_indexed": by_status[STATUS_OK],
             "files_failed": by_status[STATUS_FAILED],
-            "files_skipped": by_status[STATUS_DUPLICATE] + by_status[STATUS_UNSUPPORTED] + by_status[STATUS_EMPTY],
+            "files_skipped": sum(by_status[s] for s in SKIPPED),
+            "out_of_scope_files": [r.name for r in self.results if r.status == STATUS_OUT_OF_SCOPE],
+            # PDFs indexed with low-text pages that stayed without text (over the OCR budget, or OCR found none)
+            "pages_unindexed": {r.name: r.pages["unindexed"] for r in indexed if r.pages.get("unindexed")},
             "chunks_written": sum(r.chunks for r in indexed),
             "failed_files": [r.name for r in self.results if r.status == STATUS_FAILED],
             "by_status": {status: by_status[status] for status in STATUSES if by_status[status]},
             "by_source_type": dict(Counter(r.source_type or "unknown" for r in indexed)),
             "missing_metadata": dict(missing),
+            "memory": {"embedder_peak_mb": self.mem["embedder_peak_mb"], "worker_peak_mb": self.mem["worker_peak_mb"],
+                       "top_files_mb": dict(sorted(self.mem["file_peak_mb"].items(), key=lambda kv: -kv[1])[:5]),
+                       "system_end": memwatch.system_memory()},
         }
 
 
@@ -376,18 +401,24 @@ class Indexer:
         store: Optional[VectorStore] = None,
         scratch_dir: Optional[Path] = None,
         run_id: Optional[str] = None,
+        skip_offer_documents: Optional[bool] = None,
     ):
         """
         `embedder` (an instance) is used for inline runs; `embedder_factory` (a picklable
         callable) builds the embedder inside the embedding process for parallel runs.
         Both default to the real bge-m3 Embedder.
         """
-        self.workers = NUM_WORKERS if workers is None else max(0, workers)
+        requested = NUM_WORKERS if workers is None else max(0, workers)
+        self.workers = min(requested, MAX_WORKERS)  # the hard cap holds for --workers too
+        if self.workers < requested:
+            logger.warning("workers capped at %d (MAX_WORKERS), %d requested", self.workers, requested)
         self._embedder = embedder
         self._embedder_factory = embedder_factory
         self._store = store
         self._scratch_dir = Path(scratch_dir) if scratch_dir is not None else SCRATCH_DIR
         self.run_id = run_id or uuid.uuid4().hex[:12]
+        # IPO offer documents are out of scope for a delisting corpus (batch manifest scope_target "delisted")
+        self.skip_offer_documents = SCOPE_SKIP_OFFER_DOCUMENTS if skip_offer_documents is None else skip_offer_documents
 
     def index_files(self, files: Sequence[Path], root: Path) -> Dict[str, Any]:
         """
@@ -400,16 +431,18 @@ class Indexer:
         self._clear_scratch()
 
         run = _Run(store, self.run_id)
-        paths = [str(f) for f in files]
         started = time.monotonic()
+        paths, probes = self._triage([str(f) for f in files], run)
+        all_paths = [str(f) for f in files]
         if paths:
             if self.workers == 0:
                 self._run_inline(paths, Path(root), run)
             else:
                 self._run_parallel(paths, Path(root), run)
-        run.on_unreported(paths)
+        run.on_unreported(all_paths)
 
         summary = run.summary()
+        summary["triage"] = probes
         summary["recovered_partial_documents"] = len(recovered)
         try:
             summary["vector_index"] = store.finalize()["vector_index"]
@@ -419,6 +452,34 @@ class Indexer:
         summary["seconds"] = round(time.monotonic() - started, 1)
         self._clear_scratch()
         return summary
+
+    def _triage(self, paths: List[str], run: _Run) -> tuple:
+        """Probe every file (type, size, pages, text layer), skip IPO offer documents, and order the rest most
+        expensive first. Writes <TRIAGE_DIR>/<run_id>.csv. Triage never fails a run: on any error the files go
+        through unprobed, in their original order."""
+        try:
+            probes = [triage.probe(p) for p in paths]
+        except Exception as exc:
+            logger.warning(f"triage failed, continuing without it: {exc}", exc_info=True)
+            return paths, {"error": f"{type(exc).__name__}: {exc}"}
+        keep = []
+        for pr in probes:
+            if self.skip_offer_documents and pr.offer_document:
+                run.on_done(ItemResult((pr.path, pr.name), STATUS_OUT_OF_SCOPE,
+                                       f"IPO offer document (DRHP/RHP/prospectus), {pr.pages} pages: not parsed"))
+            else:
+                keep.append(pr)
+        csv_path = TRIAGE_DIR / f"{self.run_id}.csv"
+        try:
+            triage.write_csv(probes, csv_path)
+        except OSError as exc:
+            logger.warning(f"could not write {csv_path}: {exc}")
+        info = {"csv": str(csv_path), "by_class": dict(Counter(pr.size_class for pr in probes)),
+                "low_text_pages": sum(pr.low_text_pages for pr in keep),
+                "est_parse_seconds": round(sum(pr.est_seconds for pr in keep)),
+                "max_est_peak_mb": max((pr.est_peak_mb for pr in keep), default=0)}
+        logger.info(f"triage: {len(probes)} file(s), {len(probes) - len(keep)} out of scope, classes {info['by_class']}")
+        return triage.order_by_cost(keep), info
 
     def _clear_scratch(self) -> None:
         """Remove extraction leftovers (also those of a previous run that crashed)."""
@@ -494,6 +555,7 @@ class Indexer:
         killed_at: Dict[int, float] = {}    # worker -> when it got SIGTERM
         start_failures = 0
         stop_sent = False
+        next_sample = 0.0
 
         def drain_control() -> None:
             while True:
@@ -514,6 +576,9 @@ class Indexer:
         try:
             while True:
                 drain_control()
+                if time.monotonic() >= next_sample:
+                    next_sample = time.monotonic() + _MEMORY_SAMPLE_SECONDS
+                    run.sample_memory(embedder.pid, workers, current)
 
                 for worker_id, proc in list(workers.items()):
                     if proc.is_alive():

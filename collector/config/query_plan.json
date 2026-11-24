@@ -87,9 +87,17 @@
       20
     ]
   },
+  "_comment_scope": "Which companies the corpus is about. delisted (default): only documents with a delisting signal, IPO offer documents (DRHP/RHP/prospectus) rejected, historical delisting phases run. listed: every fetched document except site pages and procedures goes to the corpus (no delisting rows are made from them), offer documents kept, historical phases off: add your own queries for listed companies. both: both. scripts/common.py scope_target().",
+  "scope": {
+    "target": "delisted"
+  },
   "harvest_limit_per_page": 20,
   "block_domain_after_failures": 3,
-  "network_probe_hosts": ["1.1.1.1:443", "8.8.8.8:443", "9.9.9.9:443"],
+  "network_probe_hosts": [
+    "1.1.1.1:443",
+    "8.8.8.8:443",
+    "9.9.9.9:443"
+  ],
   "disk": {
     "warn_data_gb": 5,
     "warn_step_gb": 5,
@@ -499,6 +507,10 @@
         {
           "q": "site:nseindia.com \"Techindia Nirman Limited\" delisting order",
           "year_tag": "2026"
+        },
+        {
+          "q": "list of companies delisted from NSE 2008",
+          "year_tag": "2008"
         }
       ]
     }

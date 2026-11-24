@@ -90,6 +90,12 @@ def test_sync_parsed_marks_rows_and_parse_errors(dk, tmp_path, monkeypatch):
     r = dk.sync_parsed([{"file": "data/raw/priority_2017/b.pdf", "error": "ValueError: bad"}])
     assert r["parsed"] == 1 and r["rows"] == 2 and r["parse_error"] == 1
     assert dk.stats()["by_status"] == {"parsed": 1, "parse_error": 1}
+    # a later re-parse relabels the file (e.g. an offer document): export must see the new label
+    import json as _json
+    (parsed / "_relevance.json").write_text(_json.dumps({"data/raw/priority_2017/a.pdf": "irrelevant:offer_document"}))
+    assert dk.sync_parsed([])["relabelled"] == 1
+    assert dk.db.execute("SELECT relevance FROM items WHERE url='https://a.in/a.pdf'").fetchone()[0] \
+        == "irrelevant:offer_document"
 
 
 # --- fetch worker --------------------------------------------------------------------------------

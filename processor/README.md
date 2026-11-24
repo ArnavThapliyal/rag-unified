@@ -184,6 +184,23 @@ Everything is in `config/settings.py` and can be overridden with an environment 
 NUM_WORKERS=8 EMBED_BATCH_SIZE=128 LANCEDB_PATH=/mnt/db uv run python main.py /data/in
 ```
 
+Parse/chunk workers are hard-capped at `MAX_WORKERS` (default 4): each docling worker takes 1–3 GB (more on big PDFs), so `NUM_WORKERS` and `--workers` above the cap are lowered to it. Raise `MAX_WORKERS` only on a machine with the memory for it.
+
+`./rag step processor.health` (and `memory` in `./rag status`) reports RAM now, the last ingest's measured peaks
+(physical footprint, which on Apple Silicon includes the embedder's GPU memory), how many more workers fit
+keeping 15 % free, and whether LM Studio still holds an LLM in memory.
+
+Before parsing, every file is triaged (`pipeline/triage.py`, milliseconds per file): real type, size, pages,
+pages without a text layer, a size class and a cost estimate, written to `data/triage/<run_id>.csv`. The most
+expensive files start first. IPO offer documents (DRHP / RHP / prospectus) are skipped as
+`skipped_out_of_scope` for a delisting corpus. PDFs over `PDF_WINDOW_PAGES` are converted in page windows, and
+OCR reads only the low-text page ranges; pages left without text are counted per file (`pages_unindexed` in the
+ledger).
+
+A document indexed by mistake is removed with `./rag step processor.purge --file <name> [--doc-id <id>]`
+(a dry run; add `--yes` to delete). Its doc_id goes on `data/denylist.txt`, so the same bytes are never
+indexed again. Only you can run it, not the agent.
+
 The embedding device is chosen automatically in the order `cuda → mps → cpu`; set `EMBED_DEVICE` to force one. See [Doc/current/05_configuration.md](Doc/current/05_configuration.md).
 
 ## Tests

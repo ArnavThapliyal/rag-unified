@@ -34,3 +34,26 @@ def test_year_tag_required_and_checked():
     for tag in (None, "2008; rm", "1850"):
         with pytest.raises(ValueError):
             aq.add(plan(), ["SEBI order delisting 2008"], tag, [])
+
+
+def test_concurrent_calls_keep_the_plan_valid_and_lose_nothing(tmp_path, monkeypatch):
+    # Cline can run several add_queries calls at once; they used to share one .tmp file and corrupt the plan
+    import json
+    import threading
+    plan_file = tmp_path / "query_plan.json"
+    plan_file.write_text(json.dumps(plan()), encoding="utf-8")
+    monkeypatch.setattr(aq, "PLAN", plan_file)
+    monkeypatch.setattr(aq, "PLAN_LOCK", tmp_path / ".query_plan.lock")
+    monkeypatch.setattr(aq, "log", lambda *a, **k: None)
+    monkeypatch.setattr(aq, "emit", lambda *a, **k: None)
+    codes = []
+    threads = [threading.Thread(target=lambda i=i: codes.append(aq.main(
+        ["--year-tag", "2026", "--query", f"Company number {i} delisted NSE"]))) for i in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert codes == [0] * 12
+    added = json.loads(plan_file.read_text(encoding="utf-8"))["phases"][-1]["queries"]
+    assert sorted(q["q"] for q in added) == sorted(f"Company number {i} delisted NSE" for i in range(12))
+    assert not list(tmp_path.glob("*.tmp"))

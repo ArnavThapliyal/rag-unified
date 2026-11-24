@@ -58,7 +58,8 @@ All configuration is in `config/settings.py`. Each setting below can be overridd
 | Setting | Default | Notes |
 |---|---|---|
 | `MP_START_METHOD` | `spawn` | Fixed. Forking after torch/MPS initialises is unsafe on macOS |
-| `NUM_WORKERS` | CPU count − 2 | Parse/chunk workers. Two cores are left for the main and embedding processes. `0` = single process |
+| `NUM_WORKERS` | CPU count − 2, at most `MAX_WORKERS` | Parse/chunk workers. Two cores are left for the main and embedding processes. `0` = single process |
+| `MAX_WORKERS` | 4 | Hard ceiling on parse/chunk workers; `NUM_WORKERS` and `--workers` above it are lowered to it (each docling worker takes 1–5 GB) |
 | `WORKER_STALL_TIMEOUT_SECONDS` | `1800` | A worker silent for this long is killed and its file marked failed. `0` disables |
 
 ## Writing
@@ -73,7 +74,10 @@ All configuration is in `config/settings.py`. Each setting below can be overridd
 | Environment variable | Default | Notes |
 |---|---|---|
 | `ENABLE_ML_OCR` | `true` | Allow the OCR second pass |
-| `MAX_PAGES_FOR_OCR` | `50` | OCR is skipped when more low-text pages than this are found |
+| `MAX_PAGES_FOR_OCR` | `150` | OCR is skipped when more low-text pages than this are found (counted per file as `pages_unindexed`). Only the low-text page ranges are OCRed, ~5.5 s per page on CPU |
+| `PDF_WINDOW_PAGES` | `40` | PDFs longer than this are converted in windows of this many pages, so a worker's memory does not grow with the document |
+| `SCOPE_SKIP_OFFER_DOCUMENTS` | `true` | Skip IPO offer documents (DRHP / RHP / prospectus) before parsing (`skipped_out_of_scope`). Off for batches whose manifest says `scope_target` listed / both |
+| `HF_OFFLINE_INGEST` | `true` | Ingest runs with `HF_HUB_OFFLINE=1` when bge-m3 and the docling models are already cached (a fresh install stays online to download them) |
 | `MIN_CHARS_PER_PAGE_BEFORE_OCR` | `25` | A page with fewer characters counts as low-text |
 | `TABLE_STRUCTURE_MODE` | `accurate` | `fast` or `accurate` (docling TableFormer) |
 | `PARSER_DEVICE` | `cpu` | `cpu`, `auto`, `mps`, `cuda`. Keep `cpu` when running several workers |
@@ -128,7 +132,9 @@ Scanned PDFs dominate run time. These settings trade quality for speed:
 | Setting | Default | Meaning |
 |---|---|---|
 | `COLLECTOR_OUTBOX` | `../collector/data/export` (else `../rag-collector/data/export`) | the collector's outbox that `--watch` and `steps ingest` read |
-| `BATCH_LEDGER` | `data/processed_batches.jsonl` | one line per batch attempt (status, files, chunks) |
+| `BATCH_LEDGER` | `data/processed_batches.jsonl` | one line per batch attempt (status, files, chunks, out-of-scope files, unindexed pages, triage summary, measured memory peaks) |
+| `TRIAGE_DIR` | `data/triage` | `<run_id>.csv` per ingest: type, size, pages, low-text pages, size class, cost estimate, offer-document flag per file |
+| `DENYLIST_FILE` | `data/denylist.txt` | doc_ids `processor.purge --yes` removed; never indexed again (`skipped_denylisted`) |
 | `BATCH_MAX_ATTEMPTS` | `3` | attempts for a batch with failed files before it is given up |
 | `WATCH_POLL_SECONDS` | `60` | seconds between outbox checks in `--watch` |
 | `STEP_LOCK_DIR` | `data/locks` | per-step lock files |

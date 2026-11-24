@@ -56,7 +56,7 @@ NO_READ = tuple(f"collector/{d}" for d in (
     ".git/", "data/docket.sqlite", "data/nse_unified.sqlite3")) + ("processor/", "unified/", "agent/", "tests/", "scripts/", ".git/", ".cline/hooks/", "logs/bg/")
 MAX_AGENT_QUERIES = 20          # job.py start --max-queries
 DOCKET_STATUSES = ("parked", "pending", "fetching", "fetched", "parsed", "failed", "dead", "parse_error")
-ISSUE_KINDS = ("zero_rows", "bad_rows", "audit_error", "fetch", "script_error", "coverage_gap", "other")
+ISSUE_KINDS = ("zero_rows", "bad_rows", "audit_error", "fetch", "script_error", "coverage_gap", "out_of_scope", "other")
 
 
 class Bad(ValueError):
