@@ -1,0 +1,14 @@
+# Top level only: collector/ and processor/ keep their own .gitignore files.
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# unified runtime state
+logs/*
+!logs/.gitkeep
