@@ -133,6 +133,19 @@ ZIP_MAX_DEPTH = _env("ZIP_MAX_DEPTH", 3, int)
 
 # ---- provenance ---------------------------------------------------------------
 
+# ---- unified pipeline: collector outbox, step locks, quant stage ---------------
+# rag-collector's outbox of READY batches (data/export/ in the collector checkout next to this one)
+COLLECTOR_OUTBOX = Path(_env("COLLECTOR_OUTBOX", str(BASE_DIR.parent / "rag-collector" / "data" / "export")))
+BATCH_LEDGER = Path(_env("BATCH_LEDGER", str(DATA_DIR / "processed_batches.jsonl")))  # one line per batch attempt
+BATCH_MAX_ATTEMPTS = _env("BATCH_MAX_ATTEMPTS", 3, int)  # a batch with failed files is retried this often
+WATCH_POLL_SECONDS = _env("WATCH_POLL_SECONDS", 60, int)
+STEP_LOCK_DIR = Path(_env("STEP_LOCK_DIR", str(DATA_DIR / "locks")))
+STOP_FILE = Path(_env("STOP_FILE", str(DATA_DIR / "STOP")))  # touch it to stop --watch after the current batch
+UNIVERSE_DB = Path(_env("UNIVERSE_DB", str(DATA_DIR / "universe" / "universe.sqlite3")))  # latest collector snapshot
+QUANT_DB = Path(_env("QUANT_DB", str(DATA_DIR / "quant.sqlite3")))
+QUANT_VALUE_FIELD = _env("QUANT_VALUE_FIELD", "market_cap_cr", str)
+QUANT_TABLE = _env("QUANT_TABLE", "quant_factors")  # LanceDB table of Z-factors (no vectors)
+
 PIPELINE_VERSION = "0.1.0"  # bump when parse/clean/chunk behaviour changes
 SCHEMA_VERSION = 2          # bump when the LanceDB schema in pipeline/schema.py changes
 

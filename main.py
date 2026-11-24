@@ -3,6 +3,7 @@
 Entry point for the RAG processor: ingest purchased files into LanceDB.
 
     main.py [ROOT] [--workers N] [--dry-run]
+    main.py --watch [OUTBOX] [--once] [--poll SECONDS]     # continuous: ingest rag-collector's outbox batches
 
 ROOT is any directory (default: config.settings.INPUT_DIR), or a single file.
 It is crawled recursively; there is no required folder structure and folder
@@ -15,6 +16,7 @@ embedding model. Because processes are started with 'spawn', everything that
 runs must stay under the `if __name__ == "__main__"` guard at the bottom.
 """
 
+import signal
 import sys
 import uuid
 import logging
@@ -23,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from config.logsetup import setup_logging
-from config.settings import INPUT_DIR, NUM_WORKERS, ensure_dirs
+from config.settings import COLLECTOR_OUTBOX, INPUT_DIR, NUM_WORKERS, WATCH_POLL_SECONDS, ensure_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Only discover and detect file types; report what would be processed. Nothing is written.",
     )
+    parser.add_argument(
+        "--watch",
+        nargs="?",
+        type=Path,
+        const=COLLECTOR_OUTBOX,
+        metavar="OUTBOX",
+        help=f"Continuous mode: ingest every READY batch in rag-collector's outbox (default: {COLLECTOR_OUTBOX}).",
+    )
+    parser.add_argument("--once", action="store_true", help="With --watch: process what is pending, then exit.")
+    parser.add_argument("--poll", type=float, default=WATCH_POLL_SECONDS,
+                        help="With --watch: seconds between outbox checks.")
     args = parser.parse_args()
+    if args.watch is not None and args.dry_run:
+        parser.error("--watch and --dry-run don't go together")
     if args.workers is not None and args.workers < 0:
         parser.error("--workers must be 0 or more")
     return args
@@ -87,8 +102,20 @@ def print_dry_run(report: Dict[str, Any]) -> None:
         print(f"  routing error  {error}")
 
 
+def _sigterm_as_interrupt(*_: Any) -> None:
+    # SIGTERM unwinds like Ctrl-C, so the indexer's cleanup terminates its worker processes (no orphans)
+    raise KeyboardInterrupt
+
+
 def main() -> None:
     args = parse_args()  # first, so --help and bad flags have no filesystem side effects
+    signal.signal(signal.SIGTERM, _sigterm_as_interrupt)
+    if args.watch is not None:
+        from pipeline.watch import Watch
+
+        ensure_dirs()
+        setup_logging()
+        sys.exit(Watch(args.watch, args.poll, args.once, args.workers).main())
     if not args.root.exists():
         print(f"Error: {args.root} does not exist.")
         sys.exit(1)
