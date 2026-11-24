@@ -1,0 +1,70 @@
+{
+ "generated_at": "2026-11-24T13:48:10+00:00",
+ "total": 2236,
+ "by_status": {
+  "dead": 13,
+  "failed": 5,
+  "parked": 1618,
+  "parsed": 594,
+  "pending": 6
+ },
+ "by_kind": {
+  "harvested": 1172,
+  "search": 1064
+ },
+ "fetch_ready_now": 6,
+ "waiting_on_blocked_domain": 4,
+ "awaiting_parse": 0,
+ "parsed_zero_rows_relevant": 202,
+ "evidence_unfetched": 519,
+ "blocked_domains": [
+  "dictionary.cambridge.org",
+  "merriam-webster.com"
+ ],
+ "top_pending_domains": [
+  {
+   "domain": "nirmalbang.com",
+   "n": 6
+  },
+  {
+   "domain": "merriam-webster.com",
+   "n": 2
+  },
+  {
+   "domain": "dictionary.cambridge.org",
+   "n": 2
+  },
+  {
+   "domain": "zhihu.com",
+   "n": 1
+  }
+ ],
+ "dead_reasons": [
+  {
+   "reason": "http 404",
+   "n": 8
+  },
+  {
+   "reason": "http 403",
+   "n": 2
+  },
+  {
+   "reason": "downloaded file missing",
+   "n": 2
+  },
+  {
+   "reason": "ConnectionError: HTTPSConnectionPool(host='static.nseindia.com', port=443): Max retries exceeded with url: /s3fs-public/inline-files/MCSGFC_order_Sunness.pdf (Caused by NameResolutionError(\"HTTPSConnection(host='static.nseindia.com', port=443): Failed to resolve 'static.nseindia.com' ([Errno 8] node",
+   "n": 1
+  }
+ ],
+ "historical": {
+  "window": [
+   2006,
+   2011
+  ],
+  "companies": 23,
+  "proven": 23,
+  "unproven": 0,
+  "with_supporting_docs": 0
+ }
+}

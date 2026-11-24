@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  processor:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: processor
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libmagic
+        run: sudo apt-get update && sudo apt-get install -y libmagic1
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      # Fast tests only: the embedding model is stubbed and nothing is downloaded.
+      # The docling PDF/OCR and real-model tests need RUN_SLOW=1 and are run locally.
+      - name: Test
+        run: uv run pytest -q
+
+  collector-and-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tesseract
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+      - name: Collector environment
+        working-directory: collector
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -e . -r requirements.txt -r requirements-dev.txt
+      - name: Lint
+        run: collector/.venv/bin/python -m pyflakes collector/scripts collector/src collector/tests unified agent tests
+      - name: Collector tests
+        working-directory: collector
+        run: .venv/bin/python -m pytest -q tests
+      # the agent boundary (guard, runner, prompts, session runner) and unified/; the macOS sandbox tests skip here
+      - name: Agent + unified tests
+        run: collector/.venv/bin/python -m pytest -q tests

@@ -1,0 +1,63 @@
+# Every step of the pipeline, as `./rag step <name>` / `./rag start <name>` run it.
+#
+# access  agent       the agent may run it directly (fast, read-only or a query)
+#         background  the agent may start it with `./rag start` (takes minutes; Cline kills commands after 30 s)
+#         user        your terminal and `./rag loop` only (the agent collects through the capped `./rag job start`)
+# args    the arguments the AGENT may pass, checked by agent/tool_guard.py (you may pass anything the step takes):
+#         "flag" | "int:LO:HI" | "date" (YYYY-MM-DD)
+# The names must match each repo's own `steps list` (tests/test_unified.py checks it).
+
+[repos.collector]
+python = "collector/.venv/bin/python"
+module = "rag_collector.steps"
+cwd = "collector"
+setup = "(cd collector && ./install.sh)"
+
+[repos.processor]
+python = "processor/.venv/bin/python"
+module = "pipeline.steps"
+cwd = "processor"
+setup = "(cd processor && uv sync)"
+
+[steps."collector.list"]
+access = "agent"
+[steps."collector.status"]
+access = "agent"
+[steps."collector.audit"]
+access = "agent"
+[steps."collector.discover"]
+access = "user"
+[steps."collector.fetch"]
+access = "user"
+[steps."collector.process"]
+access = "user"
+[steps."collector.drain"]
+access = "user"
+[steps."collector.collect"]
+access = "user"
+[steps."collector.universe-sync"]
+access = "background"
+args = { "--force" = "flag" }
+[steps."collector.export"]
+access = "background"
+args = { "--max-files" = "int:1:500" }
+
+[steps."processor.list"]
+access = "agent"
+[steps."processor.status"]
+access = "agent"
+[steps."processor.health"]
+access = "agent"
+[steps."processor.quant-bracket"]
+access = "agent"
+args = { "--schedule" = "flag", "--date" = "date", "--start-date" = "date", "--end-date" = "date", "--limit" = "int:1:100" }
+[steps."processor.ingest"]
+access = "background"
+args = { "--next" = "flag", "--all" = "flag" }
+[steps."processor.ingest-dir"]
+access = "user"
+[steps."processor.quant-sync"]
+access = "background"
+args = { "--full" = "flag" }
+[steps."processor.quant-zfactor"]
+access = "background"

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# rag-unified entry point: ./rag help
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+PY="$ROOT/collector/.venv/bin/python"
+if [ ! -x "$PY" ]; then
+  PY="$(command -v python3.13 || command -v python3.12 || command -v python3.11 || command -v python3)"
+  if [ -z "$PY" ] || ! "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+    echo "./rag needs Python 3.11+ and collector/.venv is missing; set it up with: (cd collector && ./install.sh)" >&2
+    exit 2
+  fi
+fi
+unset VIRTUAL_ENV PYTHONHOME
+export PYTHONPATH="$ROOT"
+cd "$ROOT" && exec "$PY" -m unified "$@"

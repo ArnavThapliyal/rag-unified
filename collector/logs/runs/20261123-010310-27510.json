@@ -1,0 +1,60 @@
+{
+ "run_id": "20261123-010310-27510",
+ "agent_session": "agent-20261123-002818",
+ "started_at": "2026-11-22T19:33:10+00:00",
+ "finished_at": "2026-11-22T19:39:27+00:00",
+ "duration_s": 377.3,
+ "status": "completed",
+ "stop_reason": "max_queries_reached",
+ "stage": "all",
+ "args": {
+  "stage": "all",
+  "phase": "all",
+  "max_queries": 8,
+  "fetch_limit": null,
+  "max_files": null,
+  "max_companies": null,
+  "max_docs_per_company": null,
+  "unlimited": false,
+  "capped": false,
+  "process_every": 5,
+  "retry_failed": false,
+  "harvest_only": false,
+  "dry_run": false
+ },
+ "limits": {
+  "mode": "capped",
+  "max_files": 60,
+  "max_companies": 25,
+  "max_docs_per_company": 5
+ },
+ "discovery_stop_reason": "max_queries_reached",
+ "queries_planned": 8,
+ "queries_done": 8,
+ "queries_failed": 0,
+ "queries_no_results": 0,
+ "phases": {
+  "historical_proof": {
+   "queries": 8,
+   "urls": 304,
+   "filed": 192
+  }
+ },
+ "urls_found": 304,
+ "filed_new": 192,
+ "fetched_ok": 37,
+ "fetch_failed": 0,
+ "fetch_dead": 0,
+ "quarantined": 0,
+ "harvested_ok": 0,
+ "harvest_backlog": 0,
+ "newly_blocked_domains": [],
+ "fetch_stop_reason": "sources_exhausted",
+ "parsed_files": 37,
+ "parsed_rows": 1,
+ "parse_errors": 0,
+ "process_stop_reason": "idle",
+ "records_before": 490,
+ "records_after": 491,
+ "new_records": 1
+}

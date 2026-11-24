@@ -12,3 +12,6 @@ __pycache__/
 # unified runtime state
 logs/*
 !logs/.gitkeep
+
+# throwaway E2E audit runs
+audit_runs/

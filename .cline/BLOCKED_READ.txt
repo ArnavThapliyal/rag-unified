@@ -1,0 +1,4 @@
+BLOCKED by tool guard: reading that file needs the user's approval, so it was not read.
+Source code (collector/scripts, collector/src, processor/, unified/, agent/, tests/), raw downloads (collector/data/raw/),
+the outbox and logs of agent sessions are off limits.
+Use the JSON output instead: ./rag status, ./rag collect --dry-run, ./rag status_report --json, ./rag inspect_artifact <path>.
