@@ -43,6 +43,9 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
 | Real agent session (Cline + qwen3.8-27b, sandbox on), a short boundary smoke prompt | `./rag job status`, `./rag step processor.quant-bracket`, `./rag start collector.list` (background run finished ok), `./rag runs`, `./rag log` ran; `cat soul.md` and `head -c` were blocked and filed as issues; session ended `completed` |
 | Processor ingest inside the agent sandbox (real bge-m3) | ok: 2 files, 9 chunks (the model cache is readable, nothing in home writable) |
 | `./rag loop --once --mode deterministic --max-queries 1` (temporary outbox + LanceDB) | collector cycle: 1 query (`partial max_queries_reached`), universe-sync noop, export 20 batches × 2 documents (the per-cycle export cap with `--export-batch 2`), decision line read; then the processor ingested all 20 batches: 39 of 40 files indexed, 1,248 chunks, 0 failed, every ledger entry ok; quant-sync ok; exit 0 |
+| After the Neon fixes: `./rag loop --once … --export-batch 2` (temporary outbox + DATA_DIR) | export capped at 3 batches by `--max-pending` (was 20), all 3 ingested, quant-sync ok, exit 0; two concurrent `processor.status` calls both ok |
+| After the ultrareview fixes (`audit/neon`): `scripts/check.sh --offline` | all ok: collector 354 tests, processor 125 passed / 3 skipped, agent + unified 279, dataset audit 0 errors, sandbox probe ok |
+| Real-data step runs, isolated outboxes (`audit_runs/`, not tracked; bge-m3 on CPU) | export 5 real PDFs → ingest 5 files / 142 chunks → second ingest noop → quant-sync (3,654 entities, 457 events) → zfactor / bracket noop (no prices); 3 batches through `main.py --watch --once`, exit 0; the same batch re-ingested with `--workers 2` writes 0 chunks (dedup by doc_id) |
 
 ## 4. What changed when the repos were combined
 
@@ -63,6 +66,12 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
   agent mode no longer acts on an earlier cycle's run summary; `job.py`'s `next` command passes the guard; a job
   and a collect step can't run at once; export bursts are capped by `--max-pending`; the sandbox blocks writes to
   `.env` and `.git/`; read-only steps take no lock.
+- `/code-review ultra` round (commit "Fix ultrareview findings"): `touch logs/STOP` now stops a running collector
+  cycle; the watcher runs in its own session so Ctrl-C lets its batch finish, and its restart count resets after an
+  hour of healthy uptime; background runs hold `logs/bg/<run_id>.lock` (a free lock means lost, whoever has the pid
+  now); agent sessions run Hugging Face offline and `./rag doctor` checks the embedding model is cached;
+  collect.py never SIGTERMs workers that are saving after an interrupt; `./rag` refuses Python < 3.11 with a setup
+  hint. Regression tests for each.
 - Deleted per-repo audit/planning docs (in history): `collector/instructions.md`,
   `collector/docs/UNIFIED_PIPELINE_CHANGES.md`, `processor/HANDOFF.md`, `processor/NEXT_STEPS_PLAN.md`,
   `processor/refactoring_flags.md`.
@@ -74,7 +83,8 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
 2. **First real fill of the vector DB.** `collector/data/export/` and `processor/data/lancedb` in this checkout are
    empty; the first `./rag loop` exports the 327 relevant documents (≈370 MB of clones) and ingests them (expect
    tens of minutes on MPS).
-3. **A full agent-mode `./rag loop` cycle** (real collection session, then export and ingest) has not been run; the
+3. **Not yet run end to end:** a live agent session, live search/collection through the agent, the MPS embedding
+   path in a real run (the `audit_runs/` checks used CPU), and **a full agent-mode `./rag loop` cycle** (real collection session, then export and ingest) has not been run; the
    pieces were run separately (section 3).
 4. **The old repos are frozen, not retired.** `nse-delisted-comp` is now `rag-collector` (local folder and
    GitHub, renamed 2026-11-24; its QA/remediation worktrees were removed, their branches kept). It and
