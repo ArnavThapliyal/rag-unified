@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-collector"
+version = "0.3.0"
+description = "Source stage of the RAG system: discovers, fetches, parses and reconciles NSE delisting documents, keeps a point-in-time universe DB, and exports immutable outbox batches for rag-processor."
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "pdfplumber>=0.11",
+    "openpyxl>=3.1",
+    "pandas>=2.2",
+    "xlrd>=2.0",
+    "html5lib>=1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pyflakes>=3.2",
+]
+
+[project.scripts]
+rag-collector = "rag_collector.cli:main"
+rag-collector-step = "rag_collector.steps:main"
+rag-collector-loop = "rag_collector.loop:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

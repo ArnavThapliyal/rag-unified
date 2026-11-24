@@ -1,0 +1,16 @@
+# Keep bulky / raw material out of the agent's context
+vendor/
+.venv/
+data/raw/
+data/search_cache/
+data/quarantine/
+data/processed/parsed/
+data/processed/ocr/
+data/export/
+src/
+
+# Secrets (search API keys)
+.env
+.env.*
+!.env.example
+data/docket.sqlite*
