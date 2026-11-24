@@ -1,0 +1,29 @@
+name: Processor tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Install libmagic
+        run: sudo apt-get update && sudo apt-get install -y libmagic1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      # Fast tests only: the embedding model is stubbed and nothing is downloaded.
+      # The docling PDF/OCR and real-model tests need RUN_SLOW=1 and are run locally.
+      - name: Test
+        run: uv run pytest -q

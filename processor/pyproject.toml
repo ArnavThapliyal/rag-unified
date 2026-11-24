@@ -1,0 +1,30 @@
+[project]
+name = "rag-processor"
+version = "0.1.0"
+description = "Processor stage of the RAG pipeline: parse, clean, chunk, embed and ingest purchased documents into LanceDB."
+readme = "README.md"
+requires-python = ">=3.11.9"
+dependencies = [
+    "docling>=2.109.0",
+    "lancedb>=0.34.0",
+    "numpy>=2.4.6",
+    "openpyxl>=3.1.0",
+    "pandas>=3.0.3",
+    "pyarrow>=19.0.0",
+    "python-magic>=0.4.27",
+    "sentence-transformers>=5.6.0",
+    "tokenizers>=0.22.2",
+    "torch>=2.12.1",
+    "xlrd>=2.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "reportlab>=5.1.0",
+    "ruff>=0.15.15",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
