@@ -50,3 +50,7 @@ Stop the loop with Ctrl-C, SIGTERM or `touch logs/STOP`; the running step finish
 ```bash
 scripts/check.sh --offline           # both test suites, the data audit, guard + prompt tests, a smoke run
 ```
+
+## License
+
+GNU Affero General Public License v3.0; see [LICENSE](LICENSE).
