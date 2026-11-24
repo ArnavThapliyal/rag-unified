@@ -83,9 +83,9 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
 2. **First real fill of the vector DB.** `collector/data/export/` and `processor/data/lancedb` in this checkout are
    empty; the first `./rag loop` exports the 327 relevant documents (≈370 MB of clones) and ingests them (expect
    tens of minutes on MPS).
-3. **Not yet run end to end:** a live agent session, live search/collection through the agent, the MPS embedding
-   path in a real run (the `audit_runs/` checks used CPU), and **a full agent-mode `./rag loop` cycle** (real collection session, then export and ingest) has not been run; the
-   pieces were run separately (section 3).
+3. **Not yet run end to end:** a full agent-mode `./rag loop` cycle (real collection session, then export and
+   ingest), live search/collection driven by the agent, and the MPS embedding path in a real run (the `audit_runs/`
+   checks used CPU). The pieces were run separately (section 3).
 4. **The old repos are frozen, not retired.** `nse-delisted-comp` is now `rag-collector` (local folder and
    GitHub, renamed 2026-11-24; its QA/remediation worktrees were removed, their branches kept). It and
    `rag-processor` still have their `unified-pipeline` branches, unpushed. Their committed `data/metadata` in
