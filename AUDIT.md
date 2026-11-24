@@ -70,9 +70,10 @@ files are byte-identical; `scripts/check.sh` and a processor test both check thi
    tens of minutes on MPS).
 3. **A full agent-mode `./rag loop` cycle** (real collection session, then export and ingest) has not been run; the
    pieces were run separately (section 3).
-4. **The old repos are frozen, not retired.** `nse-delisted-comp` and `rag-processor` still have their
-   `unified-pipeline` branches, unpushed; nothing was renamed or pushed. Their committed `data/metadata` in
-   `nse-delisted-comp@2e00307` is stale (416 records); here it is regenerated (409, matching the audit).
+4. **The old repos are frozen, not retired.** `nse-delisted-comp` is now `rag-collector` (local folder and
+   GitHub, renamed 2026-11-24; its QA/remediation worktrees were removed, their branches kept). It and
+   `rag-processor` still have their `unified-pipeline` branches, unpushed. Their committed `data/metadata` in
+   `rag-collector@2e00307` is stale (416 records); here it is regenerated (409, matching the audit).
 5. The `.rego` OPA policies under `processor/tests/` belong to the LLM stage; they are kept and run by CI unchanged.
 6. CI on Linux skips the macOS sandbox tests; the sandbox is only verified locally.
 7. Every export batch carries a full universe snapshot, even when the universe did not change (small, but
