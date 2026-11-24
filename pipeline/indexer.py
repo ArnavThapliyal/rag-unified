@@ -31,6 +31,7 @@ import multiprocessing as mp
 import os
 import queue
 import shutil
+import threading
 import time
 import uuid
 from collections import Counter
@@ -229,6 +230,20 @@ def _parent_alive() -> bool:
     return parent is None or parent.is_alive()
 
 
+def _start_orphan_watchdog(interval: float = 2.0) -> None:
+    """Exit this child as soon as the main process is gone (killed, crashed, SIGTERM without cleanup).
+
+    _put/_get notice a dead parent only when they touch a queue; a worker deep inside one large PDF (minutes) or
+    the embedder inside a long encode would otherwise linger as an orphan."""
+    def watch() -> None:
+        while True:
+            time.sleep(interval)
+            if not _parent_alive():
+                os._exit(1)
+
+    threading.Thread(target=watch, name="orphan-watchdog", daemon=True).start()
+
+
 def _put(q: Any, message: Any) -> None:
     """Blocking put that gives up if the main process is gone (so children never linger)."""
     while True:
@@ -259,6 +274,7 @@ def _worker_main(worker_id: int, task_q: Any, chunk_q: Any, ctl_q: Any, root: st
                  db_path: str, table_name: str, run_id: str) -> None:
     os.environ.setdefault("OMP_NUM_THREADS", "1")  # N workers must not each spawn a thread per core
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    _start_orphan_watchdog()
     from config.logsetup import setup_logging
 
     setup_logging(run_id)
@@ -287,6 +303,7 @@ def _worker_main(worker_id: int, task_q: Any, chunk_q: Any, ctl_q: Any, root: st
 
 
 def _embedder_main(chunk_q: Any, out_q: Any, factory: Optional[EmbedderFactory], run_id: str) -> None:
+    _start_orphan_watchdog()
     from config.logsetup import setup_logging
 
     setup_logging(run_id)
