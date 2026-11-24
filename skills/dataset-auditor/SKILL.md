@@ -5,7 +5,11 @@ description: Cross-checking, deduplication and confidence-scoring rules for the 
 
 # Dataset Auditor
 
-## Commands
+> **Agent:** the commands in *User commands* below are the user's debugging tools; the tool guard blocks them
+> for you. You use this skill's rules and templates, and run collection only through `scripts/job.py`
+> (searches as gap queries via `scripts/add_queries.py`). See `.cline/rules/01-nse-research.md`.
+
+## User commands (blocked for the agent)
 ```bash
 .venv/bin/python scripts/normalize_and_merge.py   # rebuild master + priority audit from parsed/*.jsonl
 .venv/bin/python scripts/status_report.py         # counts by year × type × confidence

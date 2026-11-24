@@ -40,8 +40,8 @@ AUDIT = ROOT / "logs" / "tool_guard.jsonl"
 PYTHONS = {".venv/bin/python", str(ROOT / ".venv/bin/python")}
 RUNNER = ".venv/bin/python scripts/agent_exec.py"
 OPS = ("&&", "||", ";")
-NO_READ = ("scripts/", "tests/", "vendor/", ".venv/", "node_modules/", "data/raw/", "data/quarantine/",
-           "data/search_cache/", "data/processed/parsed/", "data/processed/ocr/", "logs/agent_sessions/",
+NO_READ = ("scripts/", "src/", "tests/", "vendor/", ".venv/", "node_modules/", "data/raw/", "data/quarantine/",
+           "data/search_cache/", "data/processed/parsed/", "data/processed/ocr/", "data/export/", "logs/agent_sessions/",
            ".git/", ".cline/hooks/", "qa/")
 MAX_AGENT_QUERIES = 20          # job.py start --max-queries
 DOCKET_STATUSES = ("parked", "pending", "fetching", "fetched", "parsed", "failed", "dead", "parse_error")
@@ -222,10 +222,26 @@ def _no_args(args):
     options(args, {})
 
 
+AGENT_STEPS = ("list", "status", "audit")   # fast and read-only: what the agent may run directly
+LOOP_ONLY_STEPS = ("universe-sync", "export")
+JOB_STEPS = ("discover", "fetch", "process", "drain", "collect")
+
+
+def _steps(args):
+    if len(args) == 1 and args[0] in AGENT_STEPS:
+        return
+    if args and args[0] in LOOP_ONLY_STEPS:
+        raise Bad(f"steps.py {args[0]} is run by scripts/run_continuous.sh after each session, not by the agent")
+    if args and args[0] in JOB_STEPS:
+        raise Bad(f"steps.py {args[0]} takes minutes (commands are killed after 30 s): use scripts/job.py start")
+    raise Bad(f"steps.py only as: steps.py {'|'.join(AGENT_STEPS)} (no options)")
+
+
 SCRIPTS = {
     "collect.py": _collect, "job.py": _job, "status_report.py": _status, "report_issue.py": _report,
     "inspect_artifact.py": _inspect, "audit_dataset.py": _no_args, "build_metadata.py": _no_args,
     "web_search.py": _search, "docket.py": _docket, "common.py": _common, "add_queries.py": _add_queries,
+    "steps.py": _steps,
 }
 
 

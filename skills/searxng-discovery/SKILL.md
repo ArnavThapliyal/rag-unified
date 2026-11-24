@@ -5,7 +5,11 @@ description: Query patterns and pagination rules for finding NSE delisting sourc
 
 # SearXNG Discovery
 
-## Command
+> **Agent:** the commands in *User commands* below are the user's debugging tools; the tool guard blocks them
+> for you. You use this skill's rules and templates, and run collection only through `scripts/job.py`
+> (searches as gap queries via `scripts/add_queries.py`). See `.cline/rules/01-nse-research.md`.
+
+## User commands (blocked for the agent)
 ```bash
 .venv/bin/python scripts/web_search.py --query "<query>" --pages 2 --year-tag <2007|2017|2020|2024|master|YYYY>
 ```
@@ -51,7 +55,7 @@ so finding the same information elsewhere is valuable.
 
 ## Rules
 - One topic per query. Short queries (≤ 8 words) work best.
-- Don't paste search results into chat; read the summary and pass the cache file to `polite_fetcher.py`.
+- Don't paste search results into chat. Searches run inside `job.py start` runs; add new ones with `add_queries.py`.
 - If SearXNG returns 0 results for a site: query, retry once without `site:` plus the domain name as a keyword.
 - Prefer open-web queries over more `site:nseindia.com` ones: the NSE fetch budget is small.
 - If the client reports `"mode": "html_fallback"`, JSON is disabled in SearXNG — tell the user.

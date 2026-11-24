@@ -1,6 +1,16 @@
-# NSE Delisting Research — Workspace Rules
+# rag-collector — Workspace Rules (NSE delisting research)
 
 Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
+
+## Where your work goes
+This repo is **rag-collector**, the Source stage of a RAG system: collector → rag-processor (parse, chunk, embed
+into a vector DB) → LLM. You run *collection segments* (search, download, parse, merge through `job.py`). After
+your session, `scripts/run_continuous.sh` runs two deterministic steps that are NOT yours to run: `universe-sync`
+(rebuilds the point-in-time universe DB `data/nse_unified.sqlite3`) and `export` (hands new relevant documents to
+rag-processor as batches in `data/export/`). A document you collect reaches the vector DB only if the process stage
+parsed it as relevant, so prefer real delisting documents over pages with no delisting content.
+- `.venv/bin/python scripts/steps.py status` — one JSON object: dataset indicators, docket/collector state, universe DB
+  and outbox (`would_export`, `next_suggested`). Use it (or `collect.py --dry-run`) to decide the next action.
 
 ## Environment
 - Python: always use `.venv/bin/python` (run from the workspace root).
@@ -11,13 +21,14 @@ Read `soul.md` once at the start of a task. Full spec: `instructions.md`.
   (they are in `.clineignore`). Use `scripts/inspect_artifact.py <path>` for structured facts about a file.
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), add_queries.py, common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), add_queries.py, common.py (`log`),
+  steps.py (`list`, `status`, `audit` only), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut (they filter the output only; no file names, no -o/-r). Each script takes
   only its own agent arguments: `job.py start` with --max-queries (≤20), --harvest-only, --phase and caps no higher
   than the user's; `docket.py --stats` or `--list STATUS [--limit ≤100]`; `report_issue.py --list` or
   `--kind/--summary/--evidence`. No `$`, `~`, `*`, `?`, backticks or backslashes outside quotes (nothing is expanded:
   commands run without a shell). No file is ever edited directly: the plan changes only via add_queries.py.
-  Anything else (ls, cat, python -c, curl, rm, redirects, reading scripts/ or data/raw/, any edit) needs the user's
+  Anything else (ls, cat, python -c, curl, rm, redirects, reading scripts/, src/, data/raw/ or data/export/, any edit) needs the user's
   approval: it is NOT run, you get `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.
 - Your allowed commands are shown rewritten as `.venv/bin/python scripts/agent_exec.py <token>`: that is the guard
   running them without a shell. Always write the normal command; never call agent_exec.py yourself.
@@ -47,7 +58,7 @@ Run every collection through the job runner (detached, survives the timeout):
 Each run writes `logs/runs/<run_id>.json` and refreshes `data/metadata/`. Read the JSON summary it prints; don't tail raw logs.
 
 ## You collect; the user debugs
-Never read or edit the source of `scripts/`, `tests/`, `skills/`, `prompts/` or `.cline/` (everything you
+Never read or edit the source of `scripts/`, `src/`, `tests/`, `skills/`, `prompts/` or `.cline/` (everything you
 need is in the scripts' JSON output: e.g. `collect.py --dry-run` shows `search_cooldown_min_left`), never edit `soul.md`, and never write ad-hoc
 `python -c` probes of the parser or the data. When something looks wrong, report it with
 `report_issue.py` (at most 3 `inspect_artifact.py` looks for evidence) and carry on collecting.
@@ -55,7 +66,10 @@ To add searches or websites, run `.venv/bin/python scripts/add_queries.py --year
 `--query`, max 8 per call) or `--add-domain <host>`; it appends to the `agent_added` phase / `fetch_domains`.
 Don't edit `config/query_plan.json` any other way (scripts and heredocs are blocked).
 
-## Individual steps (reference — the user's debugging tools; you don't need them)
+## Individual steps (reference — the user's debugging tools; blocked for you)
+Every stage is also a step with one JSON result: `python -m rag_collector.steps discover|fetch|process|drain|collect|
+universe-sync|export|status|audit` (contract: `src/rag_collector/stepkit.py`). The orchestrator and
+`scripts/run_continuous.sh` use them; you use `job.py` for anything that takes longer than 30 s.
 1. Discover — `scripts/web_search.py --query "<q>" --pages 2 --year-tag 2017` (skill: searxng-discovery)
 2. Fetch — `scripts/polite_fetcher.py --from-cache-file <file> --limit 10 --domains nseindia.com,sebi.gov.in,bseindia.com`, `--url <url>`, or `--harvest <downloaded html>`
 3. Parse — `scripts/parse_nse_records.py` (`--force` to reparse; skill: nse-document-parser)

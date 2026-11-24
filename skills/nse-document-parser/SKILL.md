@@ -5,7 +5,11 @@ description: Rules for extracting ISIN, symbol, order date, effective date, deli
 
 # NSE Document Parser
 
-## Command
+> **Agent:** the commands in *User commands* below are the user's debugging tools; the tool guard blocks them
+> for you. You use this skill's rules and templates, and run collection only through `scripts/job.py`
+> (searches as gap queries via `scripts/add_queries.py`). See `.cline/rules/01-nse-research.md`.
+
+## User commands (blocked for the agent)
 ```bash
 .venv/bin/python scripts/parse_nse_records.py            # parse new artifacts in data/raw/
 .venv/bin/python scripts/parse_nse_records.py --force    # reparse everything

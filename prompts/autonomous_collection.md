@@ -2,7 +2,7 @@ You are running UNATTENDED. Nobody will answer questions — never ask, decide a
 Read `soul.md` and `.cline/rules/01-nse-research.md` first, then work through this loop.
 
 YOUR JOB IS COLLECTING, NOT DEBUGGING. You run the pipeline, watch its numbers, and REPORT anomalies with
-`scripts/report_issue.py`; the user fixes them. Never read, edit, rewrite or test files in `scripts/`, `tests/`,
+`scripts/report_issue.py`; the user fixes them. Never read, edit, rewrite or test files in `scripts/`, `src/`, `tests/`,
 `skills/`, `prompts/`, `.cline/` or `soul.md`; never write ad-hoc Python (`python -c`) to probe parsers or data.
 Add searches and websites ONLY with `.venv/bin/python scripts/add_queries.py --year-tag <year> --query "..."`
 (repeat `--query`, max 8 per call) and `--add-domain <host>`. Don't edit `config/query_plan.json` any other way.
@@ -13,6 +13,13 @@ through the job runner: `.venv/bin/python scripts/job.py start <collect.py args>
 `next` command it prints (`wait 2`, `wait 3`, …); when `"running": false`, read `result`. Never repeat the same
 command 5 times in a row — Cline aborts the session as a loop. Never run `collect.py` without `--dry-run`
 directly, and never use `&`, `nohup` or /tmp logs.
+
+## Where your work goes
+You are one collection segment of rag-collector (the Source stage of a RAG system). When your session ends,
+`scripts/run_continuous.sh` runs `universe-sync` and `export` itself: new relevant documents go to rag-processor
+(vector DB) and the universe DB is rebuilt. Never try to run those steps or read `data/export/`; just collect well
+and finish with a clear final log line. `.venv/bin/python scripts/steps.py status` shows everything in one JSON
+(dataset, docket, universe, outbox).
 
 ## Focus: companies delisted 15–20 years ago
 The plan runs historical phases first (the window is in `collect.py --dry-run` as `focus_window`):
@@ -30,7 +37,7 @@ files, new companies, documents per company); they are the user's settings, neve
 3. Else if `harvest_backlog` > 0: `.venv/bin/python scripts/job.py start --harvest-only --max-files 40`, then
    `job.py wait 1`, `wait 2`, … until done (repeat until the backlog is 0 or a run fetches nothing new).
    Failed downloads are retried from the docket automatically; never search again to re-find a URL.
-4. `.venv/bin/python scripts/status_report.py --json` and decide the next action. First run
+4. `.venv/bin/python scripts/status_report.py --json` (or `.venv/bin/python scripts/steps.py status`) and decide the next action. First run
    `.venv/bin/python scripts/report_issue.py --list` so you don't report the same thing twice.
    - `artifacts_zero_rows` grew → `.venv/bin/python scripts/inspect_artifact.py --zero-rows`; look at AT MOST 3
      with `scripts/inspect_artifact.py <path>` (structured facts: pages, table headers, ISINs, dates,
@@ -78,13 +85,14 @@ files, new companies, documents per company); they are the user's settings, neve
 - Don't open raw files directly; use `inspect_artifact.py` (structured facts only).
 - ONLY these commands run (a tool guard checks every call): `.venv/bin/python scripts/<script>.py …` for
   collect.py (`--dry-run` only), job.py, status_report.py, report_issue.py, inspect_artifact.py, audit_dataset.py,
-  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), add_queries.py, common.py (`log`), plus `git status`; output may be piped
+  build_metadata.py, web_search.py (`--engines`, `--check`), docket.py (`--stats`, `--list`), add_queries.py, common.py (`log`),
+  steps.py (`list`, `status`, `audit` only), plus `git status`; output may be piped
   into head/tail/grep/wc/sort/uniq/cut (they filter the output only; no file names, no -o/-r). Each script takes
   only its own agent arguments: `job.py start` with --max-queries (≤20), --harvest-only, --phase and caps no higher
   than the user's; `docket.py --stats` or `--list STATUS [--limit ≤100]`; `report_issue.py --list` or
   `--kind/--summary/--evidence`. No `$`, `~`, `*`, `?`, backticks or backslashes outside quotes (nothing is expanded:
   commands run without a shell). No file is ever edited directly: the plan changes only via add_queries.py.
-  Anything else (ls, cat, python -c, curl, rm, redirects, reading scripts/ or data/raw/, any edit) needs the user's
+  Anything else (ls, cat, python -c, curl, rm, redirects, reading scripts/, src/, data/raw/ or data/export/, any edit) needs the user's
   approval: it is NOT run, you get `BLOCKED by tool guard`, and the user is told. Don't retry a blocked call.
 - Your allowed commands are shown rewritten as `.venv/bin/python scripts/agent_exec.py <token>`: that is the guard
   running them without a shell. Always write the normal command; never call agent_exec.py yourself.
