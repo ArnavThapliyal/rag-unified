@@ -3,7 +3,7 @@
 Lookup order for a name such as SERPER_API_KEY (first hit wins):
 1. the environment variable itself;
 2. the file named by NSE_KEYS_FILE (any path, e.g. outside the repo);
-3. ~/.config/nse-unified-pipeline/keys.env (outside the repo: recommended);
+3. ~/.config/rag-collector/keys.env (outside the repo: recommended);
 4. .env in the project root (git-ignored; refused if it is ever tracked by git).
 
 Key files use `NAME=value` lines; `#` comments, blank lines, `export ` prefixes and quotes are fine.
@@ -19,7 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-USER_KEYS = Path.home() / ".config" / "nse-unified-pipeline" / "keys.env"
+USER_KEYS = Path.home() / ".config" / "rag-collector" / "keys.env"
 REPO_ENV = ROOT / ".env"
 LINE_RE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$")
 

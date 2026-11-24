@@ -21,7 +21,7 @@ def world(tmp_path, monkeypatch):
     (root / ".env").write_text("SERPER_API_KEY=CANARY_ENV")
     (root / ".env.example").write_text("SERPER_API_KEY=")
     (root / "data.csv").write_text("ok")
-    keys = home / ".config" / "nse-unified-pipeline"
+    keys = home / ".config" / "rag-collector"
     keys.mkdir(parents=True)
     (keys / "keys.env").write_text("BRAVE_API_KEY=CANARY_KEYS")
     (home / ".ssh").mkdir()
@@ -52,7 +52,7 @@ def test_project_readable_and_writable(world):
     assert readable(prof, tmp, root / ".env.example")
 
 
-@pytest.mark.parametrize("rel", ["notes.txt", ".ssh/id_ed25519", ".config/nse-unified-pipeline/keys.env",
+@pytest.mark.parametrize("rel", ["notes.txt", ".ssh/id_ed25519", ".config/rag-collector/keys.env",
                                  "Projects/repo/.env"])
 def test_secrets_and_home_are_unreadable(world, rel):
     home, root, tmp = world

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
-# First-time setup for nse-unified-pipeline:
+# First-time setup for rag-collector:
 #
-#   ./install.sh                                      # guided (arrow keys; Enter = recommended)
+#   git clone https://github.com/ArnavThapliyal/rag-collector.git
+#   cd rag-collector && ./install.sh                 # guided (arrow keys; Enter = recommended)
 #   ./install.sh --defaults                           # accept every recommended option
 #   ./install.sh --dry-run                            # show what would happen, change nothing
 #
@@ -17,11 +18,11 @@ die()  { printf '\033[38;5;196m✗\033[0m %s\n' "$1" >&2; exit 1; }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 cd "$ROOT"
-[ -f scripts/setup.py ] || die "run this from the nse-unified-pipeline root (scripts/setup.py not found)"
+[ -f scripts/setup.py ] || die "run this from the rag-collector root (scripts/setup.py not found)"
 
 # --- prerequisites ---------------------------------------------------------
-command -v python3 >/dev/null 2>&1 || die "python3 (3.9+) is required: https://www.python.org/downloads/"
-python3 -c 'import sys; sys.exit(sys.version_info < (3, 9))' || die "python3 is $(python3 -V 2>&1); 3.9+ is required."
+command -v python3 >/dev/null 2>&1 || die "python3 (3.11+) is required: https://www.python.org/downloads/"
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "python3 is $(python3 -V 2>&1); 3.11+ is required."
 
 command -v git >/dev/null 2>&1 || warn "git not found (needed for commits and the key-safety check)."
 command -v docker >/dev/null 2>&1 || warn "docker not found: needed to run SearXNG (Docker Desktop: https://www.docker.com/products/docker-desktop/)."

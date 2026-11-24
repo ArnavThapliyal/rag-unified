@@ -17,7 +17,7 @@ def test_first_option_is_the_recommended_one_everywhere():
 def test_fresh_machine_plan_with_defaults():
     acts = su.plan(su.defaults(FRESH), FRESH)
     todo = [a.what for v in acts.values() for a in v if not a.note]
-    assert todo == ["create .venv", "pip install -r requirements.txt", "pip install -r requirements-dev.txt",
+    assert todo == ["create .venv", "pip install -e . (rag-collector + requirements)", "pip install -r requirements-dev.txt",
                     "write a random SEARXNG_SECRET into .env", "docker compose up -d", "brew install tesseract",
                     "npm install", f"set CLINE_MODEL={su.MODELS[0]} in .env",
                     "set run_limits.mode = capped in config/query_plan.json (backup first)", "scripts/check.sh"]

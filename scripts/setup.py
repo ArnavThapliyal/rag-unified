@@ -1,4 +1,4 @@
-"""Guided first-time setup for nse-unified-pipeline. Launched by ./install.sh.
+"""Guided first-time setup for rag-collector. Launched by ./install.sh.
 
 Arrow through 9 screens; the first option on every screen is the recommended one (Enter accepts it).
 The panel under the options shows what the highlighted option will do and what is already in place.
@@ -31,12 +31,12 @@ ENV = ROOT / ".env"
 ENV_EXAMPLE = ROOT / ".env.example"
 PLAN = ROOT / "config" / "query_plan.json"
 LIMIT_DEFAULTS = {"max_files": 60, "max_companies": 25, "max_docs_per_company": 5}
-KEYS_FILE = Path.home() / ".config" / "nse-unified-pipeline" / "keys.env"
+KEYS_FILE = Path.home() / ".config" / "rag-collector" / "keys.env"
 SEARXNG_URL = "http://localhost:8082/search?q=test&format=json"
 LMSTUDIO_URL = "http://localhost:1234/v1/models"
 API_KEYS = ("SERPER_API_KEY", "BRAVE_API_KEY")
 MODELS = ("qwen/qwen3.8-27b", "google/gemma-4-26b-a4b")
-RUNTIME_IMPORTS = "import requests, bs4, lxml, pdfplumber, pandas, openpyxl"
+RUNTIME_IMPORTS = "import requests, bs4, lxml, pdfplumber, pandas, openpyxl, rag_collector"
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ def detect() -> dict:
         "env_file": ENV.exists(),
         "env_secret": bool(env.get("SEARXNG_SECRET")),
         "env_tracked": ENV.exists() and tracked_by_git(ENV),
-        "keys": {k: ("environment" if os.environ.get(k) else "~/.config/nse-unified-pipeline/keys.env" if keys.get(k)
+        "keys": {k: ("environment" if os.environ.get(k) else "~/.config/rag-collector/keys.env" if keys.get(k)
                      else ".env" if env.get(k) else None) for k in API_KEYS},
         "brew": shutil.which("brew") is not None,
         "apt": shutil.which("apt-get") is not None,
@@ -140,7 +140,7 @@ def screens(st: dict) -> list[Screen]:
     cur_model = st.get("model")
     return [
         Screen("python", "Python environment", "The pipeline's packages live in .venv.",
-               [("create", "Create .venv and install requirements.txt (recommended)"),
+               [("create", "Create .venv and install rag-collector with its requirements (recommended)"),
                 ("reuse", "Use the existing .venv as it is"), ("skip", "Skip")]),
         Screen("dev", "Developer tools", "pytest + pyflakes, used by scripts/check.sh.",
                [("install", "Install requirements-dev.txt (recommended)"), ("skip", "Skip")]),
@@ -150,7 +150,7 @@ def screens(st: dict) -> list[Screen]:
                 ("skip", "Skip (use only Serper / Brave API keys)")]),
         Screen("keys", "Search API keys (Serper.dev, Brave)", "Optional fallbacks when SearXNG's engines are banned. "
                "Typed hidden, never printed.",
-               [("keyfile", "Save to ~/.config/nse-unified-pipeline/keys.env, outside the repo (recommended)"),
+               [("keyfile", "Save to ~/.config/rag-collector/keys.env, outside the repo (recommended)"),
                 ("dotenv", "Save to the repo's .env (git-ignored)"), ("skip", "Skip for now")]),
         Screen("ocr", "OCR for scanned PDFs", "tesseract reads image-only delisting notices.",
                [("install", "Install tesseract (recommended)"), ("skip", "Skip")]),
@@ -231,7 +231,8 @@ def plan(choice: dict[str, str], st: dict, keys: dict[str, str] | None = None) -
         if not st["venv"]:
             a.append(Action("create .venv", [sys.executable, "-m", "venv", str(ROOT / ".venv")]))
         if not st["venv_deps"]:
-            a.append(Action("pip install -r requirements.txt", [py, "-m", "pip", "install", "-q", "-r", "requirements.txt"]))
+            # the project itself (editable): its dependencies + rag-collector / rag-collector-step / rag-collector-loop
+            a.append(Action("pip install -e . (rag-collector + requirements)", [py, "-m", "pip", "install", "-q", "-e", "."]))
         a = a or [Action(".venv is ready (packages import fine)", note=True)]
     elif c == "reuse":
         a = [Action(".venv ready" if st["venv_deps"] else ".venv missing or incomplete: the pipeline won't run", note=True)]
@@ -340,7 +341,7 @@ def run_tui(choice: dict, st: dict) -> bool:
                     w.addstr(y, x, text[: max(0, wd - x - 1)], attr)
                 except curses.error:
                     pass
-        put(0, 0, " nse-unified-pipeline setup ".ljust(wd - 1), curses.A_REVERSE)
+        put(0, 0, " rag-collector setup ".ljust(wd - 1), curses.A_REVERSE)
         s = scr[idx]
         put(2, 2, f"[{idx + 1}/{len(scr)}] {s.title}", curses.A_BOLD)
         put(3, 2, s.help, curses.A_DIM)
@@ -451,8 +452,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--defaults", action="store_true", help="accept every recommended option without asking")
     ap.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
     a = ap.parse_args(argv)
-    if sys.version_info < (3, 9):
-        _err("Python 3.9+ is required.")
+    if sys.version_info < (3, 11):
+        _err("Python 3.11+ is required.")
         return 1
 
     _err("◆ checking what is already set up…")

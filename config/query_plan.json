@@ -96,7 +96,7 @@
     "min_free_gb": 20
   },
   "search": {
-    "_comment": "Search providers (scripts/web_search.py, scripts/search_providers/): used in 'providers' order, the next one only when the previous is used up (units benched, daily/monthly limit, no API key, down). SearXNG's units are its engines (enable them in searxng/settings.yml); each API is one unit. Failing or junk-returning units are benched cooldown_min[reason] minutes. API keys go in .env or ~/.config/nse-unified-pipeline/keys.env, never here.",
+    "_comment": "Search providers (scripts/web_search.py, scripts/search_providers/): used in 'providers' order, the next one only when the previous is used up (units benched, daily/monthly limit, no API key, down). SearXNG's units are its engines (enable them in searxng/settings.yml); each API is one unit. Failing or junk-returning units are benched cooldown_min[reason] minutes. API keys go in .env or ~/.config/rag-collector/keys.env, never here.",
     "providers": [
       "searxng",
       "serper",

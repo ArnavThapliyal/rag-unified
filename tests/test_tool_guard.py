@@ -55,7 +55,7 @@ def test_blocked_call_is_rewritten_not_cancelled(monkeypatch, capsys):
 
 
 def test_secrets_and_search_settings_are_off_limits():
-    for p in [".env", f"{ROOT}/.env.local", "~/.config/nse-unified-pipeline/keys.env"]:
+    for p in [".env", f"{ROOT}/.env.local", "~/.config/rag-collector/keys.env"]:
         assert g.check("read_files", {"files": [{"path": p}]}), p
     assert g.check("read_files", {"files": [{"path": ".env.example"}]}) is None
     plan = f"{ROOT}/config/query_plan.json"

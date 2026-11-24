@@ -2,7 +2,7 @@
 
 Built from the collector's outputs by rag_collector.nse_bridge; read by universe-as-of and shipped to
 rag-processor as a consistent snapshot (rag_collector.export uses sqlite3's backup API).
-Extracted from Unified_Pipeline's company_pipeline/storage.py (market-data, fundamentals and Z-factor
+Extracted from Unified_Pipeline's storage.py (market-data, fundamentals and Z-factor
 tables live in rag-processor's quant stage).
 """
 

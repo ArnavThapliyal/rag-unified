@@ -7,13 +7,13 @@ the kernel enforces for Cline and every process it starts (hooks, scripts, worke
   (~/.cline, or --config/--data-dir), and the runtimes the pipeline needs (the Python install behind .venv,
   the npm cache) which are read-only;
 - inside the project, `.env*` (except .env.example) and `.git/config` are unreadable;
-- ~/.ssh, ~/.aws, ~/.config/nse-unified-pipeline (search API keys), ~/Library/Keychains and the keychain service
+- ~/.ssh, ~/.aws, ~/.config/rag-collector (search API keys), ~/Library/Keychains and the keychain service
   (com.apple.SecurityServer) are denied explicitly, even if a rule above would allow them;
 - writes go only to the project, Cline's state and temp directories;
 - network: optional --local-network-only (localhost only: LM Studio, SearXNG). The collection pipeline itself
   downloads from the web, so run_agent.sh leaves outbound network open by default.
 
-Consequence: paid search keys (Serper/Brave) in ~/.config/nse-unified-pipeline/keys.env are NOT readable inside the
+Consequence: paid search keys (Serper/Brave) in ~/.config/rag-collector/keys.env are NOT readable inside the
 agent's sandbox; agent sessions search through SearXNG. Pass --allow-keys to permit reading that one file
 (the trade-off: a guard bypass could then read the keys too).
 
@@ -34,7 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.path.expanduser("~")).resolve()
-SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/nse-unified-pipeline", ".netrc", ".docker",
+SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".config/gh", ".config/rag-collector", ".netrc", ".docker",
                "Library/Keychains", ".kube", ".npmrc", ".pypirc", ".git-credentials", ".gitconfig"]
 
 
@@ -87,7 +87,7 @@ def profile(cline_dirs: list[Path] | None = None, allow_keys: bool = False, loca
               ";; secrets in home and the keychain, whatever was allowed above"]
     for s in SECRET_DIRS:
         p = HOME / s
-        if s == ".config/nse-unified-pipeline" and allow_keys:
+        if s == ".config/rag-collector" and allow_keys:
             continue
         lines.append(f"(deny file-read* file-write* (subpath {q(p)}))")
     lines.append('(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd"))')
@@ -104,7 +104,7 @@ PROBES = [  # (description, argv, must_succeed)
     ("list home", ["/bin/ls", str(HOME)], False),
     ("read ~/.ssh", ["/bin/ls", str(HOME / ".ssh")], False),
     ("read ~/.zshrc", ["/bin/cat", str(HOME / ".zshrc")], False),
-    ("read the search keys file", ["/bin/cat", str(HOME / ".config" / "nse-unified-pipeline" / "keys.env")], False),
+    ("read the search keys file", ["/bin/cat", str(HOME / ".config" / "rag-collector" / "keys.env")], False),
     ("read the project .env", ["/bin/cat", str(ROOT / ".env")], False),
     ("write in home", ["/usr/bin/touch", str(HOME / ".sandbox_probe_should_fail")], False),
     ("keychain access", ["/usr/bin/security", "list-keychains"], False),
@@ -136,7 +136,7 @@ def main() -> int:
     ap.add_argument("--check", action="store_true", help="run probes inside the profile")
     ap.add_argument("--out", type=Path, help="write the profile to this file")
     ap.add_argument("--cline-dir", type=Path, action="append", help="Cline config/data dirs (default ~/.cline)")
-    ap.add_argument("--allow-keys", action="store_true", help="allow reading ~/.config/nse-unified-pipeline")
+    ap.add_argument("--allow-keys", action="store_true", help="allow reading ~/.config/rag-collector")
     ap.add_argument("--local-network-only", action="store_true")
     a = ap.parse_args()
     prof = profile(a.cline_dir, a.allow_keys, a.local_network_only)

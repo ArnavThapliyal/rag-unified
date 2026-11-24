@@ -39,7 +39,9 @@ step "tesseract (OCR)"
 v=$(tesseract --version 2>/dev/null | head -1) && ok "$v" || bad "brew install tesseract (scanned PDFs need OCR)"
 
 step "no stale references"
-hits=$(grep -rIil "roo code\|\.roo/\|rooignore" --exclude-dir={vendor,node_modules,.venv,.git} . 2>/dev/null | grep -v '^./scripts/check.sh$')
+hits=$(grep -rIil "roo code\|\.roo/\|rooignore\|nse-delisted-comp\|nse-unified-pipeline\|company_pipeline\|company-pipeline" \
+  --exclude-dir={vendor,node_modules,.venv,.git,.pytest_cache,data,logs,docs} --exclude=test_agent_prompts.py . 2>/dev/null \
+  | grep -v '^./scripts/check.sh$')
 [ -z "$hits" ] && ok || bad "$hits"
 
 if [ "${1:-}" != "--offline" ]; then

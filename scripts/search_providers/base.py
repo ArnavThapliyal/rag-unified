@@ -43,7 +43,7 @@ class SearchProvider:
     def health(self) -> str | None:
         """None if the provider can be used, else why not (cheap: no paid request)."""
         missing = [k for k in self.key_names if not credentials.get(k)]
-        return f"no API key: set {', '.join(missing)} in .env or ~/.config/nse-unified-pipeline/keys.env" \
+        return f"no API key: set {', '.join(missing)} in .env or ~/.config/rag-collector/keys.env" \
             if missing else None
 
     # --- helpers --------------------------------------------------------------------------------
