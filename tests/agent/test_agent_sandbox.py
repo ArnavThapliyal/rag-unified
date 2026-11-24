@@ -116,3 +116,19 @@ def test_secrets_and_git_metadata_are_not_writable(world, rel):
 
 def test_regex_metacharacters_in_the_root_are_escaped():
     assert asb.re_literal("/a/b.c+d(e)") == "/a/b\\.c\\+d\\(e\\)"
+
+
+def test_check_skips_a_missing_processor_environment(monkeypatch, tmp_path, capsys):
+    """A collector-only setup: the processor python probe is skipped, not a FAIL that blocks every session."""
+    missing = str(tmp_path / "processor" / ".venv" / "bin" / "python")
+    monkeypatch.setattr(asb, "ROOT", tmp_path)
+    (tmp_path / "logs").mkdir()
+    monkeypatch.setattr(asb, "PROBES", [("run the processor python", [missing, "-c", "import lancedb"], True)])
+    assert asb.check("(version 1)(allow default)") == 0
+    assert "skip  run the processor python" in capsys.readouterr().out
+
+
+def test_run_agent_runs_sandboxed_sessions_offline():
+    sh = (Path(asb.__file__).parent / "run_agent.sh").read_text()
+    block = sh[sh.index('SANDBOX_CMD=(sandbox-exec'):sh.index('elif [ "$SANDBOX_MODE" = "1" ]')]
+    assert "HF_HUB_OFFLINE=1" in block and "TRANSFORMERS_OFFLINE=1" in block

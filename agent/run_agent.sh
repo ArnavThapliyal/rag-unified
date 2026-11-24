@@ -83,6 +83,8 @@ if [ "$SANDBOX_MODE" != "0" ]; then
       echo "sandbox probe failed: refusing to start (CLINE_SANDBOX=0 runs without it)" >&2; exit 2
     fi
     SANDBOX_CMD=(sandbox-exec -f "$SESSIONS/sandbox.sb")
+    # the Hugging Face cache is read-only in the sandbox: use cached models only, never try (and fail) to write
+    export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     echo "■ OS sandbox on: home directory, keys, .env and keychain are out of the agent's reach"
   elif [ "$SANDBOX_MODE" = "1" ]; then
     echo "CLINE_SANDBOX=1 but sandbox-exec is not available on this system" >&2; exit 2

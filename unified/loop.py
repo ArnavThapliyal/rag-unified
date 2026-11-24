@@ -42,6 +42,7 @@ def processor_stop() -> Path:
 
 
 AGENT_CMD = ROOT / "agent" / "run_agent.sh"
+WATCH_HEALTHY_S = 3600  # a watcher that stayed up this long resets the restart count
 
 
 def now() -> str:
@@ -55,6 +56,7 @@ class Loop:
         self.watch: subprocess.Popen | None = None
         self.child: subprocess.Popen | None = None
         self.watch_restarts = 0
+        self.watch_started = 0.0
 
     # ---- control ------------------------------------------------------------------------------------------------
     def on_signal(self, signum, _frame) -> None:
@@ -86,8 +88,10 @@ class Loop:
 
     def start_watch(self) -> None:
         processor_stop().unlink(missing_ok=True)
+        # own session: a terminal Ctrl-C reaches the loop only; stop_watch() lets the running batch finish
         self.watch = subprocess.Popen(self.processor_cmd(False), cwd=ROOT / "processor", env=registry.env_for(),
-                                      stdin=subprocess.DEVNULL)
+                                      stdin=subprocess.DEVNULL, start_new_session=True)
+        self.watch_started = time.monotonic()
         self.say(f"processor watcher started (pid {self.watch.pid})")
         self.record(event="watch_started", pid=self.watch.pid)
 
@@ -96,6 +100,8 @@ class Loop:
             return
         code = self.watch.returncode
         self.record(event="watch_exited", code=code)
+        if time.monotonic() - self.watch_started >= WATCH_HEALTHY_S:  # it ran fine for a while: not a crash loop
+            self.watch_restarts = 0
         if self.watch_restarts >= self.a.max_restarts:
             self.say(f"processor watcher exited (code {code}) {self.watch_restarts} times: stopping")
             self.stopping = True
@@ -161,6 +167,9 @@ class Loop:
         reader.start()
         while reader.is_alive():  # a cycle can take an hour: keep the processor watcher alive meanwhile
             reader.join(5)
+            if STOP.exists() and not self.stopping:  # `touch logs/STOP`: same as SIGTERM, the cycle ends its step
+                self.say(f"{STOP} found: asking the collector cycle to stop")
+                self.on_signal(signal.SIGTERM, None)
             self.check_watch()
         code = self.child.wait()
         self.child = None

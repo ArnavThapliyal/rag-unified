@@ -138,6 +138,9 @@ def check(prof: str) -> int:
         if not want and not Path(argv[-1]).exists() and argv[0] in ("/bin/cat", "/bin/ls"):
             print(f"  skip  {desc} (no such file)")
             continue
+        if want and argv[0].endswith("/.venv/bin/python") and not Path(argv[0]).exists():
+            print(f"  skip  {desc} (not installed)")  # a missing environment is not a confinement leak
+            continue
         r = subprocess.run(["sandbox-exec", "-f", f.name, *argv], capture_output=True, text=True)
         ok = (r.returncode == 0) == want
         bad += not ok

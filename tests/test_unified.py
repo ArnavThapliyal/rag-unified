@@ -307,3 +307,93 @@ def test_bg_start_is_atomic(monkeypatch, tmp_path):
 def test_internal_bg_without_a_run_id_is_a_usage_error():
     r = subprocess.run([RAG, "_bg"], capture_output=True, text=True, timeout=60)
     assert r.returncode == 2 and "usage" in r.stderr
+
+
+# ---- ultrareview fixes ---------------------------------------------------------------------------------------------
+def test_stop_file_reaches_a_running_collector_cycle(monkeypatch, tmp_path):
+    """`touch logs/STOP` mid-cycle sends the collector SIGTERM (it ends its current step) instead of waiting."""
+    monkeypatch.setattr(loop, "STOP", tmp_path / "STOP")
+    lp = loop.Loop(Namespace(once=False, failure_pause_min=5))
+    script = ("import signal, sys, time, json\n"
+              "signal.signal(signal.SIGTERM, lambda *a: (print(json.dumps({'loop_decision': 'stop', 'why': 'stop requested'}),"
+              " flush=True), sys.exit(0)))\n"
+              "print('progress', flush=True)\n"
+              "time.sleep(120)\n")
+    monkeypatch.setattr(lp, "collector_cmd", lambda n=20: [sys.executable, "-c", script])
+    monkeypatch.setattr(lp, "check_watch", lambda: None)
+    (tmp_path / "STOP").touch()
+    t0 = time.monotonic()
+    d = lp.collector_cycle()
+    assert time.monotonic() - t0 < 30
+    assert d["loop_decision"] == "stop" and lp.stopping
+
+
+def test_a_reused_pid_does_not_keep_a_dead_run_running(tmp_path, monkeypatch):
+    """The runner's pid now belongs to another live process (here: this one); the free lock says it is gone."""
+    monkeypatch.setattr(bg, "BG_DIR", tmp_path)
+    rid = "20261124-000000-processor.ingest"
+    bg._write({"run_id": rid, "step": "processor.ingest", "args": [], "state": "running",
+               "started_at": "2026-11-24T00:00:00+00:00", "pid": os.getpid()})
+    (tmp_path / f"{rid}.lock").touch()
+    assert bg.read(rid)["state"] == "lost"
+
+
+def test_a_live_runner_holding_its_lock_is_running(tmp_path, monkeypatch):
+    import fcntl
+    monkeypatch.setattr(bg, "BG_DIR", tmp_path)
+    rid = "20261124-000000-processor.ingest"
+    bg._write({"run_id": rid, "step": "processor.ingest", "args": [], "state": "running",
+               "started_at": "2026-11-24T00:00:00+00:00", "pid": 999999})
+    fd = os.open(tmp_path / f"{rid}.lock", os.O_RDWR | os.O_CREAT)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        assert bg.read(rid)["state"] == "running"
+    finally:
+        os.close(fd)
+    assert bg.read(rid)["state"] == "lost"
+
+
+def test_watcher_restarts_reset_after_a_healthy_run(monkeypatch, tmp_path):
+    lp = loop.Loop(Namespace(once=False, max_restarts=1))
+    monkeypatch.setattr(loop, "LOG", tmp_path / "loop.jsonl")
+    monkeypatch.setattr(loop.time, "sleep", lambda s: None)
+    started = []
+    monkeypatch.setattr(lp, "start_watch", lambda: started.append(1))
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    lp.watch, lp.watch_restarts = dead, 1
+    lp.watch_started = time.monotonic() - loop.WATCH_HEALTHY_S - 1   # ran for over an hour: not a crash loop
+    lp.check_watch()
+    assert not lp.stopping and started == [1] and lp.watch_restarts == 1
+    lp.watch_started = time.monotonic()                              # crashed right away again: give up
+    lp.check_watch()
+    assert lp.stopping
+
+
+def test_watcher_runs_in_its_own_session(monkeypatch, tmp_path):
+    lp = loop.Loop(Namespace(once=False, poll=1))
+    seen = {}
+
+    class P:
+        pid = 1
+
+    monkeypatch.setattr(loop, "LOG", tmp_path / "loop.jsonl")
+    monkeypatch.setattr(loop, "processor_stop", lambda: tmp_path / "STOP")
+    monkeypatch.setattr(loop.subprocess, "Popen", lambda *a, **k: (seen.update(k), P())[1])
+    lp.start_watch()
+    assert seen.get("start_new_session") is True
+
+
+def test_launcher_refuses_an_old_python(tmp_path):
+    """No collector/.venv and only an old python3 on PATH: a setup hint, not a tomllib traceback."""
+    import shutil
+    root = tmp_path / "r"
+    root.mkdir()
+    shutil.copy(ROOT / "rag", root / "rag")
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "python3").write_text("#!/bin/sh\nexit 1\n")   # fails the version check like a 3.9 would
+    (fake / "python3").chmod(0o755)
+    r = subprocess.run(["/bin/bash", str(root / "rag"), "help"], capture_output=True, text=True,
+                       env={"PATH": f"{fake}:/usr/bin:/bin", "HOME": str(tmp_path)})
+    assert r.returncode == 2 and "Python 3.11+" in r.stderr and "Traceback" not in r.stderr

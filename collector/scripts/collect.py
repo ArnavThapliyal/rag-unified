@@ -254,6 +254,30 @@ def child_summary(path: Path) -> dict:
         return {}
 
 
+def stop_children(children: dict, status: str | None, grace_s: float = 5, wait_s: float = 120) -> None:
+    """End the workers. A completed run's workers finish on their own. After Ctrl-C / `job stop` (status
+    "interrupted") they got SIGINT too and are saving their state: wait, never SIGTERM on top of that save.
+    Otherwise (SIGTERM to this process only, low disk, an error) they may not know yet: SIGTERM after a short
+    grace; they save their state on SIGTERM (graceful_sigterm)."""
+    patient = status in ("completed", "interrupted")
+    if not patient:
+        grace = time.monotonic() + grace_s
+        while time.monotonic() < grace and any(c.poll() is None for c in children.values()):
+            time.sleep(0.2)
+        for c in children.values():
+            if c.poll() is None:
+                c.terminate()
+    for c in children.values():
+        try:
+            c.wait(timeout=wait_s if patient else 30)
+        except subprocess.TimeoutExpired:
+            c.terminate()
+            try:
+                c.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                c.kill()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
                                  allow_abbrev=False)
@@ -407,23 +431,7 @@ def main() -> int:
     finally:
         # A completed run's workers are finishing on their own. Otherwise (SIGTERM to this process only, low disk,
         # an error) they may not know yet: stop them now; they save their state on SIGTERM (graceful_sigterm).
-        done = step.get("status") == "completed"
-        if not done:
-            grace = time.monotonic() + 5  # after Ctrl-C they are already saving: don't interrupt that
-            while time.monotonic() < grace and any(c.poll() is None for c in children.values()):
-                time.sleep(0.2)
-            for c in children.values():
-                if c.poll() is None:
-                    c.terminate()
-        for c in children.values():
-            try:
-                c.wait(timeout=120 if done else 30)
-            except subprocess.TimeoutExpired:
-                c.terminate()
-                try:
-                    c.wait(timeout=30)
-                except subprocess.TimeoutExpired:
-                    c.kill()
+        stop_children(children, step.get("status"))
         f, pr = child_summary(fetch_out), child_summary(proc_out)
         step["workers"] = {name: {"exit_code": c.returncode,
                                   "summary": bool(f if name == "fetch_worker" else pr),

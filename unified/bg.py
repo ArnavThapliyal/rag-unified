@@ -56,6 +56,27 @@ def _alive(pid: int | None) -> bool:
     return True
 
 
+def _lock_path(run_id: str) -> Path:
+    return _path(run_id).with_suffix(".lock")
+
+
+def _runner_alive(run_id: str, pid: int | None) -> bool:
+    """The runner holds an exclusive flock on <run_id>.lock for its whole life: a free lock means it is gone,
+    whatever process now has its pid. Runs without a lock file (older runners) fall back to the pid."""
+    lp = _lock_path(run_id)
+    try:
+        fd = os.open(lp, os.O_RDONLY)
+    except FileNotFoundError:
+        return _alive(pid)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    finally:
+        os.close(fd)  # also releases a lock we just took
+    return False
+
+
 def read(run_id: str) -> dict | None:
     try:
         state = json.loads(_path(run_id).read_text(encoding="utf-8"))
@@ -64,7 +85,7 @@ def read(run_id: str) -> dict | None:
     if state.get("state") == "running":
         pid = state.get("pid")
         starting = pid is None and _age_s(state.get("started_at")) < STARTUP_GRACE_S
-        if not starting and not _alive(pid):
+        if not starting and not _runner_alive(run_id, pid):
             state["state"] = "lost"  # the runner died without writing a result (machine slept, killed, …)
     return state
 
@@ -119,6 +140,8 @@ def execute(run_id: str) -> int:
     state = read(run_id)
     if not state:
         return 1
+    lock = os.open(_lock_path(run_id), os.O_RDWR | os.O_CREAT, 0o644)  # held until this process exits
+    fcntl.flock(lock, fcntl.LOCK_EX)
     state.update(pid=os.getpid(), state="running")
     _write(state)
     try:

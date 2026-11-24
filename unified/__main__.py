@@ -125,13 +125,21 @@ def cmd_doctor() -> int:
     if registry.python_for("processor").exists():
         res = registry.run("processor.health", [], stderr=subprocess.DEVNULL, timeout=300)[1]
         checks["processor health"] = "ok" if res["status"] == "ok" else res.get("reason") or res["status"]
+        # agent sessions run offline against a read-only HF cache (run_agent.sh): the model must already be there
+        r = subprocess.run([str(registry.python_for("processor")), "-c",
+                            "from config.settings import EMBEDDING_MODEL as m; from huggingface_hub import "
+                            "snapshot_download as d; d(m, local_files_only=True)"],
+                           cwd=ROOT / "processor", env={**registry.env_for(), "HF_HUB_OFFLINE": "1"},
+                           capture_output=True, text=True, timeout=120)
+        checks["embedding model cached"] = "ok" if r.returncode == 0 else \
+            "missing: run `./rag step processor.health` or one ingest outside the agent to download it"
     if sys.platform == "darwin" and registry.python_for("collector").exists():
         r = subprocess.run([str(registry.python_for("collector")), str(ROOT / "agent" / "sandbox.py"), "--check"],
                            capture_output=True, text=True)
         checks["agent sandbox"] = "ok" if r.returncode == 0 else "probe failed: python agent/sandbox.py --check"
     bad = {k: v for k, v in checks.items() if v != "ok"}
     for k, v in checks.items():
-        print(f"{k:<22}{v}", file=sys.stderr)
+        print(f"{k:<24}{v}", file=sys.stderr)
     out({"step": "doctor", "status": "blocked" if bad else "ok", "reason": "; ".join(f"{k}: {v}" for k, v in bad.items()),
          "checks": checks, "contract_version": 1})
     return 2 if bad else 0
