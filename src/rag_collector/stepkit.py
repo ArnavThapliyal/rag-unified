@@ -1,4 +1,5 @@
-"""The step contract shared by rag-collector and rag-processor (and read by rag-unified).
+"""The step contract shared by rag-collector (src/rag_collector/stepkit.py) and rag-processor (pipeline/stepkit.py),
+read by rag-unified. Keep the two files identical; bump CONTRACT_VERSION on any change.
 
 Every step prints exactly one JSON object on stdout:
 
