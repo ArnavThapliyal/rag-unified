@@ -87,7 +87,7 @@
       20
     ]
   },
-  "_comment_scope": "Which companies the corpus is about. delisted (default): only documents with a delisting signal, IPO offer documents (DRHP/RHP/prospectus) rejected, historical delisting phases run. listed: every fetched document except site pages and procedures goes to the corpus (no delisting rows are made from them), offer documents kept, historical phases off: add your own queries for listed companies. both: both. scripts/common.py scope_target().",
+  "_comment_scope": "Which companies are collected. Every phase has a scope: delisted (default) or listed. scope.target delisted: delisting phases + historical focus; documents need a delisting signal; IPO offer documents rejected. listed: only the listed phases (+ listed_added); every fetched document except site pages and procedures reaches the corpus, offer documents kept; no delisting rows are made from them. both: all phases. One run only: RAG_SCOPE_TARGET=both ./rag loop --once. Add listed queries: ./rag add_queries --scope listed --year-tag 2025 --query \"...\". scripts/common.py scope_target().",
   "scope": {
     "target": "delisted"
   },
@@ -170,7 +170,8 @@
         "site:archives.nseindia.com delisted",
         "site:bseindia.com list of delisted companies",
         "site:sebi.gov.in delisting of equity shares regulations"
-      ]
+      ],
+      "scope": "delisted"
     },
     {
       "name": "priority_2017",
@@ -187,7 +188,8 @@
         "amalgamation scheme delisted from NSE 2017",
         "NSE compulsory delisting 2017 shell companies",
         "exchanges delist companies 2017 compulsory"
-      ]
+      ],
+      "scope": "delisted"
     },
     {
       "name": "priority_2020",
@@ -204,7 +206,8 @@
         "amalgamation scheme delisted from NSE 2020",
         "delisting COVID 2020 NSE SEBI relaxation",
         "IBC delisting 2020 NSE"
-      ]
+      ],
+      "scope": "delisted"
     },
     {
       "name": "priority_2024",
@@ -221,7 +224,8 @@
         "amalgamation scheme delisted from NSE 2024",
         "SEBI delisting amendment 2024 fixed price NSE",
         "NSE delisting 2024 counter offer"
-      ]
+      ],
+      "scope": "delisted"
     },
     {
       "name": "priority_2007",
@@ -238,7 +242,8 @@
         "amalgamation scheme delisted from NSE 2007",
         "SEBI delisting guidelines 2003 NSE 2007",
         "NSE delisted securities 2007"
-      ]
+      ],
+      "scope": "delisted"
     },
     {
       "name": "archive",
@@ -449,7 +454,8 @@
           "q": "site:sebi.gov.in delisting order 2026",
           "year_tag": "2026"
         }
-      ]
+      ],
+      "scope": "delisted"
     },
     {
       "name": "agent_added",
@@ -511,6 +517,47 @@
         {
           "q": "list of companies delisted from NSE 2008",
           "year_tag": "2008"
+        }
+      ],
+      "scope": "delisted"
+    },
+    {
+      "name": "listed",
+      "scope": "listed",
+      "year_tag": "per_query",
+      "pages": 2,
+      "queries": [
+        {
+          "q": "site:nsearchives.nseindia.com annual report 2024-25",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:nsearchives.nseindia.com financial results quarter ended 2025",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:nsearchives.nseindia.com outcome of board meeting 2025",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:nsearchives.nseindia.com shareholding pattern 2025",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:bseindia.com annual report 2024-25 pdf",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:bseindia.com financial results 2025 pdf",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:sebi.gov.in red herring prospectus 2025",
+          "year_tag": "2025"
+        },
+        {
+          "q": "site:nseindia.com list of securities available for trading equity",
+          "year_tag": "2026"
         }
       ]
     }

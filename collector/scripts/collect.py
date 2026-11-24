@@ -109,10 +109,19 @@ def save_state(state: dict) -> None:
         atomic_write_text(STATE, json.dumps(merged, indent=1, ensure_ascii=False))
 
 
-def plan_items(plan: dict, phase: str | None) -> list[dict]:
+def phase_in_scope(ph: dict, target: str) -> bool:
+    """A phase's "scope" (delisted by default, or listed) runs when scope.target covers it."""
+    return target == "both" or ph.get("scope", "delisted") == target
+
+
+def plan_items(plan: dict, phase: str | None, target: str = "delisted") -> list[dict]:
+    """Queries of the plan's phases. With no phase (or "all") only phases in scope.target run; a phase named
+    explicitly (--phase listed) always runs."""
     items = []
     for ph in plan["phases"]:
         if phase and phase not in ("all", ph["name"]):
+            continue
+        if (not phase or phase == "all") and not phase_in_scope(ph, target):
             continue
         for q in ph["queries"]:
             if isinstance(q, dict):
@@ -122,6 +131,18 @@ def plan_items(plan: dict, phase: str | None) -> list[dict]:
                 items.append({"phase": ph["name"], "query": q, "year_tag": ph["year_tag"],
                               "pages": ph.get("pages", 1)})
     return items
+
+
+def interleave_scopes(items: list[dict], plan: dict) -> list[dict]:
+    """scope.target both: alternate delisted and listed queries (each kind in its own order), so a run capped at
+    --max-queries searches both instead of the long delisting backlog first."""
+    listed_phases = {ph["name"] for ph in plan["phases"] if ph.get("scope") == "listed"}
+    listed = [it for it in items if it["phase"] in listed_phases]
+    delisted = [it for it in items if it["phase"] not in listed_phases]
+    out: list[dict] = []
+    for i in range(max(len(listed), len(delisted))):
+        out += delisted[i:i + 1] + listed[i:i + 1]
+    return out
 
 
 SEARCH_COOLDOWN_MIN = 30  # after search engines suspend SearXNG, no queries for this long
@@ -352,10 +373,11 @@ def main() -> int:
     state = load_state()
     # historical focus first: window-year proof, company proof, company support; then the plan's phases
     # (only when the corpus is about delisted companies: scope.target delisted / both)
+    target = common.scope_target()
     hist = [it for it in historical.items(state) if a.phase in ("all", it["phase"])] \
-        if common.scope_target() in ("delisted", "both") else []
+        if target in ("delisted", "both") else []
     planned = {it["query"] for it in hist}
-    items = hist + [it for it in plan_items(plan, a.phase) if it["query"] not in planned]
+    items = hist + [it for it in plan_items(plan, a.phase, target) if it["query"] not in planned]
     if not items:
         emit({"error": f"unknown or empty phase: {a.phase}", "phases": [p["name"] for p in plan["phases"]]})
         return 2
@@ -366,6 +388,8 @@ def main() -> int:
         return st in (None, "engines_blocked") or (a.retry_failed and st in ("failed", "no_results"))
 
     todo = [it for it in items if pending(it)] if stage in ("all", "discover") else []
+    if target == "both":
+        todo = interleave_scopes(todo, plan)
     pending_total = len(todo)
     if a.max_queries:
         todo = todo[: a.max_queries]
@@ -379,7 +403,7 @@ def main() -> int:
             d = by_phase.setdefault(it["phase"], {"total": 0, "pending": 0})
             d["total"] += 1
             d["pending"] += pending(it)
-        emit({"dry_run": True, "stage": stage, "would_run": len(todo), "limits": limits,
+        emit({"dry_run": True, "stage": stage, "scope_target": target, "would_run": len(todo), "limits": limits,
               "focus_window": list(historical.window()), "historical": ds.get("historical"), "phases": by_phase,
               "harvest_backlog": ds["fetch_ready_now"],
               "docket": {k: ds[k] for k in ("by_status", "fetch_ready_now", "awaiting_parse",

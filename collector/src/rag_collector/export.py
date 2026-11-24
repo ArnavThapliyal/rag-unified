@@ -152,7 +152,10 @@ def sidecar_for(item: dict, recs: list[dict], sha: str, batch_id: str) -> dict:
 
 
 def _scope_target() -> str:
-    """scope.target of config/query_plan.json (scripts/common.py), for the processor's scope gate."""
+    """scope.target of config/query_plan.json (scripts/common.py; RAG_SCOPE_TARGET overrides it for one run), for
+    the processor's scope gate."""
+    if os.environ.get("RAG_SCOPE_TARGET") in ("delisted", "listed", "both"):
+        return os.environ["RAG_SCOPE_TARGET"]
     try:
         t = (json.loads((paths.root() / "config" / "query_plan.json").read_text(encoding="utf-8")).get("scope") or {})
         t = t.get("target", "delisted")

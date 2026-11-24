@@ -49,6 +49,44 @@ Everything goes through `./rag`. Every step prints one JSON result and exits 0 (
 
 Stop the loop with Ctrl-C, SIGTERM or `touch logs/STOP`; the running step finishes first.
 
+### First run, step by step (checked 2026-11-25 on an M4 Pro 48 GB)
+
+```bash
+./rag doctor                                   # environments, LM Studio, SearXNG, sandbox: all must say ok
+./rag collect --dry-run                        # scope_target, pending queries per phase, docket backlog; nothing runs
+./rag loop --once                              # one agent cycle: collect → universe-sync → export → ingest → quant
+./rag status                                   # records, chunks, ledger (out-of-scope files, memory notes)
+```
+
+`./rag loop --once` in agent mode loads the LLM in LM Studio (about 23 GB). On a 48 GB Mac, unload it before a
+big ingest (`lms unload --all`); `./rag step processor.health` reports how many parse workers fit.
+
+### Delisted, listed or both
+
+What is collected is set by `scope.target` in `collector/config/query_plan.json` (default `delisted`). Every
+phase of the query plan has a `scope` (`delisted` or `listed`); only the phases the target covers are searched.
+
+| `scope.target` | searched | reaches the vector DB | delisting records (master CSV) |
+|---|---|---|---|
+| `delisted` | historical focus + the delisting phases | documents with a delisting signal; IPO offer documents rejected | yes |
+| `listed` | the `listed` and `listed_added` phases | every fetched document except site pages and procedures, offer documents included | none from these documents |
+| `both` | everything, delisted and listed queries alternating | both of the above | from delisting documents only |
+
+```bash
+# permanently: edit collector/config/query_plan.json → "scope": {"target": "both"}
+RAG_SCOPE_TARGET=both ./rag loop --once                     # one run only, without editing the config
+RAG_SCOPE_TARGET=listed ./rag collect --dry-run             # see what a listed run would search
+./rag add_queries --scope listed --year-tag 2025 --query "site:bseindia.com \"Acme Ltd\" annual report"
+./rag collect --phase listed --max-queries 8                # only the listed queries, now
+```
+
+The `listed` phase ships with starter queries (NSE/BSE annual reports, results, board-meeting outcomes,
+shareholding patterns, offer documents, the list of traded securities); add company-specific ones with
+`--scope listed`. Everything lands in one LanceDB table (`documents`): filter by `doc_type`, `symbol` / `isin`
+and `metadata_json.collector_relevance` (`corpus_listed:*` / `corpus_both:*` for listed-scope documents), and
+join company status from the universe DB (`nse_entities.listing_status`). Each batch's manifest records its
+`scope_target`; the processor skips IPO offer documents only in `delisted` batches.
+
 ## Check
 
 ```bash

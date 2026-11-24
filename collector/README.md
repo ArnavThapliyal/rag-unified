@@ -335,11 +335,14 @@ is about:
 | target | documents exported to the processor | IPO offer documents (DRHP / RHP / prospectus) | historical delisting phases |
 |---|---|---|---|
 | `delisted` (default) | only those with a delisting signal (url, title, linked page or text) | rejected (`irrelevant:offer_document`) | run |
-| `listed` | every fetched document except site pages and procedures (`corpus_listed:*`) | kept | off |
+| `listed` | every fetched document except site pages and procedures (`corpus_listed:*`) | kept | off (only the `listed` phases are searched) |
 | `both` | either | kept | run |
 
-Delisting rows (the master CSV) still come only from delisting documents, whatever the target. For `listed`,
-the searches you add with `./rag add_queries` decide which companies are found. The export manifest carries
+Delisting rows (the master CSV) still come only from delisting documents, whatever the target. Every phase in
+the plan has a `scope` (`delisted` default, or `listed`); only the target's phases are searched, and with `both`
+delisted and listed queries alternate. The `listed` phase has starter queries; add more with
+`./rag add_queries --scope listed --year-tag <year> --query "..."`. `RAG_SCOPE_TARGET=<target>` overrides the
+config for one run. The export manifest carries
 `scope_target`, so the processor skips offer documents only for a `delisted` batch. Changing the target relabels
 already-parsed files on the next process run.
 

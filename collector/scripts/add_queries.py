@@ -37,15 +37,21 @@ def existing_queries(plan: dict) -> set[str]:
     return qs
 
 
-def add(plan: dict, queries: list[str], year_tag: str | None, domains: list[str]) -> dict:
+PHASE_FOR_SCOPE = {"delisted": "agent_added", "listed": "listed_added"}
+
+
+def add(plan: dict, queries: list[str], year_tag: str | None, domains: list[str], scope: str = "delisted") -> dict:
     out = {"added_queries": [], "skipped_queries": [], "added_domains": [], "skipped_domains": []}
     if queries:
         if not year_tag or not YEAR_TAG_RE.match(year_tag):
             raise ValueError("--year-tag must be a year (e.g. 2008) or 'master'")
         seen = existing_queries(plan)
-        phase = next((p for p in plan["phases"] if p["name"] == "agent_added"), None)
+        if scope not in PHASE_FOR_SCOPE:
+            raise ValueError("--scope must be delisted or listed")
+        name = PHASE_FOR_SCOPE[scope]
+        phase = next((p for p in plan["phases"] if p["name"] == name), None)
         if phase is None:
-            phase = {"name": "agent_added", "year_tag": "per_query", "pages": 1, "queries": []}
+            phase = {"name": name, "scope": scope, "year_tag": "per_query", "pages": 1, "queries": []}
             plan["phases"].append(phase)
         for q in queries:
             q = re.sub(r"\s+", " ", q).strip()
@@ -76,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--query", action="append", default=[])
     ap.add_argument("--year-tag")
     ap.add_argument("--add-domain", action="append", default=[])
+    ap.add_argument("--scope", default="delisted", choices=("delisted", "listed"),
+                    help="listed: the queries go to the listed_added phase (searched when scope.target is listed/both)")
     a = ap.parse_args(argv)
     if not a.query and not a.add_domain:
         ap.error("give --query (with --year-tag) and/or --add-domain")
@@ -85,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     with file_lock(PLAN_LOCK):
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
         try:
-            out = add(plan, a.query, a.year_tag, a.add_domain)
+            out = add(plan, a.query, a.year_tag, a.add_domain, a.scope)
         except ValueError as e:
             emit({"error": str(e)})
             return 2

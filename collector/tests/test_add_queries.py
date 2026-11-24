@@ -19,7 +19,7 @@ def test_appends_to_agent_added_and_skips_duplicates_and_junk():
     out = aq.add(p, ["SEBI order delisting 2008", "nse delisted list", "x", "a `rm -rf` b"], "2008", [])
     assert out["added_queries"] == ["SEBI order delisting 2008"]
     assert [s["why"] for s in out["skipped_queries"]] == ["already in the plan", "too short/long", "disallowed characters"]
-    assert p["phases"][-1] == {"name": "agent_added", "year_tag": "per_query", "pages": 1,
+    assert p["phases"][-1] == {"name": "agent_added", "scope": "delisted", "year_tag": "per_query", "pages": 1,
                                "queries": [{"q": "SEBI order delisting 2008", "year_tag": "2008"}]}
     assert p["search"] == {"providers": ["searxng"]}  # nothing else touched
 
@@ -57,3 +57,11 @@ def test_concurrent_calls_keep_the_plan_valid_and_lose_nothing(tmp_path, monkeyp
     added = json.loads(plan_file.read_text(encoding="utf-8"))["phases"][-1]["queries"]
     assert sorted(q["q"] for q in added) == sorted(f"Company number {i} delisted NSE" for i in range(12))
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_listed_queries_go_to_their_own_scoped_phase():
+    p = plan()
+    out = aq.add(p, ["site:bseindia.com annual report 2024-25 pdf"], "2025", [], scope="listed")
+    assert out["added_queries"] and p["phases"][-1]["name"] == "listed_added" and p["phases"][-1]["scope"] == "listed"
+    with pytest.raises(ValueError):
+        aq.add(p, ["some other query here"], "2025", [], scope="everything")
