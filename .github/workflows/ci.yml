@@ -2,6 +2,16 @@ name: CI
 on:
   push:
   pull_request:
+
+# least privilege: the jobs only read the repository
+permissions:
+  contents: read
+
+# a newer push to the same branch / PR cancels the run in progress
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   processor:
     runs-on: ubuntu-latest
@@ -15,6 +25,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: processor/uv.lock
       - name: Install dependencies
         run: uv sync --frozen
       - name: Lint
@@ -31,6 +42,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            collector/requirements*.txt
+            collector/pyproject.toml
       - name: Install tesseract
         run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - name: Collector environment
@@ -46,3 +61,18 @@ jobs:
       # the agent boundary (guard, runner, prompts, session runner) and unified/; the macOS sandbox tests skip here
       - name: Agent + unified tests
         run: collector/.venv/bin/python -m pytest -q tests
+
+  # the OS sandbox (agent/sandbox.py, sandbox-exec) only exists on macOS; it needs the standard library + pytest
+  macos-sandbox:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: collector/requirements-dev.txt
+      - name: Install pytest
+        run: python -m pip install -q pytest
+      - name: Sandbox tests
+        run: python -m pytest -v tests/agent/test_agent_sandbox.py

@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # collector: pip (requirements*.txt, pyproject.toml)
+  - package-ecosystem: pip
+    directory: /collector
+    schedule:
+      interval: weekly
+    groups:
+      collector-python:
+        patterns: ["*"]
+
+  # processor: uv (pyproject.toml + uv.lock)
+  - package-ecosystem: uv
+    directory: /processor
+    schedule:
+      interval: weekly
+    groups:
+      processor-python:
+        patterns: ["*"]
+
+  # workflow actions (.github/workflows/*.yml)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
