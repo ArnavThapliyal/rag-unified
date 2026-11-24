@@ -3,7 +3,7 @@
   "files": 332,
   "files_with_rows": 83,
   "rows": 516,
-  "records": 401,
+  "records": 405,
   "first_fetched": "2026-11-21T10:46:17+00:00",
   "new": false
  },
@@ -19,7 +19,7 @@
   "files": 49,
   "files_with_rows": 15,
   "rows": 91,
-  "records": 8,
+  "records": 11,
   "first_fetched": "2026-11-21T10:50:53+00:00",
   "new": false
  },
@@ -27,6 +27,7 @@
   "files": 37,
   "files_with_rows": 3,
   "rows": 43,
+  "records": 2,
   "first_fetched": "2026-11-21T10:49:21+00:00",
   "new": false
  },
@@ -34,6 +35,7 @@
   "files": 5,
   "files_with_rows": 1,
   "rows": 1,
+  "records": 1,
   "first_fetched": "2026-11-21T12:32:25+00:00",
   "new": false
  },
@@ -84,6 +86,20 @@
   "files_with_rows": 0,
   "rows": 0,
   "first_fetched": "2026-11-22T19:02:20+00:00",
+  "new": true
+ },
+ "shabdkosh.com": {
+  "files": 1,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-24T08:46:26+00:00",
+  "new": true
+ },
+ "vocabulary.com": {
+  "files": 1,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-24T08:46:27+00:00",
   "new": true
  },
  "bsmedia.business-standard.com": {

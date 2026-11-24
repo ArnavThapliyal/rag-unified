@@ -747,6 +747,48 @@
     "data/search_cache/55fbb4ff3ceccc65.json",
     "data/search_cache/aaad80a246d5f676.json"
    ]
+  },
+  "SEBI order delisting 2007": {
+   "phase": "historical_proof",
+   "year_tag": "2007",
+   "ts": "2026-11-24T08:45:34+00:00",
+   "run_id": "20261124-141533-67588",
+   "status": "engines_blocked",
+   "results": 0,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [
+    "duckduckgo",
+    "qwant"
+   ],
+   "candidate_urls": 0,
+   "filed_new": 0,
+   "filed_pending": 0,
+   "cache_files": [
+    "data/search_cache/bb1b3d9d2b2c8fae.json"
+   ]
+  },
+  "voluntary delisting exit offer public announcement 2007": {
+   "phase": "historical_proof",
+   "year_tag": "2007",
+   "ts": "2026-11-24T08:46:09+00:00",
+   "run_id": "20261124-141533-67588",
+   "status": "done",
+   "results": 30,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [
+    "mojeek"
+   ],
+   "candidate_urls": 30,
+   "filed_new": 20,
+   "filed_pending": 6,
+   "cache_files": [
+    "data/search_cache/9b91afdfd91d4311.json",
+    "data/search_cache/b2b5266c9faa2d6a.json"
+   ]
   }
  },
  "blocked_domains": [],

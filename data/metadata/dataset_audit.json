@@ -1,17 +1,83 @@
 {
- "generated_at": "2026-11-24T08:30:33+00:00",
- "records": 409,
- "error_count": 0,
- "warning_count": 89,
- "errors": {},
+ "generated_at": "2026-11-24T08:46:35+00:00",
+ "records": 416,
+ "error_count": 4,
+ "warning_count": 102,
+ "errors": {
+  "label_as_company_name": {
+   "count": 4,
+   "examples": [
+    {
+     "record_id": "98e10e28871490ce",
+     "company_name": "ISIN",
+     "source_url": "https://nsearchives.nseindia.com/corporate/HITECHCORP_09062026195258_Board_Meeting__Hitech_Outcome.pdf"
+    },
+    {
+     "record_id": "9b535790f95f90f8",
+     "company_name": "ISIN",
+     "source_url": "https://beta.bseindia.com/xml-data/corpfiling/AttachHis/82de7b02-bad9-4e71-8708-c226525b14ff.pdf"
+    },
+    {
+     "record_id": "c0a64e851ae82af1",
+     "company_name": "ISIN of BHAGYANAGAR PROPERTIES LIMITED",
+     "source_url": "https://nsearchives.nseindia.com/corporate/BHAGYAPROP_01122022164452_BPL_ExitOfferLetterSubmission.pdf"
+    },
+    {
+     "record_id": "c5ece3c56e31941d",
+     "company_name": "Symbol: IFBIND | ISIN",
+     "source_url": "https://nsearchives.nseindia.com/corporate/IFBIND_18032025131822_Delisting_Intimation_to_SE.pdf"
+    }
+   ]
+  }
+ },
  "warnings": {
   "no_date": {
-   "count": 2,
+   "count": 12,
    "examples": [
+    {
+     "record_id": "3e43eae57ba7bec0",
+     "company_name": "Bhalchandram Clothing Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML70787.pdf"
+    },
+    {
+     "record_id": "6eebf9982451608e",
+     "company_name": "Celestial Biolabs Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML64548.pdf"
+    },
+    {
+     "record_id": "7f93d056cb11c9d0",
+     "company_name": "Future Supply Chain Solutions Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML73316.pdf"
+    },
+    {
+     "record_id": "98e10e28871490ce",
+     "company_name": "ISIN",
+     "source_url": "https://nsearchives.nseindia.com/corporate/HITECHCORP_09062026195258_Board_Meeting__Hitech_Outcome.pdf"
+    },
+    {
+     "record_id": "9b535790f95f90f8",
+     "company_name": "ISIN",
+     "source_url": "https://beta.bseindia.com/xml-data/corpfiling/AttachHis/82de7b02-bad9-4e71-8708-c226525b14ff.pdf"
+    },
+    {
+     "record_id": "c0a64e851ae82af1",
+     "company_name": "ISIN of BHAGYANAGAR PROPERTIES LIMITED",
+     "source_url": "https://nsearchives.nseindia.com/corporate/BHAGYAPROP_01122022164452_BPL_ExitOfferLetterSubmission.pdf"
+    },
+    {
+     "record_id": "37eac81d94916155",
+     "company_name": "JIK Industries Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/circulars/CML64548.pdf"
+    },
     {
      "record_id": "7abed1eab72f9118",
      "company_name": "Parsoli Corporation Limited",
      "source_url": "https://nsearchives.nseindia.com/content/circulars/INVG64241.pdf"
+    },
+    {
+     "record_id": "b268834cfc96635f",
+     "company_name": "Supreme Hydro Engineering Private Limited",
+     "source_url": "https://nclt.gov.in/gen_pdf.php?filepath=/Efile_Document/ncltdoc/casedoc/2709138048162018/04/Order-Challenge/04_order-Challange_004_172423499684929542366c5bcf4ca803.pdf"
     },
     {
      "record_id": "ba5c92d5cf22ea3b",
@@ -31,8 +97,23 @@
    ]
   },
   "possible_duplicate_event": {
-   "count": 12,
+   "count": 15,
    "examples": [
+    {
+     "record_id": "98e10e28871490ce",
+     "company_name": "ISIN",
+     "source_url": "https://nsearchives.nseindia.com/corporate/HITECHCORP_09062026195258_Board_Meeting__Hitech_Outcome.pdf"
+    },
+    {
+     "record_id": "9b535790f95f90f8",
+     "company_name": "ISIN",
+     "source_url": "https://beta.bseindia.com/xml-data/corpfiling/AttachHis/82de7b02-bad9-4e71-8708-c226525b14ff.pdf"
+    },
+    {
+     "record_id": "c0a64e851ae82af1",
+     "company_name": "ISIN of BHAGYANAGAR PROPERTIES LIMITED",
+     "source_url": "https://nsearchives.nseindia.com/corporate/BHAGYAPROP_01122022164452_BPL_ExitOfferLetterSubmission.pdf"
+    },
     {
      "record_id": "574af156693cb5f3",
      "company_name": "B S Appliances Limited",
@@ -67,21 +148,6 @@
      "record_id": "21e14eea0e3b63c3",
      "company_name": "Indus Fila Limited",
      "source_url": "https://archives.nseindia.com/invest/content/db/DelistedCos_Buy_Sell.xls"
-    },
-    {
-     "record_id": "f1b3279f301f81b1",
-     "company_name": "Indus Fila Limited",
-     "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
-    },
-    {
-     "record_id": "8cefd162f900008d",
-     "company_name": "Jenson & Nicholson (lndia) Limited",
-     "source_url": "https://archives.nseindia.com/invest/content/db/DelistedCos_Buy_Sell.xls"
-    },
-    {
-     "record_id": "ef30ad758a4edf05",
-     "company_name": "Jenson & Nicholson (lndia) Limited",
-     "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
     }
    ]
   },
@@ -144,6 +210,11 @@
    "count": 53,
    "examples": [
     {
+     "record_id": "187bab1adf9e8e32",
+     "company_name": "BIL Industries Limited",
+     "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
+    },
+    {
      "record_id": "206908a02a631097",
      "company_name": "Teledata Marine Solutions Limited",
      "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
@@ -186,11 +257,6 @@
     {
      "record_id": "5485a11bdcd33a5a",
      "company_name": "Era Infra Engineering Limited",
-     "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
-    },
-    {
-     "record_id": "1c339488661b4a65",
-     "company_name": "First Leasing Company India Limited",
      "source_url": "https://nsearchives.nseindia.com/content/equities/delisted.xlsx"
     }
    ]

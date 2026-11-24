@@ -1,31 +1,31 @@
 {
- "generated_at": "2026-11-24T08:30:33+00:00",
+ "generated_at": "2026-11-24T08:46:35+00:00",
  "indicators": {
-  "records_total": 409,
-  "priority_year_records": 124,
-  "verified_primary_pct": 99.5,
-  "needs_review": 2,
+  "records_total": 416,
+  "priority_year_records": 122,
+  "verified_primary_pct": 98.3,
+  "needs_review": 7,
   "priority_grid_coverage_pct": 40.0,
   "query_plan_complete_pct": 28.2,
   "queries_done": 31,
   "queries_total": 110,
-  "fetch_success_rate_pct": 97.8,
-  "artifacts_downloaded": 568,
+  "fetch_success_rate_pct": 96.9,
+  "artifacts_downloaded": 570,
   "artifacts_with_rows": 107,
   "artifacts_zero_rows": 220,
-  "artifacts_irrelevant": 241,
-  "blocked_domains": 0,
+  "artifacts_irrelevant": 243,
+  "blocked_domains": 2,
   "docket": {
    "by_status": {
-    "dead": 12,
-    "failed": 1,
-    "parked": 1543,
-    "parsed": 568
+    "dead": 13,
+    "failed": 4,
+    "parked": 1557,
+    "parsed": 570
    },
    "fetch_ready_now": 0,
    "awaiting_parse": 0,
-   "waiting_on_blocked_domain": 0,
-   "evidence_unfetched": 498,
+   "waiting_on_blocked_domain": 4,
+   "evidence_unfetched": 508,
    "parsed_zero_rows_relevant": 200,
    "historical": {
     "window": [
@@ -38,26 +38,26 @@
     "with_supporting_docs": 0
    }
   },
-  "isin_completeness_pct": 0.2,
+  "isin_completeness_pct": 1.2,
   "last_run": {
-   "run_id": "20261123-010310-27510",
-   "started_at": "2026-11-22T19:33:10+00:00",
+   "run_id": "20261124-141533-67588",
+   "started_at": "2026-11-24T08:45:33+00:00",
    "status": "completed",
    "stop_reason": "max_queries_reached",
-   "duration_s": 377.3,
-   "queries_done": 8,
-   "fetched_ok": 37,
-   "quarantined": 0,
-   "new_records": 1
+   "duration_s": 61.8,
+   "queries_done": 2,
+   "fetched_ok": 2,
+   "quarantined": 5,
+   "new_records": 7
   },
   "agent_sessions": 12,
   "proposed_delisting_leads": 14,
-  "bse_only_delistings": 107,
-  "source_domains": 25,
-  "new_source_domains": 13,
+  "bse_only_delistings": 115,
+  "source_domains": 27,
+  "new_source_domains": 15,
   "new_domains_with_rows": [],
-  "audit_errors": 0,
-  "audit_warnings": 89,
+  "audit_errors": 4,
+  "audit_warnings": 102,
   "disk": {
    "data_gb": 1.0,
    "free_gb": 344.1,
@@ -127,31 +127,41 @@
     "complete_pct": 0.0
    }
   },
-  "adhoc_queries": 8,
-  "blocked_domains": [],
+  "adhoc_queries": 10,
+  "blocked_domains": [
+   "dictionary.cambridge.org",
+   "merriam-webster.com"
+  ],
   "docket": {
-   "generated_at": "2026-11-22T19:39:27+00:00",
-   "total": 2124,
+   "generated_at": "2026-11-24T08:46:35+00:00",
+   "total": 2144,
    "by_status": {
-    "dead": 12,
-    "failed": 1,
-    "parked": 1543,
-    "parsed": 568
+    "dead": 13,
+    "failed": 4,
+    "parked": 1557,
+    "parsed": 570
    },
    "by_kind": {
     "harvested": 1120,
-    "search": 1004
+    "search": 1024
    },
    "fetch_ready_now": 0,
-   "waiting_on_blocked_domain": 0,
+   "waiting_on_blocked_domain": 4,
    "awaiting_parse": 0,
    "parsed_zero_rows_relevant": 200,
-   "evidence_unfetched": 498,
-   "blocked_domains": [],
+   "evidence_unfetched": 508,
+   "blocked_domains": [
+    "dictionary.cambridge.org",
+    "merriam-webster.com"
+   ],
    "top_pending_domains": [
     {
-     "domain": "static.nseindia.com",
-     "n": 1
+     "domain": "merriam-webster.com",
+     "n": 2
+    },
+    {
+     "domain": "dictionary.cambridge.org",
+     "n": 2
     }
    ],
    "dead_reasons": [
@@ -166,6 +176,10 @@
     {
      "reason": "downloaded file missing",
      "n": 2
+    },
+    {
+     "reason": "ConnectionError: HTTPSConnectionPool(host='static.nseindia.com', port=443): Max retries exceeded with url: /s3fs-public/inline-files/MCSGFC_order_Sunness.pdf (Caused by NameResolutionError(\"HTTPSConnection(host='static.nseindia.com', port=443): Failed to resolve 'static.nseindia.com' ([Errno 8] node",
+     "n": 1
     }
    ],
    "historical": {
@@ -181,11 +195,11 @@
   }
  },
  "fetch": {
-  "attempts": 583,
-  "ok": 570,
-  "quarantined": 13,
-  "success_rate_pct": 97.8,
-  "total_mb": 994.62,
+  "attempts": 590,
+  "ok": 572,
+  "quarantined": 18,
+  "success_rate_pct": 96.9,
+  "total_mb": 994.9,
   "by_domain": {
    "nsearchives.nseindia.com": {
     "ok": 334,
@@ -278,6 +292,10 @@
     "ok": 1,
     "bytes": 269515
    },
+   "shabdkosh.com": {
+    "ok": 1,
+    "bytes": 178322
+   },
    "economictimes.indiatimes.com": {
     "ok": 1,
     "bytes": 147391
@@ -286,54 +304,58 @@
     "ok": 1,
     "bytes": 96231
    },
+   "vocabulary.com": {
+    "ok": 1,
+    "bytes": 72620
+   },
    "dictionary.cambridge.org": {
-    "quarantined": 1,
-    "bytes": 5881
+    "quarantined": 3,
+    "bytes": 17634
    },
    "merriam-webster.com": {
-    "quarantined": 1,
-    "bytes": 5856
+    "quarantined": 3,
+    "bytes": 17526
    },
    "ibc.co.in": {
     "ok": 1,
     "bytes": 4860
    },
    "static.nseindia.com": {
-    "quarantined": 3,
+    "quarantined": 4,
     "bytes": 0
    }
   },
   "by_http_status": {
-   "200": 570,
+   "200": 572,
    "404": 8,
-   "None": 3,
-   "403": 2
+   "None": 4,
+   "403": 6
   },
   "by_content_type": {
-   "text/html": 104,
+   "text/html": 110,
    "application/pdf": 447,
    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 6,
    "application/x-zip-compressed": 20,
-   "unknown": 3,
+   "unknown": 4,
    "application/vnd.ms-excel": 1,
    "text/csv": 2
   }
  },
  "artifacts": {
-  "total": 568,
+  "total": 570,
   "by_bucket": {
    "archive_2006_2026": 21,
    "master_lists": 361,
-   "priority_2007": 7,
+   "priority_2007": 9,
    "priority_2017": 74,
    "priority_2020": 89,
    "priority_2024": 16
   },
-  "parsed": 568,
+  "parsed": 570,
   "rows_extracted": 892
  },
  "records": {
-  "total": 409,
+  "total": 416,
   "by_year": {
    "2006": 3,
    "2007": 7,
@@ -353,30 +375,31 @@
    "2021": 47,
    "2022": 21,
    "2023": 9,
-   "2024": 4,
-   "2025": 3,
+   "2024": 2,
+   "2025": 2,
    "2026": 4,
-   "unknown": 2
+   "unknown": 12
   },
   "by_type": {
-   "OTHER": 23,
-   "COMPULSORY": 156,
-   "VOLUNTARY_NO_EXIT": 106,
-   "IBC_NCLT": 121,
-   "VOLUNTARY_EXIT_OFFER": 3
+   "VOLUNTARY_NO_EXIT": 109,
+   "COMPULSORY": 173,
+   "IBC_NCLT": 122,
+   "AMALGAMATION_MERGER": 1,
+   "VOLUNTARY_EXIT_OFFER": 4,
+   "OTHER": 7
   },
   "by_confidence": {
-   "NEEDS_REVIEW": 2,
-   "VERIFIED_PRIMARY": 407
+   "NEEDS_REVIEW": 7,
+   "VERIFIED_PRIMARY": 409
   },
   "by_regime": {
-   "unknown": 2,
+   "unknown": 12,
    "SEBI_2003_Guidelines": 14,
    "SEBI_2009_Regs": 328,
    "SEBI_2021_Regs": 55,
-   "SEBI_2024_Amendment": 10
+   "SEBI_2024_Amendment": 7
   },
-  "priority_year_records": 124,
+  "priority_year_records": 122,
   "priority_grid": {
    "2007": {
     "COMPULSORY": 0,
@@ -386,21 +409,21 @@
     "IBC_NCLT": 0
    },
    "2017": {
-    "COMPULSORY": 56,
+    "COMPULSORY": 60,
     "VOLUNTARY_EXIT_OFFER": 0,
     "VOLUNTARY_NO_EXIT": 5,
     "AMALGAMATION_MERGER": 0,
     "IBC_NCLT": 11
    },
    "2020": {
-    "COMPULSORY": 4,
+    "COMPULSORY": 6,
     "VOLUNTARY_EXIT_OFFER": 0,
     "VOLUNTARY_NO_EXIT": 9,
     "AMALGAMATION_MERGER": 0,
     "IBC_NCLT": 9
    },
    "2024": {
-    "COMPULSORY": 4,
+    "COMPULSORY": 2,
     "VOLUNTARY_EXIT_OFFER": 0,
     "VOLUNTARY_NO_EXIT": 0,
     "AMALGAMATION_MERGER": 0,
@@ -410,9 +433,9 @@
   "priority_grid_cells_filled": 8,
   "priority_grid_cells_total": 20,
   "field_completeness_pct": {
-   "isin": 0.2,
+   "isin": 1.2,
    "nse_symbol": 97.8,
-   "effective_delisting_date": 96.8,
+   "effective_delisting_date": 94.2,
    "order_date": 15.9,
    "exit_or_fair_value_inr": 0.2
   },
@@ -441,11 +464,13 @@
   ]
  },
  "audit": {
-  "errors": {},
+  "errors": {
+   "label_as_company_name": 4
+  },
   "warnings": {
-   "no_date": 2,
+   "no_date": 12,
    "order_after_effective": 1,
-   "possible_duplicate_event": 12,
+   "possible_duplicate_event": 15,
    "review_flags": 21,
    "source_conflicts": 53
   }
@@ -703,6 +728,17 @@
    "fetched_ok": 37,
    "quarantined": 0,
    "new_records": 1
+  },
+  {
+   "run_id": "20261124-141533-67588",
+   "started_at": "2026-11-24T08:45:33+00:00",
+   "status": "completed",
+   "stop_reason": "max_queries_reached",
+   "duration_s": 61.8,
+   "queries_done": 2,
+   "fetched_ok": 2,
+   "quarantined": 5,
+   "new_records": 7
   }
  ],
  "agent_sessions": [
