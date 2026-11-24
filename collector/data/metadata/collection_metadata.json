@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-24T11:02:42+00:00",
+ "generated_at": "2026-11-24T13:49:21+00:00",
  "indicators": {
   "records_total": 409,
   "priority_year_records": 124,
@@ -10,23 +10,24 @@
   "queries_done": 31,
   "queries_total": 110,
   "fetch_success_rate_pct": 96.8,
-  "artifacts_downloaded": 576,
+  "artifacts_downloaded": 594,
   "artifacts_with_rows": 98,
-  "artifacts_zero_rows": 186,
-  "artifacts_irrelevant": 292,
+  "artifacts_zero_rows": 188,
+  "artifacts_irrelevant": 308,
   "blocked_domains": 2,
   "docket": {
    "by_status": {
     "dead": 13,
     "failed": 5,
-    "parked": 1573,
-    "parsed": 576
+    "parked": 1618,
+    "parsed": 594,
+    "pending": 6
    },
-   "fetch_ready_now": 0,
+   "fetch_ready_now": 6,
    "awaiting_parse": 0,
    "waiting_on_blocked_domain": 4,
-   "evidence_unfetched": 509,
-   "parsed_zero_rows_relevant": 201,
+   "evidence_unfetched": 519,
+   "parsed_zero_rows_relevant": 202,
    "historical": {
     "window": [
      2006,
@@ -40,27 +41,27 @@
   },
   "isin_completeness_pct": 0.2,
   "last_run": {
-   "run_id": "20261124-163158-88647",
-   "started_at": "2026-11-24T11:01:58+00:00",
+   "run_id": "20261124-191524-10112",
+   "started_at": "2026-11-24T13:45:24+00:00",
    "status": "completed",
    "stop_reason": "max_queries_reached",
-   "duration_s": 44.0,
+   "duration_s": 166.2,
    "queries_done": 1,
-   "fetched_ok": 6,
+   "fetched_ok": 18,
    "quarantined": 1,
    "new_records": 0
   },
   "agent_sessions": 1,
   "proposed_delisting_leads": 14,
   "bse_only_delistings": 107,
-  "source_domains": 27,
-  "new_source_domains": 15,
+  "source_domains": 28,
+  "new_source_domains": 16,
   "new_domains_with_rows": [],
   "audit_errors": 0,
   "audit_warnings": 89,
   "disk": {
-   "data_gb": 1.0,
-   "free_gb": 336.5,
+   "data_gb": 1.03,
+   "free_gb": 340.0,
    "level": "ok",
    "warn_tier": 0,
    "warn_data_gb": 5.0,
@@ -127,34 +128,39 @@
     "complete_pct": 0.0
    }
   },
-  "adhoc_queries": 10,
+  "adhoc_queries": 11,
   "blocked_domains": [
    "dictionary.cambridge.org",
    "merriam-webster.com"
   ],
   "docket": {
-   "generated_at": "2026-11-24T11:02:42+00:00",
-   "total": 2167,
+   "generated_at": "2026-11-24T13:48:10+00:00",
+   "total": 2236,
    "by_status": {
     "dead": 13,
     "failed": 5,
-    "parked": 1573,
-    "parsed": 576
+    "parked": 1618,
+    "parsed": 594,
+    "pending": 6
    },
    "by_kind": {
-    "harvested": 1120,
-    "search": 1047
+    "harvested": 1172,
+    "search": 1064
    },
-   "fetch_ready_now": 0,
+   "fetch_ready_now": 6,
    "waiting_on_blocked_domain": 4,
    "awaiting_parse": 0,
-   "parsed_zero_rows_relevant": 201,
-   "evidence_unfetched": 509,
+   "parsed_zero_rows_relevant": 202,
+   "evidence_unfetched": 519,
    "blocked_domains": [
     "dictionary.cambridge.org",
     "merriam-webster.com"
    ],
    "top_pending_domains": [
+    {
+     "domain": "nirmalbang.com",
+     "n": 6
+    },
     {
      "domain": "merriam-webster.com",
      "n": 2
@@ -199,15 +205,15 @@
   }
  },
  "fetch": {
-  "attempts": 597,
-  "ok": 578,
-  "quarantined": 19,
+  "attempts": 616,
+  "ok": 596,
+  "quarantined": 20,
   "success_rate_pct": 96.8,
-  "total_mb": 995.99,
+  "total_mb": 1024.42,
   "by_domain": {
    "nsearchives.nseindia.com": {
-    "ok": 334,
-    "bytes": 576593451,
+    "ok": 336,
+    "bytes": 581274663,
     "quarantined": 6
    },
    "beta.bseindia.com": {
@@ -225,12 +231,16 @@
     "quarantined": 1
    },
    "sebi.gov.in": {
-    "ok": 51,
-    "bytes": 51603673
+    "ok": 52,
+    "bytes": 61733899
    },
    "ibbi.gov.in": {
     "ok": 22,
     "bytes": 25397428
+   },
+   "nirmalbang.com": {
+    "ok": 15,
+    "bytes": 13614127
    },
    "bsmedia.business-standard.com": {
     "ok": 1,
@@ -325,8 +335,8 @@
     "bytes": 4860
    },
    "zhihu.com": {
-    "quarantined": 1,
-    "bytes": 650
+    "quarantined": 2,
+    "bytes": 1300
    },
    "static.nseindia.com": {
     "quarantined": 4,
@@ -334,14 +344,14 @@
    }
   },
   "by_http_status": {
-   "200": 578,
+   "200": 596,
    "404": 8,
    "None": 4,
-   "403": 7
+   "403": 8
   },
   "by_content_type": {
-   "text/html": 113,
-   "application/pdf": 450,
+   "text/html": 115,
+   "application/pdf": 467,
    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 7,
    "application/x-zip-compressed": 20,
    "unknown": 4,
@@ -350,16 +360,16 @@
   }
  },
  "artifacts": {
-  "total": 576,
+  "total": 594,
   "by_bucket": {
-   "archive_2006_2026": 21,
-   "master_lists": 362,
+   "archive_2006_2026": 38,
+   "master_lists": 363,
    "priority_2007": 14,
    "priority_2017": 74,
    "priority_2020": 89,
    "priority_2024": 16
   },
-  "parsed": 576,
+  "parsed": 594,
   "rows_extracted": 871
  },
  "records": {
@@ -753,6 +763,17 @@
    "duration_s": 44.0,
    "queries_done": 1,
    "fetched_ok": 6,
+   "quarantined": 1,
+   "new_records": 0
+  },
+  {
+   "run_id": "20261124-191524-10112",
+   "started_at": "2026-11-24T13:45:24+00:00",
+   "status": "completed",
+   "stop_reason": "max_queries_reached",
+   "duration_s": 166.2,
+   "queries_done": 1,
+   "fetched_ok": 18,
    "quarantined": 1,
    "new_records": 0
   }

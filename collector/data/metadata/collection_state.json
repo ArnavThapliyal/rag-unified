@@ -789,6 +789,27 @@
     "data/search_cache/9b91afdfd91d4311.json",
     "data/search_cache/b2b5266c9faa2d6a.json"
    ]
+  },
+  "NSE delisted companies list 2008": {
+   "phase": "historical_proof",
+   "year_tag": "2008",
+   "ts": "2026-11-24T13:45:25+00:00",
+   "run_id": "20261124-191524-10112",
+   "status": "done",
+   "results": 40,
+   "providers": [
+    "searxng"
+   ],
+   "unresponsive_engines": [
+    "brave"
+   ],
+   "candidate_urls": 40,
+   "filed_new": 17,
+   "filed_pending": 2,
+   "cache_files": [
+    "data/search_cache/043141d691a523ac.json",
+    "data/search_cache/fa4148fb52f14490.json"
+   ]
   }
  },
  "blocked_domains": [],

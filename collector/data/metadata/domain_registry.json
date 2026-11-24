@@ -1,6 +1,6 @@
 {
  "nsearchives.nseindia.com": {
-  "files": 332,
+  "files": 334,
   "files_with_rows": 78,
   "rows": 511,
   "records": 401,
@@ -31,7 +31,7 @@
   "new": false
  },
  "sebi.gov.in": {
-  "files": 51,
+  "files": 52,
   "files_with_rows": 0,
   "rows": 0,
   "first_fetched": "2026-11-21T10:57:20+00:00",
@@ -50,6 +50,13 @@
   "rows": 0,
   "first_fetched": "2026-11-22T19:02:20+00:00",
   "new": false
+ },
+ "nirmalbang.com": {
+  "files": 15,
+  "files_with_rows": 0,
+  "rows": 0,
+  "first_fetched": "2026-11-24T13:46:43+00:00",
+  "new": true
  },
  "nclt.gov.in": {
   "files": 5,
