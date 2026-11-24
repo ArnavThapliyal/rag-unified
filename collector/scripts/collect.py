@@ -399,8 +399,10 @@ def main() -> int:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             os.close(lock_fd)
-            emit({"status": "busy", "error": "another collection run is already active"})
-            return 1
+            # the step contract's retry_later (exit 75): someone else's run, not a failure to report
+            emit({"status": "busy", "stop_reason": "collection_running",
+                  "error": "another collection run is already active"})
+            return 75
 
     os.environ.pop("NSE_RUN_ID", None)  # every collect.py invocation is its own run (workers inherit it)
     rid = run_id()

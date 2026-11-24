@@ -171,6 +171,9 @@ def install_universe(batch_dir: Path, manifest: Dict[str, Any], universe_db: Opt
     dst = sqlite3.connect(tmp)
     try:
         src.backup(dst)
+        # the collector builds the snapshot in WAL mode; readers open the installed copy read-only, which a WAL
+        # database without its -shm file refuses ("unable to open database file")
+        dst.execute("PRAGMA journal_mode=DELETE")
         check = dst.execute("PRAGMA integrity_check").fetchone()[0]
     finally:
         dst.close()
